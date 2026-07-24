@@ -21,9 +21,16 @@ const SKILL_DICTIONARY = [
   'Copywriting', 'Content Writing', 'Editing', 'Public Speaking', 'Negotiation', 'Leadership',
 ];
 
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Word-boundary match (not plain substring) so short/common skill names like
+// "Go" or "HR" don't false-positive inside unrelated words - "Go" was
+// matching inside "Google", "HR" inside "through".
 function extractSkills(text) {
-  const lower = text.toLowerCase();
-  return SKILL_DICTIONARY.filter((skill) => lower.includes(skill.toLowerCase()));
+  return SKILL_DICTIONARY.filter((skill) => {
+    const pattern = new RegExp(`(?<![a-zA-Z0-9])${escapeRegExp(skill)}(?![a-zA-Z0-9])`, 'i');
+    return pattern.test(text);
+  });
 }
 
 function extractEmail(text) {
@@ -53,6 +60,13 @@ function extractExperience(text) {
     DATE_RANGE_RE.lastIndex = 0;
     if (!match) return;
 
+    // Education entries have the same "date range on a line" shape as jobs
+    // (e.g. "Bachelor of Design ... 2012 - 2016") - skip lines that read as
+    // a degree rather than a job.
+    if (/\b(bachelor|master|ph\.?d|b\.?tech|b\.?sc|m\.?tech|m\.?sc|mba|diploma|university|college|institute)\b/i.test(line)) {
+      return;
+    }
+
     const startRaw = match[1];
     const endRaw = match[2];
     const currentlyWorking = /present|current/i.test(endRaw);
@@ -61,7 +75,10 @@ function extractExperience(text) {
     let context = line.replace(match[0], '').trim();
     if (context.length < 3 && i > 0) context = lines[i - 1];
 
-    const parts = context.split(/\s+(?:at|@|,|-|\|)\s+/i).filter(Boolean);
+    const parts = context
+      .split(/\s*·\s*|\s+(?:at|@|,|-|\|)\s+/i)
+      .map((p) => p.trim())
+      .filter(Boolean);
     const jobTitle = parts[0]?.slice(0, 150) || null;
     const companyName = parts[1]?.slice(0, 150) || null;
 
