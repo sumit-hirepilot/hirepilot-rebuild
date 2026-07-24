@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { aggregateJobs } = require('../services/jobAggregator');
+const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
 
@@ -13,6 +14,21 @@ function classifyExperience(title) {
   if (/(senior|sr\.?|lead|head of)/.test(t)) return 'senior';
   if (/(junior|jr\.?|entry|intern|graduate)/.test(t)) return 'entry';
   return 'mid';
+}
+
+// Defense in depth: repair any mojibake that slipped through ingestion or
+// survived the one-time migration (e.g. a batch that partially failed),
+// so the API never serves corrupted text regardless of DB state.
+function sanitizeJob(job) {
+  if (!job) return job;
+  return {
+    ...job,
+    title: fixMojibake(job.title),
+    company_name: fixMojibake(job.company_name),
+    location: fixMojibake(job.location),
+    description: fixMojibake(job.description),
+    requirements: fixMojibake(job.requirements),
+  };
 }
 
 // Manually trigger job aggregation (also runs automatically every 6 hours)
@@ -114,7 +130,7 @@ router.get('/', async (req, res) => {
       [...params, limit, offset]
     );
 
-    const jobs = result.rows.map((j) => ({ ...j, experienceLevel: classifyExperience(j.title) }));
+    const jobs = result.rows.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));
 
     res.json({
       total: parseInt(countResult.rows[0].count),
@@ -142,7 +158,7 @@ router.get('/saved/list', verifyToken, async (req, res) => {
        ORDER BY sj.created_at DESC`,
       [req.user.id]
     );
-    res.json({ jobs: result.rows.map((j) => ({ ...j, experienceLevel: classifyExperience(j.title) })) });
+    res.json({ jobs: result.rows.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) })) });
   } catch (err) {
     console.error('List saved jobs error:', err);
     res.status(500).json({ error: 'Failed to fetch saved jobs' });
@@ -195,7 +211,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    res.json({ ...result.rows[0], experienceLevel: classifyExperience(result.rows[0].title) });
+    res.json({ ...sanitizeJob(result.rows[0]), experienceLevel: classifyExperience(result.rows[0].title) });
   } catch (err) {
     console.error('Get job error:', err);
     res.status(500).json({ error: 'Failed to fetch job' });

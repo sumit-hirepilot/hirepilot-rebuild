@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { runAutoApplyForUser } = require('../services/autoApplyEngine');
 const { calculateMatchesForUser } = require('../services/matchingEngine');
+const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
 
@@ -19,6 +20,11 @@ router.get('/', verifyToken, async (req, res) => {
        ORDER BY a.applied_at DESC`,
       [req.user.id]
     );
+
+    result.rows.forEach((app) => {
+      app.title = fixMojibake(app.title);
+      app.company_name = fixMojibake(app.company_name);
+    });
 
     // Organize by status for Kanban
     const kanban = {

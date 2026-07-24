@@ -1,6 +1,7 @@
 const { query } = require('../db');
 const { calculateMatchesForUser } = require('./matchingEngine');
 const { generateCoverLetterContent } = require('./coverLetterGenerator');
+const { fixMojibake } = require('./apis/textSanitizer');
 
 const normalize = (s) => (s || '').trim().toLowerCase();
 
@@ -55,6 +56,8 @@ const runAutoApplyForUser = async (user) => {
 
   for (const candidate of candidatesResult.rows) {
     if (remainingSlots <= 0) break;
+    candidate.title = fixMojibake(candidate.title);
+    candidate.company_name = fixMojibake(candidate.company_name);
     const companyKey = normalize(candidate.company_name);
 
     if (blacklist.includes(companyKey)) {

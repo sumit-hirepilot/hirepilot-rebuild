@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
 
@@ -8,6 +9,8 @@ router.use(verifyToken);
 
 function formatActivity(row) {
   const meta = row.metadata || {};
+  row.job_title = fixMojibake(row.job_title);
+  row.company_name = fixMojibake(row.company_name);
 
   switch (row.event_type) {
     case 'application_sent':

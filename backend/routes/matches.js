@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { calculateJobMatch, calculateMatchesForUser } = require('../services/matchingEngine');
+const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
 
@@ -36,7 +37,7 @@ router.get('/', verifyToken, async (req, res) => {
       total: parseInt(countResult.rows[0].count),
       page: parseInt(page),
       limit: parseInt(limit),
-      matches: result.rows,
+      matches: result.rows.map((m) => ({ ...m, title: fixMojibake(m.title), company_name: fixMojibake(m.company_name) })),
     });
   } catch (err) {
     console.error('Get matches error:', err);

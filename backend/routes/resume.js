@@ -5,6 +5,7 @@ const { verifyToken } = require('../middleware/auth');
 const { extractTextFromFile } = require('../services/fileTextExtractor');
 const { parseResume } = require('../services/resumeParser');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
+const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -230,7 +231,7 @@ router.get('/tailored', async (req, res) => {
        ORDER BY tr.created_at DESC`,
       [req.user.id]
     );
-    res.json({ tailored: result.rows });
+    res.json({ tailored: result.rows.map((r) => ({ ...r, job_title: fixMojibake(r.job_title), company_name: fixMojibake(r.company_name) })) });
   } catch (err) {
     console.error('List tailored resumes error:', err);
     res.status(500).json({ error: 'Failed to fetch tailored resumes' });
@@ -254,6 +255,8 @@ router.post('/tailor', async (req, res) => {
     const user = userResult.rows[0];
     const skills = skillsResult.rows.map((r) => r.skill);
     const job = jobResult.rows[0];
+    job.title = fixMojibake(job.title);
+    job.company_name = fixMojibake(job.company_name);
     const name = user.full_name || 'Candidate';
     const userTitle = user.title || job.title;
 
@@ -316,7 +319,7 @@ router.get('/cover-letters', async (req, res) => {
        WHERE cl.user_id = $1 ORDER BY cl.created_at DESC`,
       [req.user.id]
     );
-    res.json({ coverLetters: result.rows });
+    res.json({ coverLetters: result.rows.map((r) => ({ ...r, job_title: fixMojibake(r.job_title), company_name: fixMojibake(r.company_name) })) });
   } catch (err) {
     console.error('List cover letters error:', err);
     res.status(500).json({ error: 'Failed to fetch cover letters' });
@@ -339,6 +342,8 @@ router.post('/cover-letter', async (req, res) => {
     const user = userResult.rows[0];
     const skills = skillsResult.rows.map((r) => r.skill);
     const job = jobResult.rows[0];
+    job.title = fixMojibake(job.title);
+    job.company_name = fixMojibake(job.company_name);
 
     const content = generateCoverLetterContent({
       name: user.full_name,
@@ -424,7 +429,7 @@ router.get('/screening-answers', async (req, res) => {
        WHERE sa.user_id = $1 ORDER BY sa.created_at DESC LIMIT 20`,
       [req.user.id]
     );
-    res.json({ answers: result.rows });
+    res.json({ answers: result.rows.map((r) => ({ ...r, job_title: fixMojibake(r.job_title), company_name: fixMojibake(r.company_name) })) });
   } catch (err) {
     console.error('List screening answers error:', err);
     res.status(500).json({ error: 'Failed to fetch screening answers' });
@@ -456,8 +461,8 @@ router.post('/screening-answer', async (req, res) => {
       title: userResult.rows[0]?.title,
       skills: skillsResult.rows.map((r) => r.skill),
       yearsExp: totalYears > 0 ? Math.round(totalYears) : null,
-      jobTitle: jobResult.rows[0]?.title,
-      companyName: jobResult.rows[0]?.company_name,
+      jobTitle: fixMojibake(jobResult.rows[0]?.title),
+      companyName: fixMojibake(jobResult.rows[0]?.company_name),
     });
 
     const saved = await query(
