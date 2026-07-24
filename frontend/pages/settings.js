@@ -50,6 +50,7 @@ export default function Settings() {
     blacklistCompanies: [], dreamCompanies: [],
   });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [runningAutoPilot, setRunningAutoPilot] = useState(false);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -176,6 +177,22 @@ export default function Settings() {
     });
   };
 
+  const handleRunAutoPilotNow = async () => {
+    setRunningAutoPilot(true);
+    try {
+      const res = await fetch(`${base}/api/applications/run-auto-pilot`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      flash(res.ok ? data.message : (data.error || 'Failed to run Auto-Pilot'));
+    } catch (err) {
+      flash('Failed to run Auto-Pilot');
+    } finally {
+      setRunningAutoPilot(false);
+    }
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -285,6 +302,18 @@ export default function Settings() {
                 <span />
               </button>
             </div>
+
+            {preferences.autoApplyEnabled && (
+              <button
+                type="button"
+                className={page.secondaryButton}
+                onClick={handleRunAutoPilotNow}
+                disabled={runningAutoPilot}
+                style={{ marginBottom: '1.25rem' }}
+              >
+                {runningAutoPilot ? 'Running Auto-Pilot...' : 'Run Auto-Pilot now'}
+              </button>
+            )}
 
             <label className={page.rangeLabel}>Daily application limit: {preferences.autoApplyLimitPerDay}</label>
             <input
