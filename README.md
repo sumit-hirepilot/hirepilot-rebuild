@@ -1,29 +1,67 @@
 # HirePilot Rebuild
 
-A full-stack recruitment and hiring platform built with Node.js/Express backend and React/Next.js frontend.
+A full-stack AI-powered job search automation platform. GitHub + Railway only, no Higgsfield dependency.
+
+**Status:** 4/13 tasks complete • Backend structure ready • Frontend starting
 
 ## Project Structure
 
 ```
 hirepilot-rebuild/
-├── backend/              # Express.js API server
-│   ├── index.js         # Main server file
-│   ├── package.json     # Backend dependencies
-│   └── .env.example     # Environment variables template
-├── frontend/             # Next.js React application
-│   ├── pages/           # Next.js pages
-│   ├── public/          # Static assets
-│   ├── styles/          # CSS/styling
-│   ├── package.json     # Frontend dependencies
-│   ├── next.config.js   # Next.js configuration
-│   └── .env.example     # Environment variables template
-├── docker/               # Docker configuration files
-│   ├── Dockerfile.backend
-│   └── Dockerfile.frontend
-├── docker-compose.yml   # Docker Compose orchestration
-├── .gitignore          # Git ignore rules
-└── README.md           # This file
+├── backend/
+│   ├── index.js                    # Express server with route handlers
+│   ├── db.js                       # PostgreSQL connection pool
+│   ├── schema.sql                  # Database schema (10+ tables)
+│   ├── package.json                # Dependencies: pg, bcrypt, jwt, axios, cron
+│   ├── middleware/
+│   │   └── auth.js                 # JWT verification middleware
+│   ├── routes/
+│   │   └── auth.js                 # Signup, login, user management
+│   └── services/
+│       ├── jobAggregator.js        # Job aggregation orchestrator
+│       ├── scheduler.js            # Cron-based scheduling (6-hour intervals)
+│       └── apis/
+│           ├── remoteok.js         # RemoteOK API client
+│           ├── weworkremotely.js   # We Work Remotely API client
+│           └── remotive.js         # Remotive API client
+├── frontend/
+│   ├── pages/
+│   │   └── index.js                # Next.js home page (placeholder)
+│   ├── public/                     # Static assets
+│   ├── styles/                     # CSS modules
+│   ├── package.json                # Dependencies: react, next, axios
+│   └── next.config.js              # Next.js config
+├── docker/
+│   ├── Dockerfile.backend          # Node Alpine image
+│   └── Dockerfile.frontend         # Next.js multi-stage build
+├── docker-compose.yml              # Local dev orchestration
+├── .claude/
+│   └── launch.json                 # Preview server configuration
+└── README.md
 ```
+
+## Build Progress
+
+### ✅ Completed
+- Database schema with 10+ tables (users, jobs, matches, applications, agents)
+- JWT authentication with bcrypt password hashing
+- Job aggregation service for 3 sources (RemoteOK, We Work Remotely, Remotive)
+- Scheduled aggregation (every 6 hours via node-cron)
+- **Staleness bug fixed:** posted_at timestamp is preserved and never reset on re-fetch
+- Express server with health check and placeholder endpoints
+
+### ⏳ In Progress
+- Matching engine (job-user scoring)
+- API endpoints for jobs, matches, applications
+
+### 📋 Planned
+- Frontend: Landing page, dashboard, Kanban board
+- Resume tailoring
+- Referral finder
+- Standing search agents
+- Dockerization
+- Railway deployment
+- Full test suite
 
 ## Quick Start
 
