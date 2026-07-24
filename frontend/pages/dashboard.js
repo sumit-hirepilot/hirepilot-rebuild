@@ -1,0 +1,163 @@
+import Head from 'next/head';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import DashboardLayout from '../components/DashboardLayout';
+import styles from '../styles/Dashboard.module.css';
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+export default function Dashboard() {
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [appStats, setAppStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+
+    if (!token || !storedUser) {
+      router.push('/login');
+      return;
+    }
+
+    setUser(JSON.parse(storedUser));
+
+    async function loadData() {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const base = process.env.NEXT_PUBLIC_API_URL;
+
+        const [matchesRes, statsRes] = await Promise.all([
+          fetch(`${base}/api/matches?limit=5`, { headers }),
+          fetch(`${base}/api/applications/stats`, { headers }),
+        ]);
+
+        if (matchesRes.ok) {
+          const data = await matchesRes.json();
+          setMatches(data.matches || []);
+        }
+
+        if (statsRes.ok) {
+          const data = await statsRes.json();
+          setAppStats(data);
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard data', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [router]);
+
+  if (!user) return null;
+
+  const now = new Date();
+  const dateLabel = `${DAY_NAMES[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
+  const firstName = (user.fullName || user.email.split('@')[0]).split(' ')[0];
+
+  const applicationsSent = appStats ? parseInt(appStats.total_applications || 0) : 0;
+  const interviews = appStats ? parseInt(appStats.interviews || 0) : 0;
+  const scannedToday = appStats ? parseInt(appStats.scanned_today || 0) : 0;
+  const todaysMatches = matches.length;
+  const dailyLimit = 10;
+  const progressPct = Math.min(100, (applicationsSent / dailyLimit) * 100);
+
+  return (
+    <>
+      <Head>
+        <title>Dashboard - HirePilot</title>
+      </Head>
+
+      <DashboardLayout title="Dashboard" user={user}>
+        <p className={styles.dateLabel}>{dateLabel}</p>
+        <h1 className={styles.greeting}>{getGreeting()}, {firstName}</h1>
+
+        <div className={styles.card}>
+          <div className={styles.autopilotRow}>
+            <div className={styles.autopilotLeft}>
+              <span className={styles.statusDot} />
+              <div>
+                <p className={styles.autopilotTitle}>Auto-Pilot Active</p>
+                <p className={styles.autopilotSubtitle}>
+                  {scannedToday} jobs scanned &middot; {applicationsSent} applications sent &middot; {todaysMatches} matches found
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className={styles.progressWrap}>
+            <div className={styles.progressLabels}>
+              <span>Daily limit</span>
+              <span>{applicationsSent}/{dailyLimit} applications</span>
+            </div>
+            <div className={styles.progressTrack}>
+              <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.statsGrid}>
+          <div className={styles.statCard}>
+            <p className={styles.statLabel}>Today&apos;s Matches</p>
+            <p className={styles.statValue}>{todaysMatches}</p>
+          </div>
+          <div className={styles.statCard}>
+            <p className={styles.statLabel}>Applications Sent</p>
+            <p className={styles.statValue}>{applicationsSent}</p>
+          </div>
+          <div className={styles.statCard}>
+            <p className={styles.statLabel}>Interview Pipeline</p>
+            <p className={styles.statValue}>{interviews}<span className={styles.statValueUnit}>active</span></p>
+          </div>
+          <div className={styles.statCard}>
+            <p className={styles.statLabel}>Time Saved</p>
+            <p className={styles.statValue}>0<span className={styles.statValueUnit}>hrs</span></p>
+          </div>
+        </div>
+
+        <div className={styles.twoColGrid}>
+          <div className={styles.card} style={{ marginBottom: 0 }}>
+            <div className={styles.sectionHeader}>
+              <h2 className={styles.sectionTitle}>Today&apos;s matches</h2>
+              <a href="/jobs" className={styles.sectionLink}>View all jobs</a>
+            </div>
+
+            {loading ? (
+              <p className={styles.emptyState}>Loading&hellip;</p>
+            ) : matches.length === 0 ? (
+              <p className={styles.emptyState}>
+                No matches yet. Add your skills and experience to your profile so HirePilot can start scoring jobs for you.
+              </p>
+            ) : (
+              matches.map((m) => (
+                <div key={m.id} className={styles.matchRow}>
+                  <div className={styles.matchScore}>{Math.round(m.overall_score * 100)}</div>
+                  <div>
+                    <p className={styles.matchTitle}>{m.title}</p>
+                    <p className={styles.matchSubtitle}>{m.company_name} &middot; {m.location}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className={styles.card} style={{ marginBottom: 0 }}>
+            <h2 className={styles.sectionTitle} style={{ marginBottom: '1rem' }}>Recent activity</h2>
+            <p className={styles.emptyState}>No activity yet. Once Auto-Pilot starts applying, you&apos;ll see updates here.</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    </>
+  );
+}
