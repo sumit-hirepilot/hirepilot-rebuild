@@ -72,7 +72,8 @@ export default function Login() {
       <Layout>
         <div className={styles.authContainer}>
           <div className={styles.authCard}>
-            <h1>Sign in to HirePilot</h1>
+            <div className={styles.cardLogo}>⭘ HirePilot</div>
+            <h1>Welcome back</h1>
 
             <form onSubmit={handleSubmit} className={styles.form}>
               <div className={styles.formGroup}>
@@ -114,8 +115,8 @@ export default function Login() {
             </form>
 
             <p style={{ textAlign: 'center', marginTop: '1rem' }}>
-              Don't have an account?{' '}
-              <Link href="/signup">Create one</Link>
+              New to HirePilot?{' '}
+              <Link href="/signup">Create an account</Link>
             </p>
           </div>
         </div>

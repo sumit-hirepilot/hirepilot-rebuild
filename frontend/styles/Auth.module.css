@@ -16,10 +16,19 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+.cardLogo {
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--text);
+}
+
 .authCard h1 {
   font-size: 1.75rem;
   text-align: center;
   margin-bottom: 2rem;
+  margin-top: 0;
 }
 
 .form {

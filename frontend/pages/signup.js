@@ -86,6 +86,7 @@ export default function Signup() {
       <Layout>
         <div className={styles.authContainer}>
           <div className={styles.authCard}>
+            <div className={styles.cardLogo}>⭘ HirePilot</div>
             <h1>Create your account</h1>
 
             <form onSubmit={handleSubmit} className={styles.form}>
