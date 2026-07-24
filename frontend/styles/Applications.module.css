@@ -1,0 +1,84 @@
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+  align-items: start;
+}
+
+.column {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+  min-height: 160px;
+}
+
+.columnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.columnCount {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background-color: var(--border);
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+}
+
+.columnBody {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.emptyColumn {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 0.5rem 0;
+  margin: 0;
+}
+
+.card {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--bg);
+  padding: 0.75rem;
+}
+
+.cardTitle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.cardSubtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0.125rem 0 0;
+}
+
+.cardMeta {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  margin: 0.375rem 0 0.5rem;
+}
+
+.statusSelect {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+  color: var(--text);
+  font-size: 0.75rem;
+}

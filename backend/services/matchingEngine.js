@@ -226,4 +226,5 @@ const calculateMatchesForUser = async (userId) => {
 module.exports = {
   calculateJobMatch,
   calculateMatchesForUser,
+  extractSkills,
 };

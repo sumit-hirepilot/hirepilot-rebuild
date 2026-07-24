@@ -1,30 +1,33 @@
 const cron = require('node-cron');
 const { aggregateJobs } = require('./jobAggregator');
+const { runAllActiveAgents } = require('./agentRunner');
 
 let aggregationTask;
+
+const runCycle = async (label) => {
+  console.log(`${label} started at`, new Date().toISOString());
+  try {
+    await aggregateJobs();
+  } catch (err) {
+    console.error(`${label} - aggregation error:`, err);
+  }
+
+  try {
+    const result = await runAllActiveAgents();
+    console.log(`${label} - ran ${result.agentsRun} search agents, ${result.totalNewMatches} new matches`);
+  } catch (err) {
+    console.error(`${label} - search agent run error:`, err);
+  }
+};
 
 const startScheduler = () => {
   console.log('Starting job aggregation scheduler...');
 
-  // Run aggregation every 6 hours (0 */6 * * *)
-  aggregationTask = cron.schedule('0 */6 * * *', async () => {
-    console.log('Scheduled job aggregation started at', new Date().toISOString());
-    try {
-      await aggregateJobs();
-    } catch (err) {
-      console.error('Scheduled aggregation error:', err);
-    }
-  });
+  // Run aggregation + search agents every 6 hours (0 */6 * * *)
+  aggregationTask = cron.schedule('0 */6 * * *', () => runCycle('Scheduled cycle'));
 
   // Also run once on startup after a delay
-  setTimeout(async () => {
-    console.log('Initial job aggregation...');
-    try {
-      await aggregateJobs();
-    } catch (err) {
-      console.error('Initial aggregation error:', err);
-    }
-  }, 5000);
+  setTimeout(() => runCycle('Initial cycle'), 5000);
 };
 
 const stopScheduler = () => {

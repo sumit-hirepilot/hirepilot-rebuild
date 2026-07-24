@@ -6,6 +6,10 @@ const authRoutes = require('./routes/auth');
 const jobsRoutes = require('./routes/jobs');
 const matchesRoutes = require('./routes/matches');
 const applicationsRoutes = require('./routes/applications');
+const profileRoutes = require('./routes/profile');
+const resumeRoutes = require('./routes/resume');
+const agentsRoutes = require('./routes/agents');
+const networkRoutes = require('./routes/network');
 const { startScheduler } = require('./services/scheduler');
 
 const app = express();
@@ -41,6 +45,18 @@ app.use('/api/matches', matchesRoutes);
 
 // Applications routes
 app.use('/api/applications', applicationsRoutes);
+
+// Profile routes (skills, experience, preferences)
+app.use('/api/profile', profileRoutes);
+
+// Resume routes
+app.use('/api/resume', resumeRoutes);
+
+// Search agents routes
+app.use('/api/agents', agentsRoutes);
+
+// Network / referrals routes
+app.use('/api/network', networkRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

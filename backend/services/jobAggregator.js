@@ -1,6 +1,5 @@
 const { query } = require('../db');
 const remoteOKClient = require('./apis/remoteok');
-const weWorkRemotelyClient = require('./apis/weworkremotely');
 const motiveClient = require('./apis/remotive');
 
 const normalizeJob = (job, source) => {
@@ -95,22 +94,8 @@ const aggregateJobs = async () => {
     results.errors.push({ source: 'remoteok', error: err.message });
   }
 
-  // Fetch from We Work Remotely
-  try {
-    console.log('Fetching from We Work Remotely...');
-    const wwrJobs = await weWorkRemotelyClient.fetchJobs();
-    for (const job of wwrJobs) {
-      const normalized = normalizeJob(job, 'weworkremotely');
-      const stored = await storeJob(normalized);
-      results.total++;
-      if (stored.isNew) results.new++;
-      else results.updated++;
-    }
-    console.log(`We Work Remotely: ${wwrJobs.length} jobs`);
-  } catch (err) {
-    console.error('We Work Remotely error:', err);
-    results.errors.push({ source: 'weworkremotely', error: err.message });
-  }
+  // Note: We Work Remotely is not fetched here - their API/RSS endpoints are
+  // behind Cloudflare bot protection and cannot be scraped server-side.
 
   // Fetch from Remotive
   try {
