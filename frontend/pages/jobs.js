@@ -199,7 +199,21 @@ export default function Jobs() {
   if (!user) return null;
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const sourceLabels = { remoteok: 'Remote OK', remotive: 'Remotive', weworkremotely: 'We Work Remotely' };
+  const sourceLabels = {
+    remoteok: 'Remote OK',
+    remotive: 'Remotive',
+    weworkremotely: 'We Work Remotely',
+    himalayas: 'Himalayas',
+    hackernews: 'HN Who’s Hiring',
+    nofluffjobs: 'No Fluff Jobs',
+    landingjobs: 'Landing.jobs',
+    workingnomads: 'Working Nomads',
+    jobicy: 'Jobicy',
+    jobindex: 'Jobindex',
+    greenhouse: 'Greenhouse',
+    lever: 'Lever',
+    ashby: 'Ashby',
+  };
 
   return (
     <>
@@ -250,12 +264,19 @@ export default function Jobs() {
 
         <div className={page.sourcesBanner}>
           <span className={page.liveLabel}>⚡ Live sources</span>
-          {sources.map((s) => (
-            <span key={s.source} className={page.sourceItem}>
-              <span className={s.count > 0 ? page.sourceDotActive : page.sourceDotInactive} />
-              {sourceLabels[s.source] || s.source} ({s.count} &middot; {timeAgo(s.lastFetched)})
-            </span>
-          ))}
+          {sources.map((s) => {
+            const title = s.lastRunError
+              ? `Last run failed: ${s.lastRunError}`
+              : s.successRatePct != null
+                ? `${s.successRatePct}% success rate (last 20 runs)${s.lastRunDurationMs ? ` · ${Math.round(s.lastRunDurationMs / 1000)}s last run` : ''}`
+                : undefined;
+            return (
+              <span key={s.source} className={page.sourceItem} title={title}>
+                <span className={s.count > 0 ? page.sourceDotActive : page.sourceDotInactive} />
+                {sourceLabels[s.source] || s.source} ({s.count} &middot; {timeAgo(s.lastFetched)})
+              </span>
+            );
+          })}
         </div>
 
         {message && <div className={page.message}>{message}</div>}

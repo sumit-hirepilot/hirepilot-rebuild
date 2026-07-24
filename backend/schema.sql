@@ -142,6 +142,23 @@ CREATE TABLE IF NOT EXISTS jobs (
   UNIQUE(source, external_id)
 );
 
+-- Per-source job aggregation ingestion metrics (latency, success/failure)
+CREATE TABLE IF NOT EXISTS source_ingestion_runs (
+  id SERIAL PRIMARY KEY,
+  source VARCHAR(50) NOT NULL,
+  started_at TIMESTAMP NOT NULL,
+  finished_at TIMESTAMP,
+  duration_ms INTEGER,
+  jobs_fetched INTEGER DEFAULT 0,
+  jobs_new INTEGER DEFAULT 0,
+  jobs_updated INTEGER DEFAULT 0,
+  success BOOLEAN,
+  retried BOOLEAN DEFAULT FALSE,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_source_ingestion_runs_source ON source_ingestion_runs(source, created_at DESC);
+
 -- Job matches (job-user match scores)
 CREATE TABLE IF NOT EXISTS job_matches (
   id SERIAL PRIMARY KEY,

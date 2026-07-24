@@ -1,7 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
-const { aggregateJobs } = require('../services/jobAggregator');
+const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
@@ -49,24 +49,62 @@ router.post('/refresh', verifyToken, async (req, res) => {
   }
 });
 
-// Status of each live job source
+const ALL_SOURCES = [
+  ...SOURCES.map((s) => s.key),
+  'weworkremotely', // intentionally not fetched - see SOURCES.md
+];
+
+// Status + health of each live job source: active job count, last successful
+// fetch, and recent ingestion run metrics (latency, success rate, errors).
 router.get('/sources', async (req, res) => {
   try {
-    const result = await query(
-      `SELECT source, COUNT(*) as count, MAX(fetched_at) as last_fetched
-       FROM jobs WHERE is_active = true GROUP BY source`
-    );
+    const [countsResult, runsResult] = await Promise.all([
+      query(
+        `SELECT source, COUNT(*) as count, MAX(fetched_at) as last_fetched
+         FROM jobs WHERE is_active = true GROUP BY source`
+      ),
+      query(
+        `SELECT DISTINCT ON (source) source, started_at, duration_ms, success,
+                jobs_fetched, jobs_new, error_message
+         FROM source_ingestion_runs
+         ORDER BY source, created_at DESC`
+      ),
+    ]);
 
     const bySource = {};
-    for (const row of result.rows) {
+    for (const row of countsResult.rows) {
       bySource[row.source] = { count: parseInt(row.count, 10), lastFetched: row.last_fetched };
     }
 
-    const sources = ['remoteok', 'remotive', 'weworkremotely'].map((key) => ({
-      source: key,
-      count: bySource[key]?.count || 0,
-      lastFetched: bySource[key]?.lastFetched || null,
-    }));
+    const runsBySource = {};
+    for (const row of runsResult.rows) {
+      runsBySource[row.source] = row;
+    }
+
+    // Success rate over the last 20 runs per source
+    const successRates = {};
+    for (const key of SOURCES.map((s) => s.key)) {
+      const recentRuns = await query(
+        `SELECT success FROM source_ingestion_runs WHERE source = $1 ORDER BY created_at DESC LIMIT 20`,
+        [key]
+      );
+      const total = recentRuns.rows.length;
+      const succeeded = recentRuns.rows.filter((r) => r.success).length;
+      successRates[key] = total > 0 ? Math.round((succeeded / total) * 100) : null;
+    }
+
+    const sources = ALL_SOURCES.map((key) => {
+      const lastRun = runsBySource[key];
+      return {
+        source: key,
+        count: bySource[key]?.count || 0,
+        lastFetched: bySource[key]?.lastFetched || null,
+        lastRunSuccess: lastRun ? lastRun.success : null,
+        lastRunDurationMs: lastRun ? lastRun.duration_ms : null,
+        lastRunError: lastRun && !lastRun.success ? lastRun.error_message : null,
+        successRatePct: successRates[key] ?? null,
+      };
+    });
 
     res.json({ sources });
   } catch (err) {

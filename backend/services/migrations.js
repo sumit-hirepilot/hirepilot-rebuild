@@ -84,6 +84,24 @@ const STATEMENTS = [
    WHERE source = 'remoteok' AND company_name ~ '[ÃÂâ]'`,
   `UPDATE jobs SET description = convert_from(convert_to(description, 'LATIN1'), 'UTF8')
    WHERE source = 'remoteok' AND description ~ '[ÃÂâ]'`,
+
+  // Per-source ingestion metrics for the job aggregation pipeline (latency,
+  // success/failure, counts per run) - powers source health monitoring.
+  `CREATE TABLE IF NOT EXISTS source_ingestion_runs (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR(50) NOT NULL,
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    duration_ms INTEGER,
+    jobs_fetched INTEGER DEFAULT 0,
+    jobs_new INTEGER DEFAULT 0,
+    jobs_updated INTEGER DEFAULT 0,
+    success BOOLEAN,
+    retried BOOLEAN DEFAULT FALSE,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_source_ingestion_runs_source ON source_ingestion_runs(source, created_at DESC)`,
 ];
 
 const runMigrations = async () => {
