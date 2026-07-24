@@ -79,9 +79,11 @@ const STATEMENTS = [
   // Scoped to rows that still show the tell-tale characters so it's a no-op
   // once repaired; wrapped safely by the try/catch in runMigrations below.
   `UPDATE jobs SET title = convert_from(convert_to(title, 'LATIN1'), 'UTF8')
-   WHERE source = 'remoteok' AND title ~ '[ÃÂ]'`,
+   WHERE source = 'remoteok' AND title ~ '[ÃÂâ]'`,
   `UPDATE jobs SET company_name = convert_from(convert_to(company_name, 'LATIN1'), 'UTF8')
-   WHERE source = 'remoteok' AND company_name ~ '[ÃÂ]'`,
+   WHERE source = 'remoteok' AND company_name ~ '[ÃÂâ]'`,
+  `UPDATE jobs SET description = convert_from(convert_to(description, 'LATIN1'), 'UTF8')
+   WHERE source = 'remoteok' AND description ~ '[ÃÂâ]'`,
 ];
 
 const runMigrations = async () => {
