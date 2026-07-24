@@ -69,8 +69,15 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (search) {
-      whereClause += ' AND (title ILIKE $' + (params.length + 1) + ' OR description ILIKE $' + (params.length + 2) + ')';
-      params.push(`%${search}%`, `%${search}%`);
+      // Match each word independently (title OR description) rather than
+      // requiring the whole query as one literal phrase - "Senior Product
+      // Designer" should match a "Senior Product Designer" listing even if
+      // the words aren't contiguous, or match "Product Designer (Senior)".
+      const words = search.trim().split(/\s+/).filter(Boolean).slice(0, 8);
+      for (const word of words) {
+        whereClause += ' AND (title ILIKE $' + (params.length + 1) + ' OR description ILIKE $' + (params.length + 2) + ')';
+        params.push(`%${word}%`, `%${word}%`);
+      }
     }
 
     if (source) {
