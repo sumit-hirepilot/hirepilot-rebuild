@@ -1,38 +1,40 @@
 const { query } = require('../db');
 
-const extractSkills = (text) => {
-  if (!text) return [];
-  const skillsPattern = /(?:skills?|technologies?|required|must know|expertise in|proficient in)[:\s]+([\w\s,+#.]+)/gi;
-  const matches = text.matchAll(skillsPattern);
-  const skills = new Set();
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  for (const match of matches) {
-    const skillsList = match[1].split(/[,\s]+/).filter(s => s.length > 2);
-    skillsList.forEach(s => skills.add(s.toLowerCase()));
-  }
+// Rather than regex-"extracting" a job's required skills from free text
+// (fragile: real postings are prose, not "Skills: X, Y, Z" lists, and the
+// old approach produced junk single-word fragments like "system" that then
+// loose-substring-matched against "Design Systems"), check directly which
+// of the user's own real skills are actually mentioned in the job text,
+// with word boundaries so "Go" doesn't match inside "Google".
+const calculateSkillsScore = (userSkills, jobText) => {
+  if (!userSkills.length || !jobText) return { score: 0, matchedSkills: [] };
 
-  return Array.from(skills);
-};
+  const matchedSkills = userSkills.filter((skill) => {
+    const pattern = new RegExp(`(?<![a-zA-Z0-9])${escapeRegExp(skill)}(?![a-zA-Z0-9])`, 'i');
+    return pattern.test(jobText);
+  });
 
-const calculateSkillsScore = (userSkills, requiredSkills) => {
-  if (!userSkills.length || !requiredSkills.length) return 0.5;
-
-  const userSkillsLower = userSkills.map(s => s.toLowerCase());
-  const matchedSkills = requiredSkills.filter(skill =>
-    userSkillsLower.some(userSkill => userSkill.includes(skill) || skill.includes(userSkill))
-  );
-
-  return matchedSkills.length / requiredSkills.length;
+  return { score: matchedSkills.length / userSkills.length, matchedSkills };
 };
 
 const calculateExperienceScore = async (userId, jobDescription) => {
   try {
+    // Total career span (earliest job start to latest end/present), not just
+    // tenure at whichever job happens to still be open - a 9-year veteran
+    // who started a new role 6 months ago was previously scored as having
+    // ~0 years of experience.
     const result = await query(
-      'SELECT COALESCE(AVG(EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM start_date)), 0) as avg_years FROM user_experience WHERE user_id = $1 AND (end_date IS NULL OR end_date >= CURRENT_DATE)',
+      `SELECT MIN(start_date) as earliest_start, MAX(COALESCE(end_date, CURRENT_DATE)) as latest_end
+       FROM user_experience WHERE user_id = $1 AND start_date IS NOT NULL`,
       [userId]
     );
 
-    const userYears = result.rows[0]?.avg_years || 0;
+    const { earliest_start: earliestStart, latest_end: latestEnd } = result.rows[0] || {};
+    const userYears = earliestStart
+      ? (new Date(latestEnd) - new Date(earliestStart)) / (1000 * 60 * 60 * 24 * 365.25)
+      : 0;
 
     // Extract experience requirement from job description
     const expPattern = /(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)/i;
@@ -40,7 +42,7 @@ const calculateExperienceScore = async (userId, jobDescription) => {
     const requiredYears = expMatch ? parseInt(expMatch[1]) : 3;
 
     // Score: 1.0 if meets requirement, decreases if below
-    if (userYears >= requiredYears) return 1.0;
+    if (requiredYears === 0 || userYears >= requiredYears) return 1.0;
     return Math.max(0.3, userYears / requiredYears);
   } catch (err) {
     console.error('Experience score calculation error:', err);
@@ -133,13 +135,10 @@ const calculateJobMatch = async (userId, jobId) => {
     );
 
     const userSkills = skillsResult.rows.map(r => r.skill);
-
-    // Extract required skills from job
-    const jobText = `${job.title} ${job.description} ${job.requirements}`;
-    const requiredSkills = extractSkills(jobText);
+    const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
 
     // Calculate individual scores
-    const skillsScore = calculateSkillsScore(userSkills, requiredSkills);
+    const { score: skillsScore, matchedSkills } = calculateSkillsScore(userSkills, jobText);
     const experienceScore = await calculateExperienceScore(userId, jobText);
     const locationScore = await calculateLocationScore(userId, job.location);
     const salaryScore = await calculateSalaryScore(userId, job.salary_min, job.salary_max);
@@ -159,11 +158,8 @@ const calculateJobMatch = async (userId, jobId) => {
       location_match_score: locationScore,
       salary_match_score: salaryScore,
       match_details: {
-        required_skills: requiredSkills,
         user_skills: userSkills,
-        matched_skills: requiredSkills.filter(skill =>
-          userSkills.some(userSkill => userSkill.toLowerCase().includes(skill.toLowerCase()))
-        ),
+        matched_skills: matchedSkills,
       },
     };
   } catch (err) {
@@ -226,5 +222,4 @@ const calculateMatchesForUser = async (userId) => {
 module.exports = {
   calculateJobMatch,
   calculateMatchesForUser,
-  extractSkills,
 };
