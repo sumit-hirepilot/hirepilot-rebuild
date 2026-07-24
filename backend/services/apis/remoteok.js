@@ -18,19 +18,24 @@ const fetchJobs = async () => {
     }
 
     // RemoteOK returns jobs in array, skip first item (metadata)
-    return response.data.slice(1).map((job) => ({
-      external_id: job.id,
-      id: job.id,
-      title: job.title,
-      company: job.company,
-      company_url: job.company_url || job.url?.replace(/jobs.*/, ''),
-      url: job.url,
-      job_url: job.url,
-      description: job.description,
-      location: job.location,
-      country: job.location,
-      posted_at: new Date(job.date_posted * 1000), // Unix timestamp to Date
-    }));
+    return response.data
+      .slice(1)
+      .filter((job) => job.id && job.position)
+      .map((job) => ({
+        external_id: job.id,
+        id: job.id,
+        title: job.position,
+        company: job.company,
+        company_url: job.company_logo || undefined,
+        url: job.url || job.apply_url,
+        job_url: job.url || job.apply_url,
+        description: job.description,
+        location: job.location || 'Remote',
+        country: job.location || 'Remote',
+        salary_min: job.salary_min || null,
+        salary_max: job.salary_max || null,
+        posted_at: job.epoch ? new Date(job.epoch * 1000) : new Date(job.date),
+      }));
   } catch (err) {
     console.error('RemoteOK API error:', err.message);
     throw err;

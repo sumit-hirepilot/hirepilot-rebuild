@@ -3,6 +3,10 @@ const remoteOKClient = require('./apis/remoteok');
 const motiveClient = require('./apis/remotive');
 
 const normalizeJob = (job, source) => {
+  const rawDate = job.posted_at || job.postedAt;
+  const parsedDate = rawDate ? new Date(rawDate) : new Date();
+  const postedAt = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
   const normalized = {
     source,
     external_id: job.external_id || job.id || job.jobId,
@@ -12,14 +16,14 @@ const normalizeJob = (job, source) => {
     job_url: job.url || job.job_url || job.jobUrl,
     description: job.description || job.jobDescription,
     requirements: job.requirements || '',
-    salary_min: job.salary_min || job.salaryMin,
-    salary_max: job.salary_max || job.salaryMax,
+    salary_min: job.salary_min || job.salaryMin || null,
+    salary_max: job.salary_max || job.salaryMax || null,
     currency: job.currency || 'USD',
     job_type: job.job_type || job.jobType || 'full-time',
     work_arrangement: job.work_arrangement || job.workArrangement || 'remote',
     location: job.location || job.city || '',
     country: job.country || '',
-    posted_at: job.posted_at || job.postedAt || new Date(),
+    posted_at: postedAt,
   };
 
   return normalized;
@@ -68,6 +72,25 @@ const storeJob = async (jobData) => {
   }
 };
 
+const storeJobsFromSource = async (rawJobs, source, results) => {
+  for (const job of rawJobs) {
+    const normalized = normalizeJob(job, source);
+
+    if (!normalized.external_id || !normalized.title || !normalized.company_name || !normalized.job_url) {
+      continue; // skip malformed entries rather than failing the whole batch
+    }
+
+    try {
+      const stored = await storeJob(normalized);
+      results.total++;
+      if (stored.isNew) results.new++;
+      else results.updated++;
+    } catch (err) {
+      console.error(`Error storing job ${normalized.external_id} from ${source}:`, err.message);
+    }
+  }
+};
+
 const aggregateJobs = async () => {
   console.log('Starting job aggregation...');
   const results = {
@@ -81,13 +104,7 @@ const aggregateJobs = async () => {
   try {
     console.log('Fetching from RemoteOK...');
     const remoteOKJobs = await remoteOKClient.fetchJobs();
-    for (const job of remoteOKJobs) {
-      const normalized = normalizeJob(job, 'remoteok');
-      const stored = await storeJob(normalized);
-      results.total++;
-      if (stored.isNew) results.new++;
-      else results.updated++;
-    }
+    await storeJobsFromSource(remoteOKJobs, 'remoteok', results);
     console.log(`RemoteOK: ${remoteOKJobs.length} jobs`);
   } catch (err) {
     console.error('RemoteOK error:', err);
@@ -101,13 +118,7 @@ const aggregateJobs = async () => {
   try {
     console.log('Fetching from Remotive...');
     const motiveJobs = await motiveClient.fetchJobs();
-    for (const job of motiveJobs) {
-      const normalized = normalizeJob(job, 'remotive');
-      const stored = await storeJob(normalized);
-      results.total++;
-      if (stored.isNew) results.new++;
-      else results.updated++;
-    }
+    await storeJobsFromSource(motiveJobs, 'remotive', results);
     console.log(`Remotive: ${motiveJobs.length} jobs`);
   } catch (err) {
     console.error('Remotive error:', err);
