@@ -139,7 +139,9 @@ export default function Network() {
                 <select className={page.input} value={formData.jobId} onChange={handleChange('jobId')}>
                   <option value="">Select a job&hellip;</option>
                   {jobs.map((j) => (
-                    <option key={j.id} value={j.id}>{j.title} — {j.company_name}</option>
+                    <option key={j.id} value={j.id}>
+                      {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} — {j.company_name}
+                    </option>
                   ))}
                 </select>
               </div>

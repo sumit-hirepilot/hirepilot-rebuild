@@ -1,6 +1,8 @@
 .shell {
   display: flex;
   min-height: 100dvh;
+  max-width: 100vw;
+  overflow-x: hidden;
   background-color: var(--bg);
 }
 

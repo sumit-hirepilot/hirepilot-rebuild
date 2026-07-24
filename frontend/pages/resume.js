@@ -209,7 +209,9 @@ export default function Resume() {
                 </select>
                 <select className={page.select} value={selectedJobId} onChange={(e) => setSelectedJobId(e.target.value)}>
                   {jobs.map((j) => (
-                    <option key={j.id} value={j.id}>{j.title} — {j.company_name}</option>
+                    <option key={j.id} value={j.id}>
+                      {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} — {j.company_name}
+                    </option>
                   ))}
                 </select>
                 <button className={page.saveButton} onClick={handleAnalyze} disabled={analyzing}>

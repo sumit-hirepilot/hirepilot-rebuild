@@ -122,12 +122,14 @@
 .select {
   flex: 1;
   min-width: 180px;
+  max-width: 100%;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background-color: var(--bg);
   color: var(--text);
   font-size: 0.8125rem;
+  text-overflow: ellipsis;
 }
 
 .analysisResult {
