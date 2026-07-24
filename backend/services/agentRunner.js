@@ -12,9 +12,14 @@ const runAgent = async (agent) => {
     .map((_, i) => `(title ILIKE $${i + 1} OR description ILIKE $${i + 1})`)
     .join(' OR ');
   const keywordParams = keywords.map((k) => `%${k}%`);
+  const remoteOk = agent.remote_ok !== false;
+  const minMatchScore = agent.min_match_score != null ? Number(agent.min_match_score) : 0.75;
+
+  const remoteClause = remoteOk ? '' : `AND work_arrangement != 'remote'`;
 
   const jobsResult = await query(
-    `SELECT id, title, description FROM jobs WHERE is_active = true AND (${keywordConditions})`,
+    `SELECT id, title, description, work_arrangement FROM jobs
+     WHERE is_active = true AND (${keywordConditions}) ${remoteClause}`,
     keywordParams
   );
 
@@ -23,6 +28,10 @@ const runAgent = async (agent) => {
     const text = `${job.title} ${job.description || ''}`.toLowerCase();
     const isExcluded = excludeKeywords.some((k) => text.includes(k.toLowerCase()));
     if (isExcluded) continue;
+
+    const matchedKeywordCount = keywords.filter((k) => text.includes(k.toLowerCase())).length;
+    const score = keywords.length ? matchedKeywordCount / keywords.length : 0;
+    if (score < minMatchScore) continue;
 
     const inserted = await query(
       `INSERT INTO agent_matches (agent_id, job_id) VALUES ($1, $2)

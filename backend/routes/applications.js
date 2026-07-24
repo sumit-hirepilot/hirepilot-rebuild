@@ -21,26 +21,33 @@ router.get('/', verifyToken, async (req, res) => {
     const kanban = {
       applied: [],
       phone_screen: [],
-      interview: [],
+      technical_interview: [],
+      onsite: [],
       offer: [],
-      rejected: [],
       hired: [],
     };
+    const rejected = [];
 
     for (const app of result.rows) {
-      kanban[app.status].push(app);
+      if (app.status === 'rejected') {
+        rejected.push(app);
+      } else if (kanban[app.status]) {
+        kanban[app.status].push(app);
+      }
     }
 
     res.json({
       total: result.rows.length,
       kanban,
+      rejected,
       byStatus: {
         applied: kanban.applied.length,
         phone_screen: kanban.phone_screen.length,
-        interview: kanban.interview.length,
+        technical_interview: kanban.technical_interview.length,
+        onsite: kanban.onsite.length,
         offer: kanban.offer.length,
-        rejected: kanban.rejected.length,
         hired: kanban.hired.length,
+        rejected: rejected.length,
       },
     });
   } catch (err) {
@@ -100,7 +107,7 @@ router.post('/', verifyToken, async (req, res) => {
 router.put('/:id/status', verifyToken, async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['applied', 'phone_screen', 'interview', 'offer', 'rejected', 'hired'];
+    const validStatuses = ['applied', 'phone_screen', 'technical_interview', 'onsite', 'offer', 'rejected', 'hired'];
 
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
@@ -155,7 +162,7 @@ router.get('/stats', verifyToken, async (req, res) => {
         COUNT(*) as total_applications,
         COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied,
         COUNT(CASE WHEN status = 'phone_screen' THEN 1 END) as phone_screen,
-        COUNT(CASE WHEN status = 'interview' THEN 1 END) as interviews,
+        COUNT(CASE WHEN status IN ('technical_interview','onsite') THEN 1 END) as interviews,
         COUNT(CASE WHEN status = 'offer' THEN 1 END) as offers,
         COUNT(CASE WHEN status = 'hired' THEN 1 END) as hired,
         COUNT(DISTINCT DATE(applied_at)) as days_applying
@@ -164,16 +171,14 @@ router.get('/stats', verifyToken, async (req, res) => {
       [req.user.id]
     );
 
-    // Get today's activity
-    const todayResult = await query(
-      `SELECT COUNT(*) as scanned FROM activity_log
-       WHERE user_id = $1 AND event_type = 'job_scanned' AND DATE(created_at) = CURRENT_DATE`,
-      [req.user.id]
+    // Total active jobs currently tracked in the system
+    const scannedResult = await query(
+      `SELECT COUNT(*) as scanned FROM jobs WHERE is_active = true`
     );
 
     res.json({
       ...result.rows[0],
-      scanned_today: todayResult.rows[0]?.scanned || 0,
+      scanned_today: scannedResult.rows[0]?.scanned || 0,
     });
   } catch (err) {
     console.error('Get stats error:', err);

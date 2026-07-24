@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255),
+  title VARCHAR(255),
   profile_summary TEXT,
   location VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -45,10 +46,14 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   job_types VARCHAR(255)[], -- array of job types
   work_arrangements VARCHAR(255)[], -- remote, hybrid, on-site
   preferred_locations VARCHAR(255)[],
+  default_roles VARCHAR(255)[] DEFAULT '{}',
   excluded_keywords VARCHAR(255)[], -- keywords to exclude
   include_relocation BOOLEAN DEFAULT FALSE,
   auto_apply_enabled BOOLEAN DEFAULT FALSE,
   auto_apply_limit_per_day INTEGER DEFAULT 5,
+  auto_apply_min_score DECIMAL(3,2) DEFAULT 0.75,
+  blacklist_companies VARCHAR(255)[] DEFAULT '{}',
+  dream_companies VARCHAR(255)[] DEFAULT '{}',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -59,10 +64,24 @@ CREATE TABLE IF NOT EXISTS resumes (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   original_file_url VARCHAR(1024),
   original_file_text TEXT,
+  label VARCHAR(255),
   is_default BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Tailored resume history (per job)
+CREATE TABLE IF NOT EXISTS tailored_resumes (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  resume_id INTEGER REFERENCES resumes(id) ON DELETE SET NULL,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  tailored_summary TEXT,
+  highlighted_skills VARCHAR(255)[],
+  ats_score INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tailored_resumes_user_id ON tailored_resumes(user_id);
 
 -- Jobs (aggregated from external sources)
 CREATE TABLE IF NOT EXISTS jobs (
@@ -137,7 +156,7 @@ CREATE TABLE IF NOT EXISTS application_history (
 CREATE TABLE IF NOT EXISTS referrals (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
   company_name VARCHAR(255),
   first_name VARCHAR(255),
   last_name VARCHAR(255),
@@ -145,6 +164,7 @@ CREATE TABLE IF NOT EXISTS referrals (
   linkedin_url VARCHAR(1024),
   job_title VARCHAR(255),
   relationship_type VARCHAR(50), -- alumni, hiring_manager, employee
+  status VARCHAR(50) DEFAULT 'identified', -- identified, connected, messaged, referred
   confidence_score DECIMAL(3, 2),
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -165,6 +185,8 @@ CREATE TABLE IF NOT EXISTS search_agents (
   preferred_locations VARCHAR(255)[],
   min_salary INTEGER,
   max_salary INTEGER,
+  min_match_score DECIMAL(3,2) DEFAULT 0.75,
+  remote_ok BOOLEAN DEFAULT TRUE,
   is_active BOOLEAN DEFAULT TRUE,
   auto_apply BOOLEAN DEFAULT FALSE,
   last_run_at TIMESTAMP,

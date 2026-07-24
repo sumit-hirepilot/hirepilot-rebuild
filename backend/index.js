@@ -10,7 +10,9 @@ const profileRoutes = require('./routes/profile');
 const resumeRoutes = require('./routes/resume');
 const agentsRoutes = require('./routes/agents');
 const networkRoutes = require('./routes/network');
+const activityRoutes = require('./routes/activity');
 const { startScheduler } = require('./services/scheduler');
+const { runMigrations } = require('./services/migrations');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,6 +60,9 @@ app.use('/api/agents', agentsRoutes);
 // Network / referrals routes
 app.use('/api/network', networkRoutes);
 
+// Activity feed routes
+app.use('/api/activity', activityRoutes);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -69,6 +74,8 @@ app.use((err, req, res, next) => {
 });
 
 async function startServer() {
+  await runMigrations();
+
   if (process.env.NODE_ENV !== 'test') {
     startScheduler();
   }

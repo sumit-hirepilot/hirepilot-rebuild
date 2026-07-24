@@ -11,7 +11,7 @@ router.use(verifyToken);
 router.get('/', async (req, res) => {
   try {
     const userResult = await query(
-      'SELECT id, email, full_name, location, profile_summary, created_at FROM users WHERE id = $1',
+      'SELECT id, email, full_name, title, location, profile_summary, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
 
@@ -40,12 +40,12 @@ router.get('/', async (req, res) => {
 // Update basic profile info
 router.put('/', async (req, res) => {
   try {
-    const { fullName, location, profileSummary } = req.body;
+    const { fullName, title, location, profileSummary } = req.body;
 
     const result = await query(
-      `UPDATE users SET full_name = $1, location = $2, profile_summary = $3, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4 RETURNING id, email, full_name, location, profile_summary`,
-      [fullName || null, location || null, profileSummary || null, req.user.id]
+      `UPDATE users SET full_name = $1, title = $2, location = $3, profile_summary = $4, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5 RETURNING id, email, full_name, title, location, profile_summary`,
+      [fullName || null, title || null, location || null, profileSummary || null, req.user.id]
     );
 
     res.json(result.rows[0]);
@@ -173,32 +173,42 @@ router.delete('/experience/:id', async (req, res) => {
 
 router.put('/preferences', async (req, res) => {
   try {
-    const {
-      minSalary, maxSalary, jobTypes, workArrangements, preferredLocations,
-      excludedKeywords, includeRelocation, autoApplyEnabled, autoApplyLimitPerDay,
-    } = req.body;
+    const existingResult = await query('SELECT * FROM user_preferences WHERE user_id = $1', [req.user.id]);
+    const existing = existingResult.rows[0] || {};
+    const body = req.body;
+
+    const pick = (key, fallback) => (body[key] !== undefined ? body[key] : (existing[key] !== undefined ? existing[key] : fallback));
+
+    const minSalary = pick('minSalary', null);
+    const maxSalary = pick('maxSalary', null);
+    const jobTypes = pick('jobTypes', existing.job_types || []);
+    const workArrangements = pick('workArrangements', existing.work_arrangements || []);
+    const preferredLocations = pick('preferredLocations', existing.preferred_locations || []);
+    const defaultRoles = pick('defaultRoles', existing.default_roles || []);
+    const excludedKeywords = pick('excludedKeywords', existing.excluded_keywords || []);
+    const includeRelocation = pick('includeRelocation', existing.include_relocation || false);
+    const autoApplyEnabled = pick('autoApplyEnabled', existing.auto_apply_enabled || false);
+    const autoApplyLimitPerDay = pick('autoApplyLimitPerDay', existing.auto_apply_limit_per_day || 5);
+    const autoApplyMinScore = pick('autoApplyMinScore', existing.auto_apply_min_score || 0.75);
+    const blacklistCompanies = pick('blacklistCompanies', existing.blacklist_companies || []);
+    const dreamCompanies = pick('dreamCompanies', existing.dream_companies || []);
 
     const result = await query(
       `INSERT INTO user_preferences (
          user_id, min_salary, max_salary, job_types, work_arrangements, preferred_locations,
-         excluded_keywords, include_relocation, auto_apply_enabled, auto_apply_limit_per_day
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         default_roles, excluded_keywords, include_relocation, auto_apply_enabled,
+         auto_apply_limit_per_day, auto_apply_min_score, blacklist_companies, dream_companies
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (user_id) DO UPDATE SET
          min_salary = $2, max_salary = $3, job_types = $4, work_arrangements = $5,
-         preferred_locations = $6, excluded_keywords = $7, include_relocation = $8,
-         auto_apply_enabled = $9, auto_apply_limit_per_day = $10, updated_at = CURRENT_TIMESTAMP
+         preferred_locations = $6, default_roles = $7, excluded_keywords = $8, include_relocation = $9,
+         auto_apply_enabled = $10, auto_apply_limit_per_day = $11, auto_apply_min_score = $12,
+         blacklist_companies = $13, dream_companies = $14, updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
-        req.user.id,
-        minSalary || null,
-        maxSalary || null,
-        jobTypes || [],
-        workArrangements || [],
-        preferredLocations || [],
-        excludedKeywords || [],
-        !!includeRelocation,
-        !!autoApplyEnabled,
-        autoApplyLimitPerDay || 5,
+        req.user.id, minSalary, maxSalary, jobTypes, workArrangements, preferredLocations,
+        defaultRoles, excludedKeywords, !!includeRelocation, !!autoApplyEnabled,
+        autoApplyLimitPerDay, autoApplyMinScore, blacklistCompanies, dreamCompanies,
       ]
     );
 
