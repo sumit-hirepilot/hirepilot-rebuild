@@ -29,13 +29,20 @@ function uniqueKeywords(text) {
 // honest word-tokenization matching, not a fabricated AI score).
 function checkAts(jobDescription, resumeText) {
   const jobKeywords = uniqueKeywords(jobDescription);
-  const resumeTokens = tokenize(resumeText);
+  // Filter stopwords from the resume side too - otherwise short connector
+  // words (e.g. "in") false-positive match as substrings of unrelated,
+  // longer job keywords (e.g. "prototyping" contains "in").
+  const resumeTokens = tokenize(resumeText).filter((t) => !STOPWORDS.has(t));
 
   const matched = [];
   const missing = [];
 
   for (const kw of jobKeywords) {
-    const found = resumeTokens.some((r) => r.includes(kw) || kw.includes(r));
+    const found = resumeTokens.some((r) => {
+      const shorter = r.length < kw.length ? r : kw;
+      if (shorter.length < 3) return r === kw;
+      return r.includes(kw) || kw.includes(r);
+    });
     if (found) matched.push(kw);
     else missing.push(kw);
   }
