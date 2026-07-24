@@ -31,6 +31,48 @@ const STATEMENTS = [
 
   // Application pipeline stages were renamed (interview -> technical_interview)
   `UPDATE applications SET status = 'technical_interview' WHERE status = 'interview'`,
+
+  // Notification Center (reuses activity_log as the notification stream)
+  `ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE`,
+
+  // Saved Jobs
+  `CREATE TABLE IF NOT EXISTS saved_jobs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, job_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_saved_jobs_user_id ON saved_jobs(user_id)`,
+
+  // Cover letters (per job, like tailored_resumes)
+  `CREATE TABLE IF NOT EXISTS cover_letters (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_cover_letters_user_id ON cover_letters(user_id)`,
+
+  // Screening question answers
+  `CREATE TABLE IF NOT EXISTS screening_answers (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    answer TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Applications: failure tracking + link to cover letter/tailored resume used,
+  // and mark which applications were sent by automation vs the user
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS failure_reason TEXT`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_by VARCHAR(20) DEFAULT 'user'`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL`,
+
+  // Onboarding tracking
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP`,
 ];
 
 const runMigrations = async () => {

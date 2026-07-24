@@ -1,6 +1,8 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { runAutoApplyForUser } = require('../services/autoApplyEngine');
+const { calculateMatchesForUser } = require('../services/matchingEngine');
 
 const router = express.Router();
 
@@ -9,6 +11,7 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const result = await query(
       `SELECT a.id, a.job_id, a.status, a.applied_at, a.last_status_update,
+              a.failure_reason, a.submitted_by,
               j.title, j.company_name, j.location, j.job_url
        FROM applications a
        JOIN jobs j ON a.job_id = j.id
@@ -27,10 +30,13 @@ router.get('/', verifyToken, async (req, res) => {
       hired: [],
     };
     const rejected = [];
+    const failed = [];
 
     for (const app of result.rows) {
       if (app.status === 'rejected') {
         rejected.push(app);
+      } else if (app.status === 'failed') {
+        failed.push(app);
       } else if (kanban[app.status]) {
         kanban[app.status].push(app);
       }
@@ -40,6 +46,7 @@ router.get('/', verifyToken, async (req, res) => {
       total: result.rows.length,
       kanban,
       rejected,
+      failed,
       byStatus: {
         applied: kanban.applied.length,
         phone_screen: kanban.phone_screen.length,
@@ -48,6 +55,7 @@ router.get('/', verifyToken, async (req, res) => {
         offer: kanban.offer.length,
         hired: kanban.hired.length,
         rejected: rejected.length,
+        failed: failed.length,
       },
     });
   } catch (err) {
@@ -66,10 +74,11 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     // Check if job exists
-    const jobResult = await query('SELECT id FROM jobs WHERE id = $1', [jobId]);
+    const jobResult = await query('SELECT id, is_active, title, company_name FROM jobs WHERE id = $1', [jobId]);
     if (jobResult.rows.length === 0) {
       return res.status(404).json({ error: 'Job not found' });
     }
+    const job = jobResult.rows[0];
 
     // Check if already applied
     const existingResult = await query(
@@ -79,6 +88,26 @@ router.post('/', verifyToken, async (req, res) => {
 
     if (existingResult.rows.length > 0) {
       return res.status(409).json({ error: 'Already applied to this job' });
+    }
+
+    // Job may have gone inactive (delisted upstream) since the user last saw
+    // it - record this as a real failed application rather than a generic
+    // error, so the user can see why and retry once/if it reactivates.
+    if (!job.is_active) {
+      const failedResult = await query(
+        `INSERT INTO applications (user_id, job_id, status, cover_letter, failure_reason)
+         VALUES ($1, $2, 'failed', $3, $4)
+         RETURNING *`,
+        [req.user.id, jobId, coverLetter || null, 'This job posting is no longer active.']
+      );
+
+      await query(
+        `INSERT INTO activity_log (user_id, event_type, job_id, metadata)
+         VALUES ($1, 'application_failed', $2, $3)`,
+        [req.user.id, jobId, JSON.stringify({ reason: 'job_inactive' })]
+      );
+
+      return res.status(201).json(failedResult.rows[0]);
     }
 
     // Create application
@@ -100,6 +129,73 @@ router.post('/', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Create application error:', err);
     res.status(500).json({ error: 'Failed to create application' });
+  }
+});
+
+// Retry a failed application
+router.post('/:id/retry', verifyToken, async (req, res) => {
+  try {
+    const appResult = await query(
+      `SELECT a.*, j.is_active FROM applications a
+       JOIN jobs j ON a.job_id = j.id
+       WHERE a.id = $1 AND a.user_id = $2`,
+      [req.params.id, req.user.id]
+    );
+
+    if (!appResult.rows.length) return res.status(404).json({ error: 'Application not found' });
+    const app = appResult.rows[0];
+
+    if (app.status !== 'failed') {
+      return res.status(400).json({ error: 'Only failed applications can be retried' });
+    }
+
+    if (!app.is_active) {
+      return res.status(200).json({
+        ...app,
+        message: 'This job posting is still inactive - retry will succeed once it becomes active again.',
+      });
+    }
+
+    const result = await query(
+      `UPDATE applications SET status = 'applied', failure_reason = NULL,
+       last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [req.params.id, req.user.id]
+    );
+
+    await query(
+      `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
+       VALUES ($1, 'failed', 'applied', CURRENT_TIMESTAMP)`,
+      [req.params.id]
+    );
+
+    await query(
+      `INSERT INTO activity_log (user_id, event_type, job_id, metadata)
+       VALUES ($1, 'application_retried', $2, $3)`,
+      [req.user.id, app.job_id, JSON.stringify({ application_id: req.params.id })]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Retry application error:', err);
+    res.status(500).json({ error: 'Failed to retry application' });
+  }
+});
+
+// Manually trigger Full Auto Apply for the current user (normally runs on
+// the 6-hour scheduler cycle) - lets the user see it work immediately after
+// turning it on, rather than waiting for the next cron cycle.
+router.post('/run-auto-pilot', verifyToken, async (req, res) => {
+  try {
+    await calculateMatchesForUser(req.user.id);
+    const result = await runAutoApplyForUser(req.user);
+    res.json({
+      message: `Auto-Pilot run complete: ${result.applied} application${result.applied === 1 ? '' : 's'} sent, ${result.flagged} flagged for review, ${result.skipped} skipped.`,
+      ...result,
+    });
+  } catch (err) {
+    console.error('Run auto-pilot error:', err);
+    res.status(500).json({ error: 'Failed to run Auto-Pilot' });
   }
 });
 

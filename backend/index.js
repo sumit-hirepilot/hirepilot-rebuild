@@ -11,6 +11,8 @@ const resumeRoutes = require('./routes/resume');
 const agentsRoutes = require('./routes/agents');
 const networkRoutes = require('./routes/network');
 const activityRoutes = require('./routes/activity');
+const notificationsRoutes = require('./routes/notifications');
+const analyticsRoutes = require('./routes/analytics');
 const { startScheduler } = require('./services/scheduler');
 const { runMigrations } = require('./services/migrations');
 
@@ -62,6 +64,12 @@ app.use('/api/network', networkRoutes);
 
 // Activity feed routes
 app.use('/api/activity', activityRoutes);
+
+// Notification center routes
+app.use('/api/notifications', notificationsRoutes);
+
+// Analytics routes
+app.use('/api/analytics', analyticsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

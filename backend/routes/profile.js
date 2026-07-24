@@ -11,7 +11,7 @@ router.use(verifyToken);
 router.get('/', async (req, res) => {
   try {
     const userResult = await query(
-      'SELECT id, email, full_name, title, location, profile_summary, created_at FROM users WHERE id = $1',
+      'SELECT id, email, full_name, title, location, profile_summary, created_at, onboarding_completed_at FROM users WHERE id = $1',
       [req.user.id]
     );
 
@@ -81,6 +81,19 @@ router.put('/password', async (req, res) => {
   } catch (err) {
     console.error('Change password error:', err);
     res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+router.post('/complete-onboarding', async (req, res) => {
+  try {
+    await query(
+      'UPDATE users SET onboarding_completed_at = COALESCE(onboarding_completed_at, CURRENT_TIMESTAMP) WHERE id = $1',
+      [req.user.id]
+    );
+    res.json({ message: 'Onboarding complete' });
+  } catch (err) {
+    console.error('Complete onboarding error:', err);
+    res.status(500).json({ error: 'Failed to complete onboarding' });
   }
 });
 

@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   profile_summary TEXT,
   location VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  onboarding_completed_at TIMESTAMP
 );
 
 -- Skills (user skills for matching)
@@ -83,6 +84,36 @@ CREATE TABLE IF NOT EXISTS tailored_resumes (
 );
 CREATE INDEX IF NOT EXISTS idx_tailored_resumes_user_id ON tailored_resumes(user_id);
 
+-- Cover letters (per job)
+CREATE TABLE IF NOT EXISTS cover_letters (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  content TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cover_letters_user_id ON cover_letters(user_id);
+
+-- Screening question answers
+CREATE TABLE IF NOT EXISTS screening_answers (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  answer TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Saved jobs (bookmarks)
+CREATE TABLE IF NOT EXISTS saved_jobs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_saved_jobs_user_id ON saved_jobs(user_id);
+
 -- Jobs (aggregated from external sources)
 CREATE TABLE IF NOT EXISTS jobs (
   id SERIAL PRIMARY KEY,
@@ -132,11 +163,14 @@ CREATE TABLE IF NOT EXISTS applications (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-  status VARCHAR(50) DEFAULT 'applied', -- applied, phone_screen, interview, offer, rejected, hired
+  status VARCHAR(50) DEFAULT 'applied', -- applied, phone_screen, technical_interview, onsite, offer, rejected, hired, failed
   applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   resume_version_used VARCHAR(255), -- which resume version was used
   cover_letter TEXT,
+  cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL,
   notes TEXT,
+  failure_reason TEXT,
+  submitted_by VARCHAR(20) DEFAULT 'user', -- user, auto_pilot
   last_status_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, job_id)
@@ -213,6 +247,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   event_type VARCHAR(100), -- job_scanned, match_found, application_sent, status_updated, etc
   job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
   metadata JSONB,
+  is_read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

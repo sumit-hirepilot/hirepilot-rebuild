@@ -36,6 +36,9 @@ export default function Jobs() {
   const [message, setMessage] = useState('');
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [savedIds, setSavedIds] = useState(new Set());
+  const [savedJobs, setSavedJobs] = useState([]);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -53,11 +56,12 @@ export default function Jobs() {
       if (exp) qs.set('experience', exp);
       if (loc) qs.set('location', loc);
 
-      const [jobsRes, appsRes, matchesRes, sourcesRes] = await Promise.all([
+      const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
         fetch(`${base}/api/jobs?${qs.toString()}`),
         fetch(`${base}/api/applications`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/matches?limit=100`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/jobs/sources`, { headers: { Authorization: `Bearer ${authToken}` } }),
+        fetch(`${base}/api/jobs/saved/list`, { headers: { Authorization: `Bearer ${authToken}` } }),
       ]);
 
       if (jobsRes.ok) {
@@ -84,6 +88,12 @@ export default function Jobs() {
       if (sourcesRes.ok) {
         const data = await sourcesRes.json();
         setSources(data.sources || []);
+      }
+
+      if (savedRes.ok) {
+        const data = await savedRes.json();
+        setSavedJobs(data.jobs || []);
+        setSavedIds(new Set((data.jobs || []).map((j) => j.id)));
       }
     } catch (err) {
       console.error('Failed to load jobs', err);
@@ -159,6 +169,24 @@ export default function Jobs() {
     }
   };
 
+  const toggleSave = async (job) => {
+    const isSaved = savedIds.has(job.id);
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      if (isSaved) next.delete(job.id); else next.add(job.id);
+      return next;
+    });
+    setSavedJobs((prev) => (isSaved ? prev.filter((j) => j.id !== job.id) : [job, ...prev]));
+    try {
+      await fetch(`${base}/api/jobs/${job.id}/save`, {
+        method: isSaved ? 'DELETE' : 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.error('Failed to toggle saved job', err);
+    }
+  };
+
   const toggleSelect = (jobId) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -207,7 +235,14 @@ export default function Jobs() {
 
         <div className={page.headerRow}>
           <h1 className={styles.greeting} style={{ margin: 0 }}>Jobs</h1>
-          <span className={page.resultsCount}>{total} results</span>
+          <span className={page.resultsCount}>{showSavedOnly ? savedIds.size : total} results</span>
+          <button
+            type="button"
+            className={showSavedOnly ? page.pageActive : page.pageButton}
+            onClick={() => setShowSavedOnly((v) => !v)}
+          >
+            {showSavedOnly ? '★ Saved jobs' : '☆ Saved jobs'} ({savedIds.size})
+          </button>
           <button type="button" className={page.refreshButton} onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? 'Refreshing...' : 'Refresh jobs'}
           </button>
@@ -225,7 +260,7 @@ export default function Jobs() {
 
         {message && <div className={page.message}>{message}</div>}
 
-        {totalPages > 1 && (
+        {!showSavedOnly && totalPages > 1 && (
           <div className={page.pagination}>
             <button disabled={page_ <= 1} onClick={() => goToPage(page_ - 1)}>&lsaquo; Previous</button>
             {Array.from({ length: Math.min(totalPages, 8) }, (_, i) => i + 1).map((p) => (
@@ -244,11 +279,13 @@ export default function Jobs() {
         <div className={styles.card} style={{ marginBottom: 0 }}>
           {loading ? (
             <p className={styles.emptyState}>Loading jobs&hellip;</p>
-          ) : jobs.length === 0 ? (
-            <p className={styles.emptyState}>No jobs found. Try a different search term.</p>
+          ) : (showSavedOnly ? savedJobs : jobs).length === 0 ? (
+            <p className={styles.emptyState}>
+              {showSavedOnly ? 'No saved jobs yet. Click the star on any job to save it for later.' : 'No jobs found. Try a different search term.'}
+            </p>
           ) : (
             <div className={page.list}>
-              {jobs.map((job) => {
+              {(showSavedOnly ? savedJobs : jobs).map((job) => {
                 const match = matchByJobId[job.id];
                 const score = match ? Math.round(match.overall_score * 100) : null;
                 return (
@@ -273,6 +310,14 @@ export default function Jobs() {
                       <div className={page.scoreRing}>{score}</div>
                     )}
                     <div className={page.jobActions}>
+                      <button
+                        className={page.saveButton}
+                        onClick={() => toggleSave(job)}
+                        aria-label={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
+                        title={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
+                      >
+                        {savedIds.has(job.id) ? '★' : '☆'}
+                      </button>
                       <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
                       {appliedIds.has(job.id) ? (
                         <span className={page.appliedBadge}>Applied</span>
@@ -308,6 +353,59 @@ export default function Jobs() {
 function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, router }) {
   const [tailoring, setTailoring] = useState(false);
   const [tailorResult, setTailorResult] = useState(null);
+  const [recruiter, setRecruiter] = useState(null);
+  const [recruiterLoading, setRecruiterLoading] = useState(true);
+  const [recruiterAdded, setRecruiterAdded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecruiter(null);
+    setRecruiterAdded(false);
+    setRecruiterLoading(true);
+
+    async function loadRecruiter() {
+      try {
+        const res = await fetch(`${base}/api/network/suggest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ company: job.company_name }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const hiringContact = (data.suggestions || []).find((s) => s.relationshipType === 'hiring_manager');
+        if (!cancelled) setRecruiter(hiringContact || null);
+      } catch (err) {
+        console.error('Failed to detect recruiter contact', err);
+      } finally {
+        if (!cancelled) setRecruiterLoading(false);
+      }
+    }
+
+    if (job.company_name) loadRecruiter();
+    return () => { cancelled = true; };
+  }, [job.id, job.company_name, base, token]);
+
+  const handleAddRecruiter = async () => {
+    if (!recruiter) return;
+    try {
+      await fetch(`${base}/api/network`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          jobId: job.id,
+          companyName: job.company_name,
+          firstName: recruiter.firstName,
+          lastName: recruiter.lastName,
+          jobTitle: recruiter.title,
+          relationshipType: recruiter.relationshipType,
+          notes: recruiter.message,
+        }),
+      });
+      setRecruiterAdded(true);
+    } catch (err) {
+      console.error('Failed to add recruiter contact', err);
+    }
+  };
 
   const handleTailor = async () => {
     setTailoring(true);
@@ -357,6 +455,31 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
               <div className={styles.fitRow}><span>Location</span><div className={styles.fitTrack}><div className={styles.fitFill} style={{ width: `${locPct}%` }} /></div><span>{locPct}%</span></div>
             </div>
           </div>
+        )}
+
+        <h3 className={styles.drawerSectionTitle}>Recruiter contact</h3>
+        {recruiterLoading ? (
+          <p className={styles.drawerText}>Scanning for a hiring contact at {job.company_name}&hellip;</p>
+        ) : recruiter ? (
+          <div className={styles.fitCard} style={{ alignItems: 'flex-start' }}>
+            <div className={page.avatar}>{recruiter.firstName.charAt(0)}</div>
+            <div className={styles.fitBars}>
+              <p className={styles.fitTitle}>{recruiter.firstName} {recruiter.lastName} &middot; {recruiter.title}</p>
+              <p className={styles.drawerText}>{recruiter.message}</p>
+              <div className={styles.drawerActions} style={{ marginTop: '0.5rem' }}>
+                {recruiterAdded ? (
+                  <span className={styles.appliedTag}>Added to network</span>
+                ) : (
+                  <button className={styles.secondaryBtn} onClick={handleAddRecruiter}>Add to network</button>
+                )}
+                <a href={recruiter.linkedinSearchUrl} target="_blank" rel="noreferrer" className={styles.secondaryBtn}>
+                  Find on LinkedIn
+                </a>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className={styles.drawerText}>No hiring contact detected for {job.company_name} yet. Try Find Referrals below to search more broadly.</p>
         )}
 
         <h3 className={styles.drawerSectionTitle}>Description</h3>

@@ -277,6 +277,9 @@
   color: var(--primary);
   font-size: 0.75rem;
   font-weight: 500;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .pillGreen {
@@ -286,6 +289,9 @@
   color: #3fbe84;
   font-size: 0.75rem;
   font-weight: 500;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .pillRed {
@@ -295,6 +301,34 @@
   color: var(--error);
   font-size: 0.75rem;
   font-weight: 500;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.helpText {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.uploadDropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.uploadDropzone:hover {
+  border-color: var(--primary);
+  color: var(--text);
 }
 
 .scoreTrackLarge {

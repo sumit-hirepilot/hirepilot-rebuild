@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from '../styles/Dashboard.module.css';
+import NotificationBell from './NotificationBell';
 
 const NAV_ITEMS = [
   {
@@ -59,6 +61,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/analytics',
+    label: 'Analytics',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 20V10M12 20V4M20 20v-7" />
+      </svg>
+    ),
+  },
+  {
     href: '/network',
     label: 'Network',
     icon: (
@@ -84,11 +95,44 @@ const NAV_ITEMS = [
 
 export default function DashboardLayout({ children, title, user }) {
   const router = useRouter();
+  const [autoPilotOn, setAutoPilotOn] = useState(false);
+  const [autoPilotLoaded, setAutoPilotLoaded] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const base = process.env.NEXT_PUBLIC_API_URL;
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     router.push('/login');
+  };
+
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${base}/api/profile`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.preferences) setAutoPilotOn(!!data.preferences.auto_apply_enabled);
+        setAutoPilotLoaded(true);
+      })
+      .catch(() => setAutoPilotLoaded(true));
+  }, [token, base]);
+
+  const handleToggleAutoPilot = async () => {
+    if (!token || toggling) return;
+    setToggling(true);
+    const next = !autoPilotOn;
+    try {
+      const res = await fetch(`${base}/api/profile/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ autoApplyEnabled: next }),
+      });
+      if (res.ok) setAutoPilotOn(next);
+    } finally {
+      setToggling(false);
+    }
   };
 
   const initial = (user?.fullName || user?.email || '?').charAt(0).toUpperCase();
@@ -144,28 +188,62 @@ export default function DashboardLayout({ children, title, user }) {
       <div className={styles.main}>
         <header className={styles.header}>
           <p className={styles.headerTitle}>{title}</p>
-          <button className={styles.searchButton} type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m21 21-4.34-4.34" />
-              <circle cx="11" cy="11" r="8" />
-            </svg>
-            <span>Search</span>
-          </button>
+          <HeaderSearch router={router} />
           <div className={styles.headerSpacer} />
-          <button className={styles.iconButton} aria-label="Notifications" type="button">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-              <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-            </svg>
-          </button>
-          <div className={styles.autoPilotPill}>
+          <NotificationBell token={token} base={base} />
+          <button
+            type="button"
+            className={styles.autoPilotPill}
+            onClick={handleToggleAutoPilot}
+            disabled={!autoPilotLoaded || toggling}
+            title={autoPilotOn ? 'Auto-Pilot is on - click to pause' : 'Auto-Pilot is off - click to activate'}
+          >
             <span>Auto-Pilot</span>
-            <span className={styles.toggleOn} />
-          </div>
+            <span className={autoPilotOn ? styles.toggleOn : styles.toggleOff} />
+          </button>
         </header>
 
         <main className={styles.content}>{children}</main>
       </div>
     </div>
+  );
+}
+
+function HeaderSearch({ router }) {
+  const [value, setValue] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!value.trim()) return;
+    router.push(`/jobs?search=${encodeURIComponent(value.trim())}`);
+  };
+
+  return (
+    <form className={styles.searchButton} onSubmit={handleSubmit}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21 21-4.34-4.34" />
+        <circle cx="11" cy="11" r="8" />
+      </svg>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Search jobs..."
+        className={styles.headerSearchInput}
+      />
+      <kbd className={styles.kbd}>&#8984;K</kbd>
+    </form>
   );
 }

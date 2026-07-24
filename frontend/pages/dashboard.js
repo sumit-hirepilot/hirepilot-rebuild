@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [matches, setMatches] = useState([]);
   const [appStats, setAppStats] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,10 +49,11 @@ export default function Dashboard() {
         const headers = { Authorization: `Bearer ${token}` };
         const base = process.env.NEXT_PUBLIC_API_URL;
 
-        const [matchesRes, statsRes, activityRes] = await Promise.all([
+        const [matchesRes, statsRes, activityRes, profileRes] = await Promise.all([
           fetch(`${base}/api/matches?limit=5`, { headers }),
           fetch(`${base}/api/applications/stats`, { headers }),
           fetch(`${base}/api/activity?limit=8`, { headers }),
+          fetch(`${base}/api/profile`, { headers }),
         ]);
 
         if (matchesRes.ok) {
@@ -67,6 +69,15 @@ export default function Dashboard() {
         if (activityRes.ok) {
           const data = await activityRes.json();
           setActivity(data.activity || []);
+        }
+
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (!profileData.user?.onboarding_completed_at) {
+            router.push('/onboarding');
+            return;
+          }
+          setProfile(profileData);
         }
       } catch (err) {
         console.error('Failed to load dashboard data', err);
@@ -88,8 +99,12 @@ export default function Dashboard() {
   const interviews = appStats ? parseInt(appStats.interviews || 0) : 0;
   const scannedToday = appStats ? parseInt(appStats.scanned_today || 0) : 0;
   const todaysMatches = matches.length;
-  const dailyLimit = 10;
+  const prefs = profile?.preferences;
+  const autoApplyEnabled = !!prefs?.auto_apply_enabled;
+  const dailyLimit = prefs?.auto_apply_limit_per_day || 10;
   const progressPct = Math.min(100, (applicationsSent / dailyLimit) * 100);
+  const hasSkills = (profile?.skills || []).length > 0;
+  const profileIncomplete = profile && !hasSkills;
 
   return (
     <>
@@ -101,17 +116,30 @@ export default function Dashboard() {
         <p className={styles.dateLabel}>{dateLabel}</p>
         <h1 className={styles.greeting}>{getGreeting()}, {firstName}</h1>
 
+        {profileIncomplete && (
+          <div className={styles.setupBanner}>
+            <div>
+              <p className={styles.setupBannerTitle}>Finish setting up your profile</p>
+              <p className={styles.setupBannerText}>Add your skills so HirePilot can start matching and scoring jobs for you.</p>
+            </div>
+            <a href="/settings" className={styles.setupBannerButton}>Complete setup</a>
+          </div>
+        )}
+
         <div className={styles.card}>
           <div className={styles.autopilotRow}>
             <div className={styles.autopilotLeft}>
-              <span className={styles.statusDot} />
+              <span className={autoApplyEnabled ? styles.statusDot : styles.statusDotOff} />
               <div>
-                <p className={styles.autopilotTitle}>Auto-Pilot Active</p>
+                <p className={styles.autopilotTitle}>{autoApplyEnabled ? 'Auto-Pilot Active' : 'Auto-Pilot Paused'}</p>
                 <p className={styles.autopilotSubtitle}>
                   {scannedToday} jobs scanned &middot; {applicationsSent} applications sent &middot; {todaysMatches} matches found
                 </p>
               </div>
             </div>
+            {!autoApplyEnabled && (
+              <a href="/settings" className={styles.autopilotEnableLink}>Turn on in Settings &rarr;</a>
+            )}
           </div>
           <div className={styles.progressWrap}>
             <div className={styles.progressLabels}>

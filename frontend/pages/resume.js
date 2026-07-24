@@ -5,7 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Resume.module.css';
 
-const TABS = ['Resume Manager', 'Tailor for a Job', 'ATS Checker'];
+const TABS = ['Resume Manager', 'Tailor for a Job', 'Cover Letters', 'Screening Answers', 'ATS Checker'];
 
 export default function Resume() {
   const router = useRouter();
@@ -89,6 +89,10 @@ export default function Resume() {
           />
         ) : tab === 'Tailor for a Job' ? (
           <TailorForJob jobs={jobs} token={token} base={base} reload={() => loadData(token)} />
+        ) : tab === 'Cover Letters' ? (
+          <CoverLetters jobs={jobs} token={token} base={base} />
+        ) : tab === 'Screening Answers' ? (
+          <ScreeningAnswers jobs={jobs} token={token} base={base} />
         ) : (
           <AtsChecker token={token} base={base} />
         )}
@@ -100,6 +104,86 @@ export default function Resume() {
 function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessage }) {
   const [resumeText, setResumeText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [parsed, setParsed] = useState(null);
+  const [selectedSkills, setSelectedSkills] = useState(new Set());
+  const [selectedExp, setSelectedExp] = useState(new Set());
+  const [applying, setApplying] = useState(false);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setUploading(true);
+    setParsed(null);
+    setMessage('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('saveAsDefault', resumes.length === 0 ? 'true' : 'false');
+
+      const res = await fetch(`${base}/api/resume/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || 'Failed to process resume file');
+        return;
+      }
+
+      setParsed(data.parsed);
+      setSelectedSkills(new Set(data.parsed.skills || []));
+      setSelectedExp(new Set((data.parsed.experience || []).map((_, i) => i)));
+      setMessage(`Resume uploaded. Found ${data.parsed.skills.length} skills and ${data.parsed.experience.length} work history entries below - review and add them to your profile.`);
+      reload();
+    } catch (err) {
+      setMessage('Failed to upload resume. Try pasting the text instead.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const toggleSkill = (skill) => {
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(skill)) next.delete(skill); else next.add(skill);
+      return next;
+    });
+  };
+
+  const toggleExp = (i) => {
+    setSelectedExp((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const handleApplyParsed = async () => {
+    setApplying(true);
+    try {
+      const skills = Array.from(selectedSkills);
+      const experience = (parsed.experience || []).filter((_, i) => selectedExp.has(i));
+
+      const res = await fetch(`${base}/api/resume/apply-parsed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ skills, experience }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage(`Profile updated: ${data.skillsAdded} skills and ${data.experienceAdded} work history entries added.`);
+        setParsed(null);
+      } else {
+        setMessage(data.error || 'Failed to update profile');
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -150,7 +234,72 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
   return (
     <>
       <div className={styles.card}>
-        <p className={page.sectionLabel}>Your resume</p>
+        <p className={page.sectionLabel}>Upload your resume</p>
+        <p className={page.helpText}>Upload a .pdf, .docx, or .txt file. We&apos;ll extract your skills and work history for you to review before adding them to your profile.</p>
+        <label className={page.uploadDropzone}>
+          <input type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} disabled={uploading} style={{ display: 'none' }} />
+          {uploading ? 'Uploading & parsing…' : 'Click to choose a file, or drag one here'}
+        </label>
+      </div>
+
+      {parsed && (
+        <div className={styles.card}>
+          <p className={page.sectionLabel}>Review what we found</p>
+
+          {parsed.skills.length > 0 && (
+            <>
+              <p className={page.helpText}>Skills (click to deselect any that don&apos;t apply)</p>
+              <div className={page.pillRow}>
+                {parsed.skills.map((s) => (
+                  <button
+                    type="button"
+                    key={s}
+                    className={selectedSkills.has(s) ? page.pillGreen : page.pill}
+                    onClick={() => toggleSkill(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {parsed.experience.length > 0 && (
+            <>
+              <p className={page.helpText} style={{ marginTop: '1rem' }}>Work history</p>
+              {parsed.experience.map((exp, i) => (
+                <label key={i} className={page.resumeRow} style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedExp.has(i)}
+                    onChange={() => toggleExp(i)}
+                    style={{ marginRight: '0.75rem' }}
+                  />
+                  <div className={page.resumePreview}>
+                    <p className={page.previewText}>
+                      {exp.jobTitle || 'Unknown title'} {exp.companyName ? `at ${exp.companyName}` : ''}
+                      {' · '}{exp.startDateRaw}{' - '}{exp.currentlyWorking ? 'Present' : exp.endDateRaw}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </>
+          )}
+
+          {parsed.skills.length === 0 && parsed.experience.length === 0 && (
+            <p className={styles.emptyState}>We couldn&apos;t confidently detect skills or work history in this file. Try pasting your resume text below instead.</p>
+          )}
+
+          {(parsed.skills.length > 0 || parsed.experience.length > 0) && (
+            <button className={page.saveButton} onClick={handleApplyParsed} disabled={applying}>
+              {applying ? 'Adding to profile...' : 'Add selected to my profile'}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className={styles.card}>
+        <p className={page.sectionLabel}>Or paste your resume text</p>
         <textarea
           className={page.textarea}
           rows={6}
@@ -280,6 +429,175 @@ function TailorForJob({ jobs, token, base, reload }) {
         </>
       )}
     </div>
+  );
+}
+
+function CoverLetters({ jobs, token, base }) {
+  const [jobId, setJobId] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${base}/api/resume/cover-letters`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setHistory((await res.json()).coverLetters || []);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [base, token]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const handleGenerate = async () => {
+    if (!jobId) return;
+    setGenerating(true);
+    setError('');
+    try {
+      const res = await fetch(`${base}/api/resume/cover-letter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        loadHistory();
+      } else {
+        setError(data.error || 'Failed to generate cover letter');
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    await fetch(`${base}/api/resume/cover-letters/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    loadHistory();
+  };
+
+  return (
+    <>
+      <div className={styles.card}>
+        <label className={page.sectionLabel}>Generate a cover letter</label>
+        <p className={page.helpText}>Templated from your profile and the job details - always shown here for you to review and personalize before sending.</p>
+        <select className={page.select} value={jobId} onChange={(e) => setJobId(e.target.value)}>
+          <option value="">Choose a job&hellip;</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {j.company_name}
+            </option>
+          ))}
+        </select>
+        <button className={page.saveButton} onClick={handleGenerate} disabled={generating || !jobId}>
+          {generating ? 'Generating...' : 'Generate cover letter'}
+        </button>
+        {error && <p className={page.errorText}>{error}</p>}
+      </div>
+
+      {loadingHistory ? (
+        <p className={styles.emptyState}>Loading&hellip;</p>
+      ) : history.length === 0 ? (
+        <p className={styles.emptyState}>No cover letters yet.</p>
+      ) : (
+        history.map((cl) => (
+          <div key={cl.id} className={styles.card}>
+            <p className={page.tailoredTitle}>{cl.job_title}</p>
+            <p className={page.tailoredCompany}>{cl.company_name}</p>
+            <p className={page.compareText} style={{ whiteSpace: 'pre-line' }}>{cl.content}</p>
+            <div className={page.resumeActions} style={{ marginTop: '0.75rem' }}>
+              <button className={page.deleteButton} onClick={() => handleDelete(cl.id)}>Delete</button>
+            </div>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+function ScreeningAnswers({ jobs, token, base }) {
+  const [jobId, setJobId] = useState('');
+  const [question, setQuestion] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${base}/api/resume/screening-answers`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setHistory((await res.json()).answers || []);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [base, token]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const handleGenerate = async () => {
+    if (!question.trim()) return;
+    setGenerating(true);
+    setError('');
+    try {
+      const res = await fetch(`${base}/api/resume/screening-answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ question, jobId: jobId || null }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setQuestion('');
+        loadHistory();
+      } else {
+        setError(data.error || 'Failed to generate answer');
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <>
+      <div className={styles.card}>
+        <label className={page.sectionLabel}>Ask a screening question</label>
+        <p className={page.helpText}>Get a draft answer based on your profile - always shown here for you to review and edit before submitting.</p>
+        <select className={page.select} value={jobId} onChange={(e) => setJobId(e.target.value)}>
+          <option value="">No specific job (general answer)</option>
+          {jobs.map((j) => (
+            <option key={j.id} value={j.id}>
+              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {j.company_name}
+            </option>
+          ))}
+        </select>
+        <textarea
+          className={page.textarea}
+          rows={2}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="e.g. Why do you want to work here?"
+        />
+        <button className={page.saveButton} onClick={handleGenerate} disabled={generating || !question.trim()}>
+          {generating ? 'Generating...' : 'Generate answer'}
+        </button>
+        {error && <p className={page.errorText}>{error}</p>}
+      </div>
+
+      {loadingHistory ? (
+        <p className={styles.emptyState}>Loading&hellip;</p>
+      ) : history.length === 0 ? (
+        <p className={styles.emptyState}>No screening answers yet.</p>
+      ) : (
+        history.map((a) => (
+          <div key={a.id} className={styles.card}>
+            {a.job_title && <p className={page.tailoredCompany}>{a.job_title} &middot; {a.company_name}</p>}
+            <p className={page.tailoredTitle}>{a.question}</p>
+            <p className={page.compareText} style={{ marginTop: '0.5rem' }}>{a.answer}</p>
+          </div>
+        ))
+      )}
+    </>
   );
 }
 
