@@ -98,7 +98,12 @@ export default function DashboardLayout({ children, title, user }) {
   const [autoPilotOn, setAutoPilotOn] = useState(false);
   const [autoPilotLoaded, setAutoPilotLoaded] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const base = process.env.NEXT_PUBLIC_API_URL;
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [router.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -140,7 +145,15 @@ export default function DashboardLayout({ children, title, user }) {
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
+      {mobileNavOpen && (
+        <div
+          className={styles.navOverlay}
+          onClick={() => setMobileNavOpen(false)}
+          role="presentation"
+        />
+      )}
+
+      <aside className={`${styles.sidebar} ${mobileNavOpen ? styles.sidebarOpen : ''}`}>
         <div className={styles.sidebarHeader}>
           <span className={styles.sidebarLogoIcon}>
             <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -151,6 +164,16 @@ export default function DashboardLayout({ children, title, user }) {
             </svg>
           </span>
           <span className={styles.sidebarLogoText}>HirePilot</span>
+          <button
+            type="button"
+            className={styles.navCloseButton}
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <nav className={styles.nav}>
@@ -187,6 +210,16 @@ export default function DashboardLayout({ children, title, user }) {
 
       <div className={styles.main}>
         <header className={styles.header}>
+          <button
+            type="button"
+            className={styles.navMenuButton}
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
           <p className={styles.headerTitle}>{title}</p>
           <HeaderSearch router={router} />
           <div className={styles.headerSpacer} />
