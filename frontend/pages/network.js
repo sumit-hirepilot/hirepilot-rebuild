@@ -163,7 +163,7 @@ export default function Network() {
             <p className={page.emptySubtitle}>Contacts you track from a search will appear here.</p>
           </div>
         ) : (
-          <div className={styles.card} style={{ marginBottom: 0, padding: 0 }}>
+          <div className={styles.card} style={{ marginBottom: 0, padding: 0, overflowX: 'auto' }}>
             <table className={page.table}>
               <thead>
                 <tr>
