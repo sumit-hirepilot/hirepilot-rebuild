@@ -7,7 +7,7 @@ WORKDIR /build
 COPY backend/package*.json ./
 
 # Install dependencies
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Runtime stage
 FROM node:18-alpine
