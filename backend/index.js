@@ -3,6 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
+const jobsRoutes = require('./routes/jobs');
+const matchesRoutes = require('./routes/matches');
+const applicationsRoutes = require('./routes/applications');
+const { startScheduler } = require('./services/scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,27 +33,19 @@ app.get('/api/health', async (req, res) => {
 // Auth routes
 app.use('/api/auth', authRoutes);
 
-// Jobs routes (placeholder)
-app.get('/api/jobs', (req, res) => {
-  res.json({ message: 'Get jobs endpoint' });
-});
+// Jobs routes
+app.use('/api/jobs', jobsRoutes);
 
-app.get('/api/matches', (req, res) => {
-  res.json({ message: 'Get matches endpoint' });
-});
+// Matches routes
+app.use('/api/matches', matchesRoutes);
 
-// Applications routes (placeholder)
-app.get('/api/applications', (req, res) => {
-  res.json({ message: 'Get applications endpoint' });
-});
+// Applications routes
+app.use('/api/applications', applicationsRoutes);
 
-app.post('/api/applications', (req, res) => {
-  res.json({ message: 'Create application endpoint' });
-});
-
-app.put('/api/applications/:id/status', (req, res) => {
-  res.json({ message: 'Update application status endpoint' });
-});
+// Start job aggregation scheduler
+if (process.env.NODE_ENV !== 'test') {
+  startScheduler();
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
