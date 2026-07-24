@@ -138,7 +138,7 @@ export default function Applications() {
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>
         ) : view === 'list' ? (
-          <div className={styles.card} style={{ marginBottom: 0, padding: 0 }}>
+          <div className={styles.card} style={{ marginBottom: 0, padding: 0, overflowX: 'auto' }}>
             <table className={page.table}>
               <thead>
                 <tr>
