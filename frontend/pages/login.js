@@ -2,7 +2,6 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
-import Layout from '../components/Layout';
 import styles from '../styles/Auth.module.css';
 
 export default function Login() {
@@ -49,11 +48,9 @@ export default function Login() {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Save token and user info
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Redirect to dashboard
       router.push('/dashboard');
     } catch (err) {
       setError(err.message);
@@ -69,58 +66,72 @@ export default function Login() {
         <meta name="description" content="Sign in to your HirePilot account" />
       </Head>
 
-      <Layout>
-        <div className={styles.authContainer}>
-          <div className={styles.authCard}>
-            <div className={styles.cardLogo}>⭘ HirePilot</div>
-            <h1>Welcome back</h1>
-
-            <form onSubmit={handleSubmit} className={styles.form}>
-              <div className={styles.formGroup}>
-                <label htmlFor="email">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label htmlFor="password">Password</label>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-
-              {error && <div className={styles.error}>{error}</div>}
-
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={loading}
-                style={{ width: '100%' }}
+      <div className={styles.authContainer}>
+        <div className={styles.authCard}>
+          <Link href="/" className={styles.logo}>
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 32 32"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="16" cy="16" r="12.5" />
+              <path d="M16 4v3M16 25v3M28 16h-3M7 16H4M23.5 8.5l-2 2M10.5 21.5l-2 2M23.5 23.5l-2-2M10.5 10.5l-2-2" />
+              <path d="M16 3.2 17.4 6.6 14.6 6.6Z" fill="currentColor" stroke="none" />
+              <text
+                x="16"
+                y="20.5"
+                textAnchor="middle"
+                fontSize="12"
+                fontWeight="700"
+                fill="currentColor"
+                stroke="none"
               >
-                {loading ? 'Signing in...' : 'Sign in'}
-              </button>
-            </form>
+                H
+              </text>
+            </svg>
+            <span className={styles.logoText}>HirePilot</span>
+          </Link>
 
-            <p style={{ textAlign: 'center', marginTop: '1rem' }}>
-              New to HirePilot?{' '}
-              <Link href="/signup">Create an account</Link>
-            </p>
-          </div>
+          <h1>Welcome back</h1>
+
+          <form onSubmit={handleSubmit} className={styles.form}>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Email"
+              className={styles.input}
+              required
+            />
+
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Password"
+              className={styles.input}
+              required
+            />
+
+            {error && <div className={styles.error}>{error}</div>}
+
+            <button type="submit" className={styles.submitButton} disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+
+          <p className={styles.footerText}>
+            New to HirePilot? <Link href="/signup">Create an account</Link>
+          </p>
         </div>
-      </Layout>
+      </div>
     </>
   );
 }
