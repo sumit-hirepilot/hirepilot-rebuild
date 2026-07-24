@@ -1,26 +1,73 @@
-.headerRow {
+.searchBar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+  padding: 0.75rem;
+  margin-bottom: 1.25rem;
 }
 
-.actionsRow {
+.searchInput, .locInput {
+  flex: 1;
+  min-width: 160px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.expSelect {
+  min-width: 160px;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.searchInput:focus, .locInput:focus, .expSelect:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.searchButton {
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.headerRow {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.resultsCount {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
 
 .refreshButton {
-  padding: 0.5rem 1rem;
+  margin-left: auto;
+  padding: 0.4rem 0.875rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background-color: transparent;
   color: var(--text);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
 }
@@ -30,35 +77,45 @@
   cursor: not-allowed;
 }
 
-.searchForm {
+.sourcesBanner {
   display: flex;
-  gap: 0.5rem;
-}
-
-.searchInput {
-  padding: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
   background-color: var(--bg-secondary);
-  color: var(--text);
-  font-size: 0.875rem;
-  min-width: 240px;
+  margin-bottom: 1rem;
+  font-size: 0.75rem;
 }
 
-.searchInput:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-.searchButton {
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  border: none;
-  background-color: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 0.875rem;
+.liveLabel {
   font-weight: 600;
-  cursor: pointer;
+  color: var(--primary);
+}
+
+.sourceItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+}
+
+.sourceDotActive {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #3fbe84;
+  display: inline-block;
+}
+
+.sourceDotInactive {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--error);
+  display: inline-block;
 }
 
 .message {
@@ -71,6 +128,49 @@
   color: var(--text);
 }
 
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.pagination button {
+  padding: 0.375rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageActive {
+  padding: 0.375rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid var(--primary);
+  background-color: rgba(232, 163, 61, 0.15);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pageButton {
+  padding: 0.375rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -79,8 +179,7 @@
 .jobRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.875rem;
   padding: 1rem 0;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -91,8 +190,31 @@
   padding-bottom: 0;
 }
 
+.checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  background-color: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
 .jobInfo {
-  min-width: 0;
+  flex: 1;
+  min-width: 180px;
+  cursor: pointer;
 }
 
 .jobTitle {
@@ -105,24 +227,45 @@
 .jobSubtitle {
   font-size: 0.8125rem;
   color: var(--text-secondary);
+  margin: 0.125rem 0 0;
+}
+
+.jobMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
   margin: 0.25rem 0 0;
+}
+
+.scoreRing {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 2px solid #3fbe84;
+  color: #3fbe84;
+  font-weight: 700;
+  font-size: 0.8125rem;
 }
 
 .jobActions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-shrink: 0;
+  gap: 0.625rem;
+  flex-wrap: wrap;
 }
 
-.viewLink {
+.viewButton {
+  padding: 0.4rem 0.875rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text);
   font-size: 0.8125rem;
-  color: var(--primary);
   font-weight: 500;
-}
-
-.viewLink:hover {
-  text-decoration: underline;
+  cursor: pointer;
 }
 
 .applyButton {
@@ -136,11 +279,6 @@
   cursor: pointer;
 }
 
-.applyButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .appliedBadge {
   padding: 0.4rem 0.75rem;
   border-radius: 8px;
@@ -148,4 +286,14 @@
   color: #3fbe84;
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.originalLink {
+  font-size: 0.75rem;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.originalLink:hover {
+  text-decoration: underline;
 }

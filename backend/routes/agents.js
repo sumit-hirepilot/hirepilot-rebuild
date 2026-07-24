@@ -29,6 +29,32 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Estimate how many currently-active jobs match a draft agent config.
+// jobs are marked inactive after 7 days, so this count is a genuine
+// approximation of "jobs per week" - not a fabricated number.
+router.post('/preview', async (req, res) => {
+  try {
+    const { queryKeywords = [], remoteOk = true } = req.body;
+    if (!queryKeywords.length) return res.json({ estimate: 0 });
+
+    const keywordConditions = queryKeywords
+      .map((_, i) => `(title ILIKE $${i + 1} OR description ILIKE $${i + 1})`)
+      .join(' OR ');
+    const params = queryKeywords.map((k) => `%${k}%`);
+    const remoteClause = remoteOk ? '' : `AND work_arrangement != 'remote'`;
+
+    const result = await query(
+      `SELECT COUNT(*) as count FROM jobs WHERE is_active = true AND (${keywordConditions}) ${remoteClause}`,
+      params
+    );
+
+    res.json({ estimate: parseInt(result.rows[0].count, 10) });
+  } catch (err) {
+    console.error('Preview agent error:', err);
+    res.status(500).json({ error: 'Failed to estimate matches' });
+  }
+});
+
 // Create a search agent
 router.post('/', async (req, res) => {
   try {

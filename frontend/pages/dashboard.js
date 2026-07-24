@@ -7,6 +7,16 @@ import styles from '../styles/Dashboard.module.css';
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+function timeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -19,6 +29,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [matches, setMatches] = useState([]);
   const [appStats, setAppStats] = useState(null);
+  const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,9 +48,10 @@ export default function Dashboard() {
         const headers = { Authorization: `Bearer ${token}` };
         const base = process.env.NEXT_PUBLIC_API_URL;
 
-        const [matchesRes, statsRes] = await Promise.all([
+        const [matchesRes, statsRes, activityRes] = await Promise.all([
           fetch(`${base}/api/matches?limit=5`, { headers }),
           fetch(`${base}/api/applications/stats`, { headers }),
+          fetch(`${base}/api/activity?limit=8`, { headers }),
         ]);
 
         if (matchesRes.ok) {
@@ -50,6 +62,11 @@ export default function Dashboard() {
         if (statsRes.ok) {
           const data = await statsRes.json();
           setAppStats(data);
+        }
+
+        if (activityRes.ok) {
+          const data = await activityRes.json();
+          setActivity(data.activity || []);
         }
       } catch (err) {
         console.error('Failed to load dashboard data', err);
@@ -154,8 +171,32 @@ export default function Dashboard() {
 
           <div className={styles.card} style={{ marginBottom: 0 }}>
             <h2 className={styles.sectionTitle} style={{ marginBottom: '1rem' }}>Recent activity</h2>
-            <p className={styles.emptyState}>No activity yet. Once Auto-Pilot starts applying, you&apos;ll see updates here.</p>
+            {activity.length === 0 ? (
+              <p className={styles.emptyState}>No activity yet. Once Auto-Pilot starts applying, you&apos;ll see updates here.</p>
+            ) : (
+              activity.map((a, i) => (
+                <div key={i} className={styles.activityRow} style={{ marginBottom: '0.875rem' }}>
+                  <div>
+                    <p className={styles.activityText}>{a.text}</p>
+                    <p className={styles.activityTime}>{timeAgo(a.createdAt)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
+        </div>
+
+        <h2 className={styles.sectionTitle} style={{ margin: '1.5rem 0 1rem' }}>Quick actions</h2>
+        <div className={styles.quickActions}>
+          <a href="/jobs" className={styles.quickActionCard}>
+            Find Jobs Now <span className={styles.quickActionArrow}>&rarr;</span>
+          </a>
+          <a href="/agents" className={styles.quickActionCard}>
+            Create Search Agent <span className={styles.quickActionArrow}>&rarr;</span>
+          </a>
+          <a href="/resume" className={styles.quickActionCard}>
+            Tailor Resume <span className={styles.quickActionArrow}>&rarr;</span>
+          </a>
         </div>
       </DashboardLayout>
     </>

@@ -5,47 +5,27 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Network.module.css';
 
+const STATUS_STAGES = ['identified', 'connected', 'messaged', 'referred'];
+
 export default function Network() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [contacts, setContacts] = useState([]);
-  const [jobs, setJobs] = useState([]);
+  const [company, setCompany] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [message, setMessage] = useState('');
-  const [formData, setFormData] = useState({
-    jobId: '',
-    companyName: '',
-    firstName: '',
-    lastName: '',
-    email: '',
-    linkedinUrl: '',
-    jobTitle: '',
-    relationshipType: 'employee',
-    notes: '',
-  });
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
-  const loadData = useCallback(async (authToken) => {
+  const loadContacts = useCallback(async (authToken) => {
     setLoading(true);
     try {
-      const [contactsRes, jobsRes] = await Promise.all([
-        fetch(`${base}/api/network`, { headers: { Authorization: `Bearer ${authToken}` } }),
-        fetch(`${base}/api/jobs?limit=50`),
-      ]);
-
-      if (contactsRes.ok) {
-        const data = await contactsRes.json();
-        setContacts(data.contacts || []);
-      }
-      if (jobsRes.ok) {
-        const data = await jobsRes.json();
-        setJobs(data.jobs || []);
-      }
+      const res = await fetch(`${base}/api/network`, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (res.ok) setContacts((await res.json()).contacts || []);
     } catch (err) {
-      console.error('Failed to load network data', err);
+      console.error('Failed to load contacts', err);
     } finally {
       setLoading(false);
     }
@@ -60,57 +40,70 @@ export default function Network() {
     }
     setUser(JSON.parse(storedUser));
     setToken(authToken);
-    loadData(authToken);
-  }, [router, loadData]);
+    loadContacts(authToken);
 
-  const handleChange = (field) => (e) => {
-    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    if (router.query.company) setCompany(router.query.company);
+  }, [router, loadContacts]);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!company.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`${base}/api/network/suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ company }),
+      });
+      const data = await res.json();
+      if (res.ok) setSuggestions(data.suggestions || []);
+    } finally {
+      setSearching(false);
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage('');
-
-    if (!formData.jobId || !formData.companyName) {
-      setMessage('Select a job and enter a company name.');
-      return;
-    }
-
+  const handleTrack = async (suggestion) => {
     try {
       const res = await fetch(`${base}/api/network`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          jobId: router.query.jobId || null,
+          companyName: company,
+          firstName: suggestion.firstName,
+          lastName: suggestion.lastName,
+          jobTitle: suggestion.title,
+          relationshipType: suggestion.relationshipType,
+          notes: suggestion.message,
+        }),
       });
-
-      if (res.ok) {
-        setFormData({
-          jobId: '', companyName: '', firstName: '', lastName: '', email: '',
-          linkedinUrl: '', jobTitle: '', relationshipType: 'employee', notes: '',
-        });
-        setShowForm(false);
-        loadData(token);
-      } else {
-        const data = await res.json();
-        setMessage(data.error || 'Failed to add contact');
-      }
+      if (res.ok) loadContacts(token);
     } catch (err) {
-      setMessage('Failed to add contact');
+      console.error('Failed to track contact', err);
+    }
+  };
+
+  const handleStatusChange = async (contactId, status) => {
+    try {
+      const res = await fetch(`${base}/api/network/${contactId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) loadContacts(token);
+    } catch (err) {
+      console.error('Failed to update contact', err);
     }
   };
 
   const handleDelete = async (id) => {
-    await fetch(`${base}/api/network/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    loadData(token);
+    await fetch(`${base}/api/network/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    loadContacts(token);
   };
 
   if (!user) return null;
+
+  const relBadge = { hiring_manager: 'Hiring Manager', alumni: 'Alumni', employee: 'Employee' };
 
   return (
     <>
@@ -119,118 +112,94 @@ export default function Network() {
       </Head>
 
       <DashboardLayout title="Network" user={user}>
-        <div className={page.headerRow}>
-          <div>
-            <p className={styles.dateLabel}>{contacts.length} contacts</p>
-            <h1 className={styles.greeting}>Network</h1>
-          </div>
-          <button className={page.newButton} onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : '+ Add contact'}
+        <h1 className={styles.greeting} style={{ marginTop: 0 }}>Network</h1>
+
+        <form onSubmit={handleSearch} className={page.searchRow}>
+          <input
+            className={page.searchInput}
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            placeholder="Search a company (e.g. Stripe)"
+          />
+          <button type="submit" className={page.searchButton} disabled={searching}>
+            {searching ? 'Searching...' : 'Find contacts'}
           </button>
-        </div>
+        </form>
 
-        {message && <div className={page.message}>{message}</div>}
-
-        {showForm && (
-          <form onSubmit={handleSubmit} className={`${styles.card} ${page.form}`}>
-            <div className={page.formRow}>
-              <div className={page.formGroup}>
-                <label>Job</label>
-                <select className={page.input} value={formData.jobId} onChange={handleChange('jobId')}>
-                  <option value="">Select a job&hellip;</option>
-                  {jobs.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} — {j.company_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className={page.formGroup}>
-                <label>Company name</label>
-                <input className={page.input} value={formData.companyName} onChange={handleChange('companyName')} placeholder="Acme Inc." />
-              </div>
+        {suggestions.length > 0 && (
+          <>
+            <p className={page.suggestedLabel}>Suggested contacts at {company}</p>
+            <div className={page.suggestGrid}>
+              {suggestions.map((s, i) => (
+                <div key={i} className={styles.card} style={{ marginBottom: 0 }}>
+                  <div className={page.suggestHeader}>
+                    <div className={page.avatar}>{s.firstName[0]}{s.lastName[0]}</div>
+                    <div style={{ flex: 1 }}>
+                      <p className={page.suggestName}>{s.firstName} {s.lastName}</p>
+                      <p className={page.suggestTitle}>{s.title}</p>
+                    </div>
+                    <span className={page.relBadge}>{relBadge[s.relationshipType]}</span>
+                  </div>
+                  <p className={page.mutualText}>{s.mutualConnections} mutual connections</p>
+                  <p className={page.messageText}>&ldquo;{s.message}&rdquo;</p>
+                  <div className={page.suggestActions}>
+                    <a href={s.linkedinSearchUrl} target="_blank" rel="noreferrer" className={page.linkedinLink}>Connect on LinkedIn</a>
+                    <button className={page.trackButton} onClick={() => handleTrack(s)}>Track</button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className={page.formRow}>
-              <div className={page.formGroup}>
-                <label>First name</label>
-                <input className={page.input} value={formData.firstName} onChange={handleChange('firstName')} />
-              </div>
-              <div className={page.formGroup}>
-                <label>Last name</label>
-                <input className={page.input} value={formData.lastName} onChange={handleChange('lastName')} />
-              </div>
-            </div>
-            <div className={page.formRow}>
-              <div className={page.formGroup}>
-                <label>Email</label>
-                <input className={page.input} type="email" value={formData.email} onChange={handleChange('email')} />
-              </div>
-              <div className={page.formGroup}>
-                <label>LinkedIn URL</label>
-                <input className={page.input} value={formData.linkedinUrl} onChange={handleChange('linkedinUrl')} placeholder="https://linkedin.com/in/..." />
-              </div>
-            </div>
-            <div className={page.formRow}>
-              <div className={page.formGroup}>
-                <label>Their job title</label>
-                <input className={page.input} value={formData.jobTitle} onChange={handleChange('jobTitle')} />
-              </div>
-              <div className={page.formGroup}>
-                <label>Relationship</label>
-                <select className={page.input} value={formData.relationshipType} onChange={handleChange('relationshipType')}>
-                  <option value="employee">Current employee</option>
-                  <option value="alumni">Alumni</option>
-                  <option value="hiring_manager">Hiring manager</option>
-                </select>
-              </div>
-            </div>
-            <div className={page.formGroup}>
-              <label>Notes</label>
-              <textarea className={page.textarea} rows={3} value={formData.notes} onChange={handleChange('notes')} placeholder="How you know them, talking points..." />
-            </div>
-            <button type="submit" className={page.newButton}>Save contact</button>
-          </form>
+          </>
         )}
+
+        <p className={page.connectionsLabel}>Your connections</p>
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>
         ) : contacts.length === 0 ? (
-          <div className={styles.card}>
-            <p className={styles.emptyState}>
-              No contacts yet. Add people at companies you&apos;re applying to so you can ask for a referral.
-            </p>
+          <div className={page.emptyState}>
+            <div className={page.radar} />
+            <p className={page.emptyTitle}>No connections tracked yet</p>
+            <p className={page.emptySubtitle}>Contacts you track from a search will appear here.</p>
           </div>
         ) : (
-          <div className={page.list}>
-            {contacts.map((c) => (
-              <div key={c.id} className={styles.card} style={{ marginBottom: '1rem' }}>
-                <div className={page.contactHeader}>
-                  <div>
-                    <p className={page.contactName}>
-                      {c.first_name || c.last_name ? `${c.first_name || ''} ${c.last_name || ''}`.trim() : 'Unnamed contact'}
-                    </p>
-                    <p className={page.contactMeta}>
-                      {c.job_title ? `${c.job_title} at ` : ''}{c.company_name}
-                    </p>
-                    {c.target_job_title && (
-                      <p className={page.contactMeta}>Re: {c.target_job_title}</p>
-                    )}
-                  </div>
-                  <span className={page.relBadge}>{c.relationship_type?.replace('_', ' ')}</span>
-                </div>
-
-                {(c.email || c.linkedin_url) && (
-                  <div className={page.contactLinks}>
-                    {c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}
-                    {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noreferrer">LinkedIn</a>}
-                  </div>
-                )}
-
-                {c.notes && <p className={page.notes}>{c.notes}</p>}
-
-                <button className={page.deleteButton} onClick={() => handleDelete(c.id)}>Remove</button>
-              </div>
-            ))}
+          <div className={styles.card} style={{ marginBottom: 0, padding: 0 }}>
+            <table className={page.table}>
+              <thead>
+                <tr>
+                  <th>Contact</th>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map((c) => (
+                  <tr key={c.id}>
+                    <td className={page.nameCell}>{`${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unnamed'}</td>
+                    <td>{c.company_name}</td>
+                    <td>{c.job_title || '—'}</td>
+                    <td>
+                      <div className={page.statusPipeline}>
+                        {STATUS_STAGES.map((stage) => (
+                          <button
+                            key={stage}
+                            className={c.status === stage ? page.stageActive : page.stage}
+                            onClick={() => handleStatusChange(c.id, stage)}
+                          >
+                            {stage}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <button className={page.removeLink} onClick={() => handleDelete(c.id)}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </DashboardLayout>

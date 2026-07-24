@@ -1,9 +1,45 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Agents.module.css';
+
+function ChipInput({ values, onChange, placeholder }) {
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef(null);
+
+  const addChip = () => {
+    const v = draft.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setDraft('');
+  };
+
+  return (
+    <div className={page.chipInputWrap}>
+      {values.map((v) => (
+        <span key={v} className={page.chip}>
+          {v}
+          <button type="button" onClick={() => onChange(values.filter((x) => x !== v))}>&times;</button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        className={page.chipInput}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            addChip();
+          }
+        }}
+        onBlur={addChip}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
 
 export default function Agents() {
   const router = useRouter();
@@ -12,18 +48,25 @@ export default function Agents() {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', keywords: '', excludeKeywords: '' });
   const [runningId, setRunningId] = useState(null);
   const [message, setMessage] = useState('');
+  const [estimate, setEstimate] = useState(0);
+
+  const [name, setName] = useState('');
+  const [keywords, setKeywords] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [remoteOk, setRemoteOk] = useState(true);
+  const [minSalary, setMinSalary] = useState(100);
+  const [maxSalary, setMaxSalary] = useState(250);
+  const [minMatchScore, setMinMatchScore] = useState(75);
+  const [autoApply, setAutoApply] = useState(false);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
   const loadAgents = useCallback(async (authToken) => {
     setLoading(true);
     try {
-      const res = await fetch(`${base}/api/agents`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const res = await fetch(`${base}/api/agents`, { headers: { Authorization: `Bearer ${authToken}` } });
       if (res.ok) {
         const data = await res.json();
         setAgents(data.agents || []);
@@ -47,12 +90,35 @@ export default function Agents() {
     loadAgents(authToken);
   }, [router, loadAgents]);
 
+  useEffect(() => {
+    if (!showForm || !token || keywords.length === 0) {
+      setEstimate(0);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${base}/api/agents/preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ queryKeywords: keywords, remoteOk }),
+        });
+        const data = await res.json();
+        if (res.ok) setEstimate(data.estimate);
+      } catch (err) { /* ignore */ }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [keywords, remoteOk, showForm, token, base]);
+
+  const resetForm = () => {
+    setName(''); setKeywords([]); setLocations([]); setRemoteOk(true);
+    setMinSalary(100); setMaxSalary(250); setMinMatchScore(75); setAutoApply(false);
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     setMessage('');
 
-    const keywords = formData.keywords.split(',').map((k) => k.trim()).filter(Boolean);
-    if (!formData.name || keywords.length === 0) {
+    if (!name || keywords.length === 0) {
       setMessage('Name and at least one keyword are required.');
       return;
     }
@@ -60,19 +126,21 @@ export default function Agents() {
     try {
       const res = await fetch(`${base}/api/agents`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          name: formData.name,
+          name,
           queryKeywords: keywords,
-          excludeKeywords: formData.excludeKeywords.split(',').map((k) => k.trim()).filter(Boolean),
+          preferredLocations: locations,
+          remoteOk,
+          minSalary: minSalary * 1000,
+          maxSalary: maxSalary * 1000,
+          minMatchScore: minMatchScore / 100,
+          autoApply,
         }),
       });
 
       if (res.ok) {
-        setFormData({ name: '', keywords: '', excludeKeywords: '' });
+        resetForm();
         setShowForm(false);
         loadAgents(token);
       } else {
@@ -122,18 +190,8 @@ export default function Agents() {
     try {
       const res = await fetch(`${base}/api/agents/${agent.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: agent.name,
-          description: agent.description,
-          isActive: !agent.is_active,
-          queryKeywords: agent.query_keywords,
-          includeKeywords: agent.include_keywords,
-          excludeKeywords: agent.exclude_keywords,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isActive: !agent.is_active }),
       });
       if (res.ok) loadAgents(token);
     } catch (err) {
@@ -155,48 +213,10 @@ export default function Agents() {
             <p className={styles.dateLabel}>{agents.length} standing searches</p>
             <h1 className={styles.greeting}>Search Agents</h1>
           </div>
-          <button className={page.newButton} onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : '+ New agent'}
-          </button>
+          <button className={page.newButton} onClick={() => setShowForm(true)}>+ Create agent</button>
         </div>
 
         {message && <div className={page.message}>{message}</div>}
-
-        {showForm && (
-          <form onSubmit={handleCreate} className={`${styles.card} ${page.form}`}>
-            <div className={page.formGroup}>
-              <label>Agent name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                placeholder="e.g. Senior Frontend Roles"
-                className={page.input}
-              />
-            </div>
-            <div className={page.formGroup}>
-              <label>Keywords (comma separated)</label>
-              <input
-                type="text"
-                value={formData.keywords}
-                onChange={(e) => setFormData((p) => ({ ...p, keywords: e.target.value }))}
-                placeholder="react, frontend, typescript"
-                className={page.input}
-              />
-            </div>
-            <div className={page.formGroup}>
-              <label>Exclude keywords (optional)</label>
-              <input
-                type="text"
-                value={formData.excludeKeywords}
-                onChange={(e) => setFormData((p) => ({ ...p, excludeKeywords: e.target.value }))}
-                placeholder="senior, lead"
-                className={page.input}
-              />
-            </div>
-            <button type="submit" className={page.newButton}>Create agent</button>
-          </form>
-        )}
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>
@@ -214,42 +234,101 @@ export default function Agents() {
                   <div>
                     <p className={page.agentName}>{agent.name}</p>
                     <p className={page.agentKeywords}>
-                      Keywords: {(agent.query_keywords || []).join(', ') || '—'}
+                      {(agent.preferred_locations || []).join(', ') || 'World'} &middot; min match {Math.round((agent.min_match_score || 0.75) * 100)}%
                     </p>
-                    {agent.exclude_keywords?.length > 0 && (
-                      <p className={page.agentKeywords}>
-                        Excludes: {agent.exclude_keywords.join(', ')}
-                      </p>
-                    )}
                   </div>
                   <span className={agent.is_active ? page.badgeActive : page.badgeInactive}>
                     {agent.is_active ? 'Active' : 'Paused'}
                   </span>
                 </div>
 
-                <div className={page.agentMeta}>
-                  <span>{agent.match_count} match{agent.match_count === '1' ? '' : 'es'} found</span>
-                  <span>
-                    {agent.last_run_at ? `Last run ${new Date(agent.last_run_at).toLocaleString()}` : 'Never run'}
-                  </span>
+                <div className={page.agentStats}>
+                  <div>
+                    <p className={page.statNum}>{agent.match_count}</p>
+                    <p className={page.statLabel}>jobs found</p>
+                  </div>
+                  <div>
+                    <p className={page.statNum}>{agent.applied_count}</p>
+                    <p className={page.statLabel}>applied</p>
+                  </div>
                 </div>
 
                 <div className={page.agentActions}>
                   <button className={page.runButton} onClick={() => handleRun(agent.id)} disabled={runningId === agent.id}>
-                    {runningId === agent.id ? 'Running...' : 'Run now'}
+                    {runningId === agent.id ? 'Running...' : 'Run Now'}
                   </button>
                   <button className={page.secondaryButton} onClick={() => handleToggleActive(agent)}>
                     {agent.is_active ? 'Pause' : 'Resume'}
                   </button>
-                  <button className={page.deleteButton} onClick={() => handleDelete(agent.id)}>
-                    Delete
-                  </button>
+                  <button className={page.deleteButton} onClick={() => handleDelete(agent.id)}>Delete</button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </DashboardLayout>
+
+      {showForm && (
+        <div className={page.modalOverlay} onClick={() => setShowForm(false)}>
+          <div className={page.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={page.modalHeader}>
+              <h2>Create search agent</h2>
+              <button onClick={() => setShowForm(false)}>&times;</button>
+            </div>
+
+            <form onSubmit={handleCreate}>
+              <label className={page.label}>Name + keywords</label>
+              <input
+                className={page.input}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Agent name"
+              />
+              <ChipInput values={keywords} onChange={setKeywords} placeholder="Add a keyword (e.g. Product Designer)" />
+
+              <label className={page.label} style={{ marginTop: '1rem' }}>Locations</label>
+              <ChipInput values={locations} onChange={setLocations} placeholder="Add a location" />
+
+              <div className={page.toggleRow}>
+                <button
+                  type="button"
+                  className={remoteOk ? page.toggleOn : page.toggleOff}
+                  onClick={() => setRemoteOk((v) => !v)}
+                >
+                  <span />
+                </button>
+                <span>Remote OK</span>
+              </div>
+
+              <label className={page.label}>Salary range</label>
+              <div className={page.rangeLabels}>
+                <span>${minSalary}K</span>
+                <span>${maxSalary}K</span>
+              </div>
+              <input type="range" min="0" max="150" value={minSalary} onChange={(e) => setMinSalary(Math.min(Number(e.target.value), maxSalary))} className={page.slider} />
+              <input type="range" min="150" max="400" value={maxSalary} onChange={(e) => setMaxSalary(Math.max(Number(e.target.value), minSalary))} className={page.slider} />
+
+              <label className={page.label}>Minimum match score: {minMatchScore}%</label>
+              <input type="range" min="0" max="100" value={minMatchScore} onChange={(e) => setMinMatchScore(Number(e.target.value))} className={page.slider} />
+
+              <div className={page.toggleRow}>
+                <button
+                  type="button"
+                  className={autoApply ? page.toggleOn : page.toggleOff}
+                  onClick={() => setAutoApply((v) => !v)}
+                >
+                  <span />
+                </button>
+                <span>Auto-apply to matches</span>
+              </div>
+
+              <div className={page.estimateBox}>This agent will find ~{estimate} jobs per week.</div>
+
+              <button type="submit" className={page.createButton}>Create agent</button>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
