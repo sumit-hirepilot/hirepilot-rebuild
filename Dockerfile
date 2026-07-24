@@ -1,14 +1,13 @@
 # Build stage
 FROM node:18-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
 # Copy backend package files
-COPY ./backend/package*.json ./backend/
+COPY backend/package*.json ./
 
-# Install production dependencies
-WORKDIR /app/backend
-RUN npm ci --only=production
+# Install dependencies
+RUN npm ci --omit=dev
 
 # Runtime stage
 FROM node:18-alpine
@@ -18,14 +17,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy built node_modules
-COPY --from=builder /app/backend/node_modules ./node_modules
+# Copy installed node_modules from builder
+COPY --from=builder /build/node_modules ./node_modules
 
-# Copy backend source
-COPY ./backend .
-
-# Copy schema for database initialization if needed
-COPY ./backend/schema.sql ./
+# Copy backend source code
+COPY backend/ ./
 
 EXPOSE 3000
 
