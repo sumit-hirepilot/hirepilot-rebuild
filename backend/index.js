@@ -42,11 +42,6 @@ app.use('/api/matches', matchesRoutes);
 // Applications routes
 app.use('/api/applications', applicationsRoutes);
 
-// Start job aggregation scheduler
-if (process.env.NODE_ENV !== 'test') {
-  startScheduler();
-}
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -57,7 +52,28 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`HirePilot API Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+async function initializeDatabase() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    await pool.query(schema);
+    console.log('Database schema initialized successfully');
+  } catch (err) {
+    console.error('Database initialization error:', err.message);
+  }
+}
+
+async function startServer() {
+  await initializeDatabase();
+  if (process.env.NODE_ENV !== 'test') {
+    startScheduler();
+  }
+  app.listen(PORT, () => {
+    console.log(`HirePilot API Server running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+startServer();
