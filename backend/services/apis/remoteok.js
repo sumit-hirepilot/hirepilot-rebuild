@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { fixMojibake } = require('./textSanitizer');
 
 const BASE_URL = 'https://remoteok.com/api';
 
@@ -24,14 +25,14 @@ const fetchJobs = async () => {
       .map((job) => ({
         external_id: job.id,
         id: job.id,
-        title: job.position,
-        company: job.company,
+        title: fixMojibake(job.position),
+        company: fixMojibake(job.company),
         company_url: job.company_logo || undefined,
         url: job.url || job.apply_url,
         job_url: job.url || job.apply_url,
-        description: job.description,
-        location: job.location || 'Remote',
-        country: job.location || 'Remote',
+        description: fixMojibake(job.description),
+        location: fixMojibake(job.location) || 'Remote',
+        country: fixMojibake(job.location) || 'Remote',
         salary_min: job.salary_min || null,
         salary_max: job.salary_max || null,
         posted_at: job.epoch ? new Date(job.epoch * 1000) : new Date(job.date),

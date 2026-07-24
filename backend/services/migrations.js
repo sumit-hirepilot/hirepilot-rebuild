@@ -73,6 +73,15 @@ const STATEMENTS = [
 
   // Onboarding tracking
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMP`,
+
+  // One-time repair of RemoteOK postings ingested before the mojibake fix
+  // (UTF-8 bytes mis-decoded as Latin-1 upstream, e.g. "PreparaciÃ³n").
+  // Scoped to rows that still show the tell-tale characters so it's a no-op
+  // once repaired; wrapped safely by the try/catch in runMigrations below.
+  `UPDATE jobs SET title = convert_from(convert_to(title, 'LATIN1'), 'UTF8')
+   WHERE source = 'remoteok' AND title ~ '[ÃÂ]'`,
+  `UPDATE jobs SET company_name = convert_from(convert_to(company_name, 'LATIN1'), 'UTF8')
+   WHERE source = 'remoteok' AND company_name ~ '[ÃÂ]'`,
 ];
 
 const runMigrations = async () => {
