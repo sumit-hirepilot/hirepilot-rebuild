@@ -1,8 +1,29 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { aggregateJobs } = require('../services/jobAggregator');
 
 const router = express.Router();
+
+let aggregationInFlight = false;
+
+// Manually trigger job aggregation (also runs automatically every 6 hours)
+router.post('/refresh', verifyToken, async (req, res) => {
+  if (aggregationInFlight) {
+    return res.status(409).json({ error: 'A refresh is already in progress' });
+  }
+
+  aggregationInFlight = true;
+  try {
+    const result = await aggregateJobs();
+    res.json(result);
+  } catch (err) {
+    console.error('Manual job refresh error:', err);
+    res.status(500).json({ error: 'Failed to refresh jobs' });
+  } finally {
+    aggregationInFlight = false;
+  }
+});
 
 // Get all active jobs with pagination
 router.get('/', async (req, res) => {

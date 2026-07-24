@@ -16,6 +16,7 @@ export default function Jobs() {
   const [appliedIds, setAppliedIds] = useState(new Set());
   const [applyingId, setApplyingId] = useState(null);
   const [message, setMessage] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -95,6 +96,28 @@ export default function Jobs() {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setMessage('');
+    try {
+      const res = await fetch(`${base}/api/jobs/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage(`Fetched ${data.total} jobs (${data.new} new, ${data.updated} updated).`);
+        loadJobs(token, search);
+      } else {
+        setMessage(data.error || 'Failed to refresh jobs');
+      }
+    } catch (err) {
+      setMessage('Failed to refresh jobs');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -109,7 +132,11 @@ export default function Jobs() {
             <p className={styles.dateLabel}>{total} active jobs</p>
             <h1 className={styles.greeting}>Browse jobs</h1>
           </div>
-          <form onSubmit={handleSearch} className={page.searchForm}>
+          <div className={page.actionsRow}>
+            <button type="button" className={page.refreshButton} onClick={handleRefresh} disabled={refreshing}>
+              {refreshing ? 'Refreshing...' : 'Refresh jobs'}
+            </button>
+            <form onSubmit={handleSearch} className={page.searchForm}>
             <input
               type="text"
               value={search}
@@ -118,7 +145,8 @@ export default function Jobs() {
               className={page.searchInput}
             />
             <button type="submit" className={page.searchButton}>Search</button>
-          </form>
+            </form>
+          </div>
         </div>
 
         {message && <div className={page.message}>{message}</div>}

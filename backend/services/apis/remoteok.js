@@ -1,14 +1,15 @@
 const axios = require('axios');
 
-const BASE_URL = 'https://remoteok.io/api';
+const BASE_URL = 'https://remoteok.com/api';
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(`${BASE_URL}/`, {
-      params: {
-        limit: 100,
-      },
+    const response = await axios.get(BASE_URL, {
       timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; HirePilotBot/1.0; +https://hirepilot.app)',
+        Accept: 'application/json',
+      },
     });
 
     if (!Array.isArray(response.data)) {
