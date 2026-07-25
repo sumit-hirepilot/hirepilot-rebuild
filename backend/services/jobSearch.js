@@ -23,7 +23,15 @@ const ROLE_SYNONYMS = {
   'recruiter': ['talent acquisition', 'technical recruiter', 'talent partner'],
 };
 
-const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapePgRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Postgres's "advanced regular expression" flavor supports \m / \M as
+// word-boundary anchors (start/end of word) - critical for short synonyms
+// like "pm" or "sre", which as a plain ILIKE '%pm%' substring would match
+// inside "develoPMent", "shipMent", etc. Every word/phrase match in this
+// module goes through this so short tokens can never false-positive inside
+// unrelated words.
+const wordBoundaryPattern = (text) => `\\m${escapePgRegex(text)}\\M`;
 
 const normalizePhrase = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -43,13 +51,13 @@ function expandSearchPhrases(rawSearch) {
 
 // Builds a WHERE fragment (and appends bind params) that classifies each job
 // into a relevance tier for the given search phrases:
-//   1 = title contains one of the phrases verbatim (best match)
+//   1 = title contains one of the phrases verbatim, word-bounded (best match)
 //   2 = title contains every word of at least one phrase (words may be
 //       scattered, e.g. "Product Designer (Senior)")
 //   3 = every word of at least one phrase appears somewhere in title OR
 //       description (broad/related match)
-// Returns { tierExpr, tier1And2Condition, tier1And2Or3Condition } plus the
-// params that were appended, in the order the placeholders were used.
+// All matches are word-boundary-anchored (never a raw substring), so short
+// tokens like "pm" can't match inside unrelated words.
 function buildSearchTiering(rawSearch, params) {
   const phrases = expandSearchPhrases(rawSearch);
 
@@ -61,18 +69,18 @@ function buildSearchTiering(rawSearch, params) {
     const words = phrase.split(' ').filter(Boolean).slice(0, 6);
     if (!words.length) continue;
 
-    params.push(`%${phrase}%`);
-    tier1Conditions.push(`title ILIKE $${params.length}`);
+    params.push(wordBoundaryPattern(phrase));
+    tier1Conditions.push(`title ~* $${params.length}`);
 
     const titleWordConds = words.map((w) => {
-      params.push(`%${w}%`);
-      return `title ILIKE $${params.length}`;
+      params.push(wordBoundaryPattern(w));
+      return `title ~* $${params.length}`;
     });
     tier2Conditions.push(`(${titleWordConds.join(' AND ')})`);
 
     const anyWordConds = words.map((w) => {
-      params.push(`%${w}%`, `%${w}%`);
-      return `(title ILIKE $${params.length - 1} OR description ILIKE $${params.length})`;
+      params.push(wordBoundaryPattern(w), wordBoundaryPattern(w));
+      return `(title ~* $${params.length - 1} OR description ~* $${params.length})`;
     });
     tier3Conditions.push(`(${anyWordConds.join(' AND ')})`);
   }
