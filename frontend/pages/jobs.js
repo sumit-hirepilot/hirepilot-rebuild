@@ -77,6 +77,14 @@ export default function Jobs() {
         setNoExactMatches(!!data.noExactMatches);
         setRelatedJobs(data.relatedJobs || []);
         setRelatedTotal(data.relatedTotal || 0);
+      } else {
+        // Never silently keep showing a stale/previous result set on
+        // failure - that reads as "search is broken and ignoring me".
+        setJobs([]);
+        setTotal(0);
+        setNoExactMatches(false);
+        setRelatedJobs([]);
+        setMessage('Failed to load jobs. Please try your search again.');
       }
 
       if (appsRes.ok) {

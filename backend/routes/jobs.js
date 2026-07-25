@@ -156,19 +156,31 @@ router.get('/', async (req, res) => {
       // Rank exact title matches (tier 1) above title-word matches (tier 2)
       // above broad title-or-description matches (tier 3, "related" -
       // excluded from the default result set entirely unless requested).
+      //
+      // Every query below shares the same `params` array (filter params +
+      // all tiering params) and always computes match_tier via the same CTE,
+      // even the ones that only filter on it - Postgres requires every bound
+      // parameter to actually appear in the query, so a COUNT query that
+      // dropped the tier-3-only params while still receiving the full array
+      // would error. Routing everything through one CTE keeps every query
+      // referencing every param, consistently.
       const tiering = buildSearchTiering(search, params);
       const wantRelated = includeRelated === 'true';
-      const scopeCondition = wantRelated ? tiering.broadCondition : tiering.narrowCondition;
+
+      const scoredCte = `WITH scored AS (
+        SELECT ${JOB_COLUMNS}, ${tiering.tierCaseExpr} as match_tier
+        FROM jobs WHERE ${filterClause}
+      )`;
+      const tierFilter = wantRelated ? 'match_tier <= 3' : 'match_tier <= 2';
 
       const countResult = await query(
-        `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND ${scopeCondition}`,
+        `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter}`,
         params
       );
       total = parseInt(countResult.rows[0].count, 10);
 
       const result = await query(
-        `SELECT ${JOB_COLUMNS}, ${tiering.tierCaseExpr} as match_tier
-         FROM jobs WHERE ${filterClause} AND ${scopeCondition}
+        `${scoredCte} SELECT * FROM scored WHERE ${tierFilter}
          ORDER BY match_tier ASC, posted_at DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
@@ -178,14 +190,13 @@ router.get('/', async (req, res) => {
       if (!wantRelated && total === 0) {
         noExactMatches = true;
         const relatedCountResult = await query(
-          `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND ${tiering.relatedOnlyCondition}`,
+          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE match_tier = 3`,
           params
         );
         relatedTotal = parseInt(relatedCountResult.rows[0].count, 10);
 
         const relatedResult = await query(
-          `SELECT ${JOB_COLUMNS}
-           FROM jobs WHERE ${filterClause} AND ${tiering.relatedOnlyCondition}
+          `${scoredCte} SELECT * FROM scored WHERE match_tier = 3
            ORDER BY posted_at DESC
            LIMIT $${params.length + 1}`,
           [...params, limit]
