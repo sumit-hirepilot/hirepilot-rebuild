@@ -5,17 +5,49 @@ const axios = require('axios');
 // third parties) can embed/consume their job board - this is not scraping,
 // it's the documented intended use of these endpoints. There is no "search
 // all companies" endpoint for any of them though, so coverage is limited to
-// a maintained list of company slugs (verified against the live APIs below).
-// Add more by confirming a slug resolves, then appending it to the array.
+// a maintained list of company slugs. Every slug below was verified live
+// (HTTP 200 + parseable board response) on 2026-07-25 - a slug returning 0
+// current postings is still kept since the board itself is real and valid,
+// just quiet that day. Add more by confirming a slug resolves, then
+// appending it to the array.
 const GREENHOUSE_COMPANIES = [
-  'stripe', 'airbnb', 'robinhood', 'coinbase', 'asana', 'figma', 'airtable',
-  'discord', 'pinterest', 'instacart', 'reddit', 'cloudflare', 'databricks',
-  'gitlab', 'affirm', 'brex', 'flexport',
+  'adyen', 'affirm', 'airbnb', 'airtable', 'alloy', 'amplitude', 'anthropic',
+  'asana', 'attentive', 'bombas', 'braze', 'brex', 'calendly', 'cameo',
+  'carta', 'checkr', 'chime', 'circleci', 'clickhouse', 'cloudflare',
+  'coinbase', 'coursera', 'databricks', 'datadog', 'descript', 'discord',
+  'dropbox', 'duolingo', 'elastic', 'faire', 'figma', 'fivetran', 'flexport',
+  'ghost', 'gitlab', 'glossier', 'grailed', 'gusto', 'harrys', 'hightouch',
+  'imbue', 'instacart', 'intercom', 'iterable', 'justworks', 'khanacademy',
+  'klaviyo', 'kodiak', 'labelbox', 'lattice', 'launchdarkly', 'lyft',
+  'marqeta', 'masterclass', 'mercury', 'mixpanel', 'mongodb', 'monzo', 'n26',
+  'netlify', 'newrelic', 'nuro', 'okta', 'outschool', 'pagerduty', 'papaya',
+  'peloton', 'pinterest', 'planetscale', 'poshmark', 'postman', 'postscript',
+  'pulley', 'quip', 'reddit', 'remote', 'robinhood', 'samsara', 'scaleai',
+  'shield', 'smartsheet', 'sofi', 'squarespace', 'stabilityai', 'stockx',
+  'stripe', 'treasuryprime', 'twilio', 'udemy', 'upstart', 'vercel',
+  'voxel51', 'waymo', 'webflow',
 ];
 
-const LEVER_COMPANIES = ['netflix', 'plaid', 'articulate', 'kraken', 'ro'];
+const LEVER_COMPANIES = [
+  'alloy', 'angellist', 'articulate', 'clari', 'imbue', 'kapwing', 'kraken',
+  'labelbox', 'mistral', 'neon', 'netflix', 'outreach', 'palantir', 'plaid',
+  'secureframe', 'whoop', 'zoox',
+];
 
-const ASHBY_COMPANIES = ['ramp', 'linear', 'vanta', 'deel', 'mercury', 'openai'];
+const ASHBY_COMPANIES = [
+  'airbyte', 'airtable', 'amp', 'amplitude', 'ashby', 'away', 'baseten',
+  'benchling', 'betterup', 'character', 'clerk', 'clickhouse', 'clickup',
+  'cohere', 'confluent', 'cursor', 'deel', 'drata', 'elevenlabs', 'encord',
+  'expensify', 'fireworks', 'ghost', 'gitbook', 'harvey', 'hightouch',
+  'iterable', 'langchain', 'launchdarkly', 'linear', 'loom', 'marqeta',
+  'mercury', 'miro', 'modal', 'neon', 'notion', 'oneleet', 'openai',
+  'outschool', 'oyster', 'patreon', 'perplexity', 'persona', 'pinecone',
+  'plaid', 'poshmark', 'posthog', 'quora', 'railway', 'ramp', 'reddit',
+  'render', 'replit', 'runway', 'sardine', 'secureframe', 'sierra',
+  'snowflake', 'substack', 'supabase', 'synctera', 'synthesia', 'temporal',
+  'tldraw', 'unit', 'vanta', 'vercel', 'weaviate', 'webflow', 'whoop',
+  'workos', 'writer', 'zapier',
+];
 
 // Greenhouse's job "content" field double-encodes: HTML tags are rendered
 // as literal entity text (e.g. "&lt;h2&gt;") rather than real "<h2>", so
