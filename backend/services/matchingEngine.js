@@ -19,200 +19,190 @@ const calculateSkillsScore = (userSkills, jobText) => {
   return { score: matchedSkills.length / userSkills.length, matchedSkills };
 };
 
-const calculateExperienceScore = async (userId, jobDescription) => {
-  try {
-    // Total career span (earliest job start to latest end/present), not just
-    // tenure at whichever job happens to still be open - a 9-year veteran
-    // who started a new role 6 months ago was previously scored as having
-    // ~0 years of experience.
-    const result = await query(
+const EXPERIENCE_PATTERN = /(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)/i;
+
+const scoreExperience = (userYears, jobText) => {
+  const expMatch = jobText?.match(EXPERIENCE_PATTERN);
+  const requiredYears = expMatch ? parseInt(expMatch[1], 10) : 3;
+
+  if (requiredYears === 0 || userYears >= requiredYears) return 1.0;
+  return Math.max(0.3, userYears / requiredYears);
+};
+
+const scoreLocation = (preferredLocations, jobLocation) => {
+  if (!preferredLocations || !preferredLocations.length) return 0.7;
+
+  if (preferredLocations.includes('Remote') && jobLocation?.toLowerCase().includes('remote')) {
+    return 1.0;
+  }
+
+  const matchFound = preferredLocations.some((loc) =>
+    jobLocation?.toLowerCase().includes(loc.toLowerCase())
+  );
+
+  return matchFound ? 1.0 : 0.6;
+};
+
+const scoreSalary = (userMin, userMax, salaryMin, salaryMax) => {
+  if (!userMin && !userMax) return 0.7;
+
+  const jobMin = salaryMin || 0;
+  const jobMax = salaryMax || jobMin * 1.5;
+
+  if (jobMin >= userMin && jobMax <= userMax) return 1.0;
+
+  const overlap = Math.max(0, Math.min(jobMax, userMax) - Math.max(jobMin, userMin));
+  if (overlap > 0) {
+    return Math.min(1.0, overlap / (userMax - userMin));
+  }
+
+  return Math.max(0.4, jobMax / userMin);
+};
+
+// Everything needed to score this user against any number of jobs, fetched
+// once instead of once per job - the previous version re-queried skills,
+// experience span, and preferences on every single job, which was fine at
+// a few dozen jobs but became ~5 DB round-trips x every active job (tens of
+// thousands after the source expansion), taking minutes per user.
+const getUserMatchContext = async (userId) => {
+  const [skillsResult, experienceResult, preferencesResult] = await Promise.all([
+    query('SELECT skill FROM user_skills WHERE user_id = $1', [userId]),
+    query(
       `SELECT MIN(start_date) as earliest_start, MAX(COALESCE(end_date, CURRENT_DATE)) as latest_end
        FROM user_experience WHERE user_id = $1 AND start_date IS NOT NULL`,
       [userId]
-    );
+    ),
+    query('SELECT preferred_locations, min_salary, max_salary FROM user_preferences WHERE user_id = $1', [userId]),
+  ]);
 
-    const { earliest_start: earliestStart, latest_end: latestEnd } = result.rows[0] || {};
-    const userYears = earliestStart
-      ? (new Date(latestEnd) - new Date(earliestStart)) / (1000 * 60 * 60 * 24 * 365.25)
-      : 0;
+  const userSkills = skillsResult.rows.map((r) => r.skill);
 
-    // Extract experience requirement from job description
-    const expPattern = /(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)/i;
-    const expMatch = jobDescription?.match(expPattern);
-    const requiredYears = expMatch ? parseInt(expMatch[1]) : 3;
+  const { earliest_start: earliestStart, latest_end: latestEnd } = experienceResult.rows[0] || {};
+  const userYears = earliestStart
+    ? (new Date(latestEnd) - new Date(earliestStart)) / (1000 * 60 * 60 * 24 * 365.25)
+    : 0;
 
-    // Score: 1.0 if meets requirement, decreases if below
-    if (requiredYears === 0 || userYears >= requiredYears) return 1.0;
-    return Math.max(0.3, userYears / requiredYears);
-  } catch (err) {
-    console.error('Experience score calculation error:', err);
-    return 0.5;
-  }
+  const prefs = preferencesResult.rows[0] || {};
+
+  return {
+    userSkills,
+    userYears,
+    preferredLocations: prefs.preferred_locations || [],
+    minSalary: prefs.min_salary,
+    maxSalary: prefs.max_salary,
+  };
 };
 
-const calculateLocationScore = async (userId, jobLocation) => {
-  try {
-    const result = await query(
-      'SELECT preferred_locations FROM user_preferences WHERE user_id = $1',
-      [userId]
-    );
+// Pure, in-memory scoring - no DB calls - so it's cheap to run against
+// thousands of jobs in a loop.
+const scoreJobAgainstContext = (job, context) => {
+  const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
 
-    if (!result.rows.length || !result.rows[0].preferred_locations) return 0.7;
+  const { score: skillsScore, matchedSkills } = calculateSkillsScore(context.userSkills, jobText);
+  const experienceScore = scoreExperience(context.userYears, jobText);
+  const locationScore = scoreLocation(context.preferredLocations, job.location);
+  const salaryScore = scoreSalary(context.minSalary, context.maxSalary, job.salary_min, job.salary_max);
 
-    const preferredLocs = result.rows[0].preferred_locations;
+  const overallScore = (
+    skillsScore * 0.40 +
+    experienceScore * 0.30 +
+    locationScore * 0.20 +
+    salaryScore * 0.10
+  );
 
-    // Check if job location matches preferred locations
-    if (preferredLocs.includes('Remote') && jobLocation?.toLowerCase().includes('remote')) {
-      return 1.0;
-    }
-
-    const matchFound = preferredLocs.some(loc =>
-      jobLocation?.toLowerCase().includes(loc.toLowerCase())
-    );
-
-    return matchFound ? 1.0 : 0.6;
-  } catch (err) {
-    console.error('Location score calculation error:', err);
-    return 0.7;
-  }
+  return {
+    overall_score: Math.min(1.0, Math.max(0, overallScore)),
+    skills_match_score: skillsScore,
+    experience_match_score: experienceScore,
+    location_match_score: locationScore,
+    salary_match_score: salaryScore,
+    match_details: {
+      user_skills: context.userSkills,
+      matched_skills: matchedSkills,
+    },
+  };
 };
 
-const calculateSalaryScore = async (userId, salaryMin, salaryMax) => {
-  try {
-    if (!salaryMin && !salaryMax) return 0.7;
-
-    const result = await query(
-      'SELECT min_salary, max_salary FROM user_preferences WHERE user_id = $1',
-      [userId]
-    );
-
-    if (!result.rows.length) return 0.7;
-
-    const { min_salary: userMin, max_salary: userMax } = result.rows[0];
-
-    if (!userMin && !userMax) return 0.7;
-
-    const jobMin = salaryMin || 0;
-    const jobMax = salaryMax || jobMin * 1.5;
-
-    // If job salary is within user's range, perfect score
-    if (jobMin >= userMin && jobMax <= userMax) {
-      return 1.0;
-    }
-
-    // Partial credit if there's overlap
-    const overlap = Math.max(0, Math.min(jobMax, userMax) - Math.max(jobMin, userMin));
-    if (overlap > 0) {
-      return Math.min(1.0, overlap / (userMax - userMin));
-    }
-
-    // Penalty if salary is below user's minimum
-    return Math.max(0.4, jobMax / userMin);
-  } catch (err) {
-    console.error('Salary score calculation error:', err);
-    return 0.7;
-  }
-};
-
+// Single-job lookup, kept for callers that only need one score (fetches its
+// own context - fine at this scale since it's one job, not thousands).
 const calculateJobMatch = async (userId, jobId) => {
-  try {
-    // Get job details
-    const jobResult = await query(
-      'SELECT title, description, requirements, salary_min, salary_max, location FROM jobs WHERE id = $1',
-      [jobId]
+  const jobResult = await query(
+    'SELECT title, description, requirements, salary_min, salary_max, location FROM jobs WHERE id = $1',
+    [jobId]
+  );
+
+  if (!jobResult.rows.length) {
+    throw new Error('Job not found');
+  }
+
+  const context = await getUserMatchContext(userId);
+  return scoreJobAgainstContext(jobResult.rows[0], context);
+};
+
+const MATCH_THRESHOLD = 0.3;
+const UPSERT_CHUNK_SIZE = 500;
+
+// Batches the upsert into chunks of multi-row INSERT...ON CONFLICT statements
+// instead of one round-trip per job - the previous version issued one INSERT
+// per matched job, which at thousands of matches was most of the recalculate
+// endpoint's latency on its own.
+const upsertMatchesBatch = async (userId, rows) => {
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
+    const values = [];
+    const placeholders = chunk.map((row, idx) => {
+      const base = idx * 8;
+      values.push(
+        userId,
+        row.jobId,
+        row.overall_score,
+        row.skills_match_score,
+        row.experience_match_score,
+        row.location_match_score,
+        row.salary_match_score,
+        JSON.stringify(row.match_details)
+      );
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+    });
+
+    await query(
+      `INSERT INTO job_matches (user_id, job_id, overall_score, skills_match_score,
+       experience_match_score, location_match_score, salary_match_score, match_details)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT (user_id, job_id) DO UPDATE SET
+       overall_score = EXCLUDED.overall_score,
+       skills_match_score = EXCLUDED.skills_match_score,
+       experience_match_score = EXCLUDED.experience_match_score,
+       location_match_score = EXCLUDED.location_match_score,
+       salary_match_score = EXCLUDED.salary_match_score,
+       match_details = EXCLUDED.match_details,
+       calculated_at = CURRENT_TIMESTAMP`,
+      values
     );
-
-    if (!jobResult.rows.length) {
-      throw new Error('Job not found');
-    }
-
-    const job = jobResult.rows[0];
-
-    // Get user skills
-    const skillsResult = await query(
-      'SELECT skill FROM user_skills WHERE user_id = $1',
-      [userId]
-    );
-
-    const userSkills = skillsResult.rows.map(r => r.skill);
-    const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
-
-    // Calculate individual scores
-    const { score: skillsScore, matchedSkills } = calculateSkillsScore(userSkills, jobText);
-    const experienceScore = await calculateExperienceScore(userId, jobText);
-    const locationScore = await calculateLocationScore(userId, job.location);
-    const salaryScore = await calculateSalaryScore(userId, job.salary_min, job.salary_max);
-
-    // Weighted overall score
-    const overallScore = (
-      skillsScore * 0.40 +
-      experienceScore * 0.30 +
-      locationScore * 0.20 +
-      salaryScore * 0.10
-    );
-
-    return {
-      overall_score: Math.min(1.0, Math.max(0, overallScore)),
-      skills_match_score: skillsScore,
-      experience_match_score: experienceScore,
-      location_match_score: locationScore,
-      salary_match_score: salaryScore,
-      match_details: {
-        user_skills: userSkills,
-        matched_skills: matchedSkills,
-      },
-    };
-  } catch (err) {
-    console.error('Job match calculation error:', err);
-    throw err;
   }
 };
 
 const calculateMatchesForUser = async (userId) => {
   try {
-    // Get all active jobs
-    const jobsResult = await query(
-      'SELECT id FROM jobs WHERE is_active = true',
-      []
-    );
+    const [context, jobsResult] = await Promise.all([
+      getUserMatchContext(userId),
+      query(
+        `SELECT id, title, description, requirements, salary_min, salary_max, location
+         FROM jobs WHERE is_active = true`
+      ),
+    ]);
 
-    const jobs = jobsResult.rows;
-    let matchesCreated = 0;
-
-    for (const job of jobs) {
-      try {
-        const matchScore = await calculateJobMatch(userId, job.id);
-
-        // Only store matches with score > 0.3 to avoid noise
-        if (matchScore.overall_score > 0.3) {
-          await query(
-            `INSERT INTO job_matches (user_id, job_id, overall_score, skills_match_score,
-             experience_match_score, location_match_score, salary_match_score, match_details)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (user_id, job_id) DO UPDATE SET
-            overall_score = $3, skills_match_score = $4, experience_match_score = $5,
-            location_match_score = $6, salary_match_score = $7, match_details = $8,
-            calculated_at = CURRENT_TIMESTAMP`,
-            [
-              userId,
-              job.id,
-              matchScore.overall_score,
-              matchScore.skills_match_score,
-              matchScore.experience_match_score,
-              matchScore.location_match_score,
-              matchScore.salary_match_score,
-              JSON.stringify(matchScore.match_details),
-            ]
-          );
-
-          matchesCreated++;
-        }
-      } catch (err) {
-        console.error(`Error calculating match for job ${job.id}:`, err);
+    const matchedRows = [];
+    for (const job of jobsResult.rows) {
+      const score = scoreJobAgainstContext(job, context);
+      if (score.overall_score > MATCH_THRESHOLD) {
+        matchedRows.push({ jobId: job.id, ...score });
       }
     }
 
-    return { matchesCreated };
+    await upsertMatchesBatch(userId, matchedRows);
+
+    return { matchesCreated: matchedRows.length };
   } catch (err) {
     console.error('Calculate matches for user error:', err);
     throw err;
