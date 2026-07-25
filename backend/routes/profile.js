@@ -205,23 +205,31 @@ router.put('/preferences', async (req, res) => {
     const autoApplyMinScore = pick('autoApplyMinScore', existing.auto_apply_min_score || 0.75);
     const blacklistCompanies = pick('blacklistCompanies', existing.blacklist_companies || []);
     const dreamCompanies = pick('dreamCompanies', existing.dream_companies || []);
+    const resumeTailorMode = pick('resumeTailorMode', existing.resume_tailor_mode || 'honest');
+    const autoTailorResume = pick('autoTailorResume', existing.auto_tailor_resume ?? true);
+    const coverLetterMode = pick('coverLetterMode', existing.cover_letter_mode || 'always');
+    const reviewBeforeSubmit = pick('reviewBeforeSubmit', existing.review_before_submit || false);
 
     const result = await query(
       `INSERT INTO user_preferences (
          user_id, min_salary, max_salary, job_types, work_arrangements, preferred_locations,
          default_roles, excluded_keywords, include_relocation, auto_apply_enabled,
-         auto_apply_limit_per_day, auto_apply_min_score, blacklist_companies, dream_companies
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         auto_apply_limit_per_day, auto_apply_min_score, blacklist_companies, dream_companies,
+         resume_tailor_mode, auto_tailor_resume, cover_letter_mode, review_before_submit
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        ON CONFLICT (user_id) DO UPDATE SET
          min_salary = $2, max_salary = $3, job_types = $4, work_arrangements = $5,
          preferred_locations = $6, default_roles = $7, excluded_keywords = $8, include_relocation = $9,
          auto_apply_enabled = $10, auto_apply_limit_per_day = $11, auto_apply_min_score = $12,
-         blacklist_companies = $13, dream_companies = $14, updated_at = CURRENT_TIMESTAMP
+         blacklist_companies = $13, dream_companies = $14, resume_tailor_mode = $15,
+         auto_tailor_resume = $16, cover_letter_mode = $17, review_before_submit = $18,
+         updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
         req.user.id, minSalary, maxSalary, jobTypes, workArrangements, preferredLocations,
         defaultRoles, excludedKeywords, !!includeRelocation, !!autoApplyEnabled,
         autoApplyLimitPerDay, autoApplyMinScore, blacklistCompanies, dreamCompanies,
+        resumeTailorMode, !!autoTailorResume, coverLetterMode, !!reviewBeforeSubmit,
       ]
     );
 

@@ -22,7 +22,7 @@ const runCycle = async (label) => {
 
   try {
     const result = await runAutoApplyForAllUsers();
-    console.log(`${label} - auto-apply: ${result.usersProcessed} users, ${result.totalApplied} applications sent, ${result.totalFlagged} flagged for review`);
+    console.log(`${label} - auto-apply: ${result.usersProcessed} users, ${result.totalApplied} applications sent, ${result.totalPendingReview} pending review, ${result.totalFlagged} flagged for dream companies`);
   } catch (err) {
     console.error(`${label} - auto-apply error:`, err);
   }

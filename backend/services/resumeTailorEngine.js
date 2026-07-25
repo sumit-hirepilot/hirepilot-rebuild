@@ -9,32 +9,48 @@ const SKILLS_HEADER_RE = /^(core\s+|key\s+|technical\s+)?skills?\s*(&\s*tools)?\
 // either into an existing Skills section or as a new section at the end.
 // This is honest ATS keyword-gap fixing, not an AI rewrite (no LLM is
 // configured for this app).
-function buildTailoredText(originalText, jobText) {
+//
+// mode:
+//   'off'        - no changes at all, tailoredText === originalText
+//   'honest'     - (default) only add skills the job mentions that the
+//                  resume doesn't already contain
+//   'aggressive' - also restates skills the resume already has that the job
+//                  cares about, increasing their keyword prominence/density
+//                  for ATS scanning - still never invents anything the
+//                  candidate doesn't actually have
+function buildTailoredText(originalText, jobText, mode = 'honest') {
   const jobSkills = extractSkills(jobText);
   const resumeSkills = extractSkills(originalText);
   const missing = jobSkills.filter((s) => !resumeSkills.includes(s));
   const matched = jobSkills.filter((s) => resumeSkills.includes(s));
 
-  if (!missing.length) {
+  if (mode === 'off') {
+    return { tailoredText: originalText, addedSkills: [], matchedSkills: matched };
+  }
+
+  const toAdd = mode === 'aggressive' ? [...missing, ...matched] : missing;
+
+  if (!toAdd.length) {
     return { tailoredText: originalText, addedSkills: [], matchedSkills: matched };
   }
 
   const lines = originalText.split('\n');
   const headerIdx = lines.findIndex((line) => SKILLS_HEADER_RE.test(line.trim()));
+  const label = mode === 'aggressive' ? 'Key skills for this role' : 'Additional relevant skills for this role';
 
   let tailoredText;
   if (headerIdx !== -1) {
-    const insertion = `Additional relevant skills for this role: ${missing.join(', ')}`;
+    const insertion = `${label}: ${toAdd.join(', ')}`;
     tailoredText = [
       ...lines.slice(0, headerIdx + 1),
       insertion,
       ...lines.slice(headerIdx + 1),
     ].join('\n');
   } else {
-    tailoredText = `${originalText.replace(/\s+$/, '')}\n\nRELEVANT SKILLS FOR THIS ROLE\n${missing.join(', ')}`;
+    tailoredText = `${originalText.replace(/\s+$/, '')}\n\n${label.toUpperCase()}\n${toAdd.join(', ')}`;
   }
 
-  return { tailoredText, addedSkills: missing, matchedSkills: matched };
+  return { tailoredText, addedSkills: mode === 'aggressive' ? toAdd : missing, matchedSkills: matched };
 }
 
 // Produces a word-level diff between original and tailored text. Because

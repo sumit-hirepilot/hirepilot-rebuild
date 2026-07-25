@@ -282,13 +282,14 @@ router.post('/tailor', async (req, res) => {
     const { jobId } = req.body;
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
-    const [jobResult, resumeResult] = await Promise.all([
+    const [jobResult, resumeResult, prefsResult] = await Promise.all([
       query('SELECT title, company_name, description, requirements FROM jobs WHERE id = $1', [jobId]),
       query(
         `SELECT id, original_file_text FROM resumes WHERE user_id = $1
          ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
         [req.user.id]
       ),
+      query('SELECT resume_tailor_mode FROM user_preferences WHERE user_id = $1', [req.user.id]),
     ]);
 
     if (!jobResult.rows.length) return res.status(404).json({ error: 'Job not found' });
@@ -301,9 +302,10 @@ router.post('/tailor', async (req, res) => {
     job.company_name = fixMojibake(job.company_name);
     const resume = resumeResult.rows[0];
     const originalText = resume.original_file_text;
+    const tailorMode = prefsResult.rows[0]?.resume_tailor_mode || 'honest';
 
     const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
-    const { tailoredText, addedSkills, matchedSkills } = buildTailoredText(originalText, jobText);
+    const { tailoredText, addedSkills, matchedSkills } = buildTailoredText(originalText, jobText, tailorMode);
     const diff = diffTailoring(originalText, tailoredText);
     const { score } = checkAts(jobText, tailoredText);
 

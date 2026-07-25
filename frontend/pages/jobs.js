@@ -7,6 +7,35 @@ import page from '../styles/Jobs.module.css';
 
 const PAGE_SIZE = 20;
 
+function ChipInput({ values, onChange, placeholder, className }) {
+  const [draft, setDraft] = useState('');
+  const addChip = () => {
+    const v = draft.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setDraft('');
+  };
+  return (
+    <div className={`${page.chipInputWrap} ${className || ''}`}>
+      {values.map((v) => (
+        <span key={v} className={page.chip}>
+          {v}
+          <button type="button" onClick={() => onChange(values.filter((x) => x !== v))}>&times;</button>
+        </span>
+      ))}
+      <input
+        className={page.chipInputField}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addChip(); }
+        }}
+        onBlur={addChip}
+        placeholder={values.length ? '' : placeholder}
+      />
+    </div>
+  );
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return 'never';
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -25,9 +54,14 @@ export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page_, setPage] = useState(1);
-  const [keyword, setKeyword] = useState('');
+  const [keywords, setKeywords] = useState([]);
+  const [excludeTerms, setExcludeTerms] = useState([]);
+  const [scope, setScope] = useState('title_description');
   const [experience, setExperience] = useState('');
   const [location, setLocation] = useState('');
+  const [datePosted, setDatePosted] = useState('');
+  const [jobType, setJobType] = useState('');
+  const [company, setCompany] = useState('');
   const [loading, setLoading] = useState(true);
   const [appliedIds, setAppliedIds] = useState(new Set());
   const [matchByJobId, setMatchByJobId] = useState({});
@@ -53,14 +87,24 @@ export default function Jobs() {
         limit: String(PAGE_SIZE),
         page: String(params.page ?? page_),
       });
-      const kw = params.keyword ?? keyword;
+      const kws = params.keywords ?? keywords;
+      const excl = params.excludeTerms ?? excludeTerms;
+      const scp = params.scope ?? scope;
       const exp = params.experience ?? experience;
       const loc = params.location ?? location;
       const related = params.includeRelated ?? includeRelated;
-      if (kw) qs.set('search', kw);
+      const dp = params.datePosted ?? datePosted;
+      const jt = params.jobType ?? jobType;
+      const co = params.company ?? company;
+      kws.forEach((k) => k && qs.append('keywords', k));
+      excl.forEach((e) => e && qs.append('exclude', e));
+      if (scp) qs.set('scope', scp);
       if (exp) qs.set('experience', exp);
       if (loc) qs.set('location', loc);
       if (related) qs.set('includeRelated', 'true');
+      if (dp) qs.set('datePosted', dp);
+      if (jt) qs.set('jobType', jt);
+      if (co) qs.set('company', co);
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
         fetch(`${base}/api/jobs?${qs.toString()}`),
@@ -117,9 +161,10 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keyword, experience, location, includeRelated]);
+  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobType, company]);
 
   useEffect(() => {
+    if (!router.isReady) return;
     const authToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
     if (!authToken || !storedUser) {
@@ -128,9 +173,16 @@ export default function Jobs() {
     }
     setUser(JSON.parse(storedUser));
     setToken(authToken);
-    loadJobs(authToken, { page: 1 });
+
+    // Deep-link support for the header search (⌘K) which navigates to
+    // /jobs?search=X - seed the keyword chips from it on first load.
+    const initialSearch = router.query.search;
+    const initialKeywords = initialSearch ? [String(initialSearch)] : keywords;
+    if (initialSearch) setKeywords(initialKeywords);
+
+    loadJobs(authToken, { page: 1, keywords: initialKeywords });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router.isReady]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -291,26 +343,16 @@ export default function Jobs() {
 
       <DashboardLayout title="Jobs" user={user}>
         <form onSubmit={handleSearch} className={page.searchBar}>
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Enter keyword / title"
-            className={page.searchInput}
-          />
-          <select value={experience} onChange={(e) => setExperience(e.target.value)} className={page.expSelect}>
-            <option value="">Select experience</option>
-            <option value="entry">Entry level</option>
-            <option value="mid">Mid level</option>
-            <option value="senior">Senior</option>
-            <option value="staff">Staff+</option>
+          <select value={scope} onChange={(e) => setScope(e.target.value)} className={page.scopeSelect} title="Match keyword in">
+            <option value="title">Job title</option>
+            <option value="title_description">Title + description</option>
+            <option value="description">Description</option>
           </select>
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Enter location"
-            className={page.locInput}
+          <ChipInput
+            values={keywords}
+            onChange={setKeywords}
+            placeholder="Enter keyword / title, press Enter to add another"
+            className={page.searchInput}
           />
           <button type="submit" className={page.searchButton}>Search</button>
           <label className={page.relatedToggle}>
@@ -326,6 +368,67 @@ export default function Jobs() {
             Include related jobs
           </label>
         </form>
+
+        <div className={page.excludeRow}>
+          <span className={page.excludeLabel}>Exclude</span>
+          <ChipInput
+            values={excludeTerms}
+            onChange={setExcludeTerms}
+            placeholder="Hide jobs mentioning..."
+            className={page.excludeInput}
+          />
+        </div>
+
+        <div className={page.filterRow}>
+          <select value={experience} onChange={(e) => setExperience(e.target.value)} className={page.expSelect}>
+            <option value="">Experience</option>
+            <option value="entry">Entry level</option>
+            <option value="mid">Mid level</option>
+            <option value="senior">Senior</option>
+            <option value="staff">Staff+</option>
+          </select>
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Location"
+            className={page.locInput}
+          />
+          <select value={datePosted} onChange={(e) => setDatePosted(e.target.value)} className={page.expSelect}>
+            <option value="">Date posted</option>
+            <option value="24h">Past 24 hours</option>
+            <option value="3d">Past 3 days</option>
+            <option value="7d">Past 7 days</option>
+            <option value="30d">Past 30 days</option>
+          </select>
+          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className={page.expSelect}>
+            <option value="">Employment type</option>
+            <option value="full-time">Full-time</option>
+            <option value="part-time">Part-time</option>
+            <option value="contract">Contract</option>
+            <option value="internship">Internship</option>
+          </select>
+          <input
+            type="text"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            placeholder="Company"
+            className={page.locInput}
+          />
+          {(experience || location || datePosted || jobType || company) && (
+            <button
+              type="button"
+              className={page.clearFiltersButton}
+              onClick={() => {
+                setExperience(''); setLocation(''); setDatePosted(''); setJobType(''); setCompany('');
+                setPage(1);
+                loadJobs(token, { page: 1, experience: '', location: '', datePosted: '', jobType: '', company: '' });
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
 
         <div className={page.headerRow}>
           <h1 className={styles.greeting} style={{ margin: 0 }}>Jobs</h1>
@@ -385,7 +488,7 @@ export default function Jobs() {
               {showSavedOnly
                 ? 'No saved jobs yet. Click the star on any job to save it for later.'
                 : noExactMatches
-                  ? `No exact matches for "${keyword}".${relatedTotal > 0 ? ' See related jobs below, or search a different title.' : ' Try a different search term.'}`
+                  ? `No exact matches for "${keywords.join(', ')}".${relatedTotal > 0 ? ' See related jobs below, or search a different title.' : ' Try a different search term.'}`
                   : 'No jobs found. Try a different search term.'}
             </p>
           ) : (

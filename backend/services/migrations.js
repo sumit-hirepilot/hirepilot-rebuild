@@ -117,6 +117,16 @@ const STATEMENTS = [
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS diff_json JSONB`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS final_text TEXT`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP`,
+
+  // Auto-Pilot behavior controls: how aggressively to inject missing
+  // keywords into tailored resumes, whether to auto-generate a cover letter
+  // only when a posting actually asks for one, and whether auto-applied
+  // jobs need your approval before they're marked as actually applied.
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS resume_tailor_mode VARCHAR(20) DEFAULT 'honest'`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS auto_tailor_resume BOOLEAN DEFAULT true`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS cover_letter_mode VARCHAR(20) DEFAULT 'always'`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS review_before_submit BOOLEAN DEFAULT false`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS tailored_resume_id INTEGER REFERENCES tailored_resumes(id) ON DELETE SET NULL`,
 ];
 
 const runMigrations = async () => {

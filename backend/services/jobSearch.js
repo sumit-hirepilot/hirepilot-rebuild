@@ -50,39 +50,53 @@ function expandSearchPhrases(rawSearch) {
 }
 
 // Builds a WHERE fragment (and appends bind params) that classifies each job
-// into a relevance tier for the given search phrases:
-//   1 = title contains one of the phrases verbatim, word-bounded (best match)
-//   2 = title contains every word of at least one phrase (words may be
-//       scattered, e.g. "Product Designer (Senior)")
-//   3 = every word of at least one phrase appears somewhere in title OR
-//       description (broad/related match)
-// All matches are word-boundary-anchored (never a raw substring), so short
-// tokens like "pm" can't match inside unrelated words.
-function buildSearchTiering(rawSearch, params) {
-  const phrases = expandSearchPhrases(rawSearch);
+// into a relevance tier across one or more keyword "chips" (OR'd together -
+// a job matching any chip at tier 1 is tier 1 overall):
+//   1 = a chip's phrase appears verbatim, word-bounded (best match)
+//   2 = every word of a chip's phrase appears in the scoped field(s)
+//       (words may be scattered, e.g. "Product Designer (Senior)")
+//   3 = every word of a chip's phrase appears somewhere across title/
+//       description per the scope (broad/related match)
+// `scope` controls which field(s) are searched: 'title' (title only),
+// 'description' (description only), or 'title_description' (default -
+// tier 1/2 match the title, tier 3 also allows the description).
+function buildSearchTiering(rawSearchInput, params, options = {}) {
+  const scope = options.scope === 'title' || options.scope === 'description' ? options.scope : 'title_description';
+  const keywords = (Array.isArray(rawSearchInput) ? rawSearchInput : [rawSearchInput])
+    .filter((k) => k && k.trim());
 
   const tier1Conditions = [];
   const tier2Conditions = [];
   const tier3Conditions = [];
 
-  for (const phrase of phrases) {
-    const words = phrase.split(' ').filter(Boolean).slice(0, 6);
-    if (!words.length) continue;
+  const primaryField = scope === 'description' ? 'description' : 'title';
 
-    params.push(wordBoundaryPattern(phrase));
-    tier1Conditions.push(`title ~* $${params.length}`);
+  for (const rawSearch of keywords) {
+    const phrases = expandSearchPhrases(rawSearch);
 
-    const titleWordConds = words.map((w) => {
-      params.push(wordBoundaryPattern(w));
-      return `title ~* $${params.length}`;
-    });
-    tier2Conditions.push(`(${titleWordConds.join(' AND ')})`);
+    for (const phrase of phrases) {
+      const words = phrase.split(' ').filter(Boolean).slice(0, 6);
+      if (!words.length) continue;
 
-    const anyWordConds = words.map((w) => {
-      params.push(wordBoundaryPattern(w), wordBoundaryPattern(w));
-      return `(title ~* $${params.length - 1} OR description ~* $${params.length})`;
-    });
-    tier3Conditions.push(`(${anyWordConds.join(' AND ')})`);
+      params.push(wordBoundaryPattern(phrase));
+      tier1Conditions.push(`${primaryField} ~* $${params.length}`);
+
+      const titleWordConds = words.map((w) => {
+        params.push(wordBoundaryPattern(w));
+        return `${primaryField} ~* $${params.length}`;
+      });
+      tier2Conditions.push(`(${titleWordConds.join(' AND ')})`);
+
+      const anyWordConds = words.map((w) => {
+        if (scope === 'title_description') {
+          params.push(wordBoundaryPattern(w), wordBoundaryPattern(w));
+          return `(title ~* $${params.length - 1} OR description ~* $${params.length})`;
+        }
+        params.push(wordBoundaryPattern(w));
+        return `${primaryField} ~* $${params.length}`;
+      });
+      tier3Conditions.push(`(${anyWordConds.join(' AND ')})`);
+    }
   }
 
   const tier1Expr = tier1Conditions.length ? `(${tier1Conditions.join(' OR ')})` : 'FALSE';
@@ -93,10 +107,25 @@ function buildSearchTiering(rawSearch, params) {
 
   return {
     tierCaseExpr,
-    narrowCondition: `(${tier1Expr} OR ${tier2Expr})`, // exact + title-word matches only
+    narrowCondition: `(${tier1Expr} OR ${tier2Expr})`, // exact + word matches only
     relatedOnlyCondition: `(${tier3Expr} AND NOT (${tier1Expr} OR ${tier2Expr}))`, // strictly the "related" tier
     broadCondition: `(${tier1Expr} OR ${tier2Expr} OR ${tier3Expr})`,
   };
 }
 
-module.exports = { expandSearchPhrases, buildSearchTiering, normalizePhrase };
+// Builds a "NOT present" condition for a list of excluded terms (e.g. "Hide
+// jobs mentioning..."). A job is excluded if ANY term word-boundary-matches
+// its title or description.
+function buildExcludeCondition(excludeTerms, params) {
+  const terms = (excludeTerms || []).filter((t) => t && t.trim());
+  if (!terms.length) return null;
+
+  const conds = terms.map((term) => {
+    params.push(wordBoundaryPattern(term.trim()), wordBoundaryPattern(term.trim()));
+    return `(title ~* $${params.length - 1} OR description ~* $${params.length})`;
+  });
+
+  return `NOT (${conds.join(' OR ')})`;
+}
+
+module.exports = { expandSearchPhrases, buildSearchTiering, buildExcludeCondition, normalizePhrase };

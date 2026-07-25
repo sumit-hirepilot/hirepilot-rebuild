@@ -3,7 +3,7 @@ const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
-const { buildSearchTiering } = require('../services/jobSearch');
+const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
 
 const router = express.Router();
 
@@ -120,8 +120,22 @@ const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, loca
 
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, source, location, experience, includeRelated } = req.query;
+    const {
+      page = 1, limit = 20, search, source, location, experience, includeRelated,
+      scope, datePosted, jobType, company,
+    } = req.query;
     const offset = (page - 1) * limit;
+
+    // Multiple keyword "chips" - accepts repeated ?keywords=X&keywords=Y, or
+    // falls back to the single ?search= param for backward compatibility
+    // (search agents and other internal callers still use `search`).
+    const rawKeywords = req.query.keywords;
+    const keywords = rawKeywords
+      ? (Array.isArray(rawKeywords) ? rawKeywords : [rawKeywords])
+      : (search ? [search] : []);
+
+    const rawExclude = req.query.exclude;
+    const excludeTerms = rawExclude ? (Array.isArray(rawExclude) ? rawExclude : [rawExclude]) : [];
 
     const params = [];
     let filterClause = 'is_active = true';
@@ -136,6 +150,22 @@ router.get('/', async (req, res) => {
       filterClause += ` AND location ILIKE $${params.length}`;
     }
 
+    if (company) {
+      params.push(`%${company}%`);
+      filterClause += ` AND company_name ILIKE $${params.length}`;
+    }
+
+    if (jobType) {
+      params.push(jobType);
+      filterClause += ` AND job_type = $${params.length}`;
+    }
+
+    if (datePosted) {
+      const intervalMap = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
+      const interval = intervalMap[datePosted];
+      if (interval) filterClause += ` AND posted_at >= CURRENT_TIMESTAMP - INTERVAL '${interval}'`;
+    }
+
     if (experience === 'senior') {
       filterClause += ` AND title ~* '(senior|sr\\.?|lead|head of)'`;
     } else if (experience === 'staff') {
@@ -146,13 +176,16 @@ router.get('/', async (req, res) => {
       filterClause += ` AND title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`;
     }
 
+    const excludeCondition = buildExcludeCondition(excludeTerms, params);
+    if (excludeCondition) filterClause += ` AND ${excludeCondition}`;
+
     let jobs = [];
     let total = 0;
     let relatedJobs = [];
     let relatedTotal = 0;
     let noExactMatches = false;
 
-    if (search && search.trim()) {
+    if (keywords.some((k) => k && k.trim())) {
       // Rank exact title matches (tier 1) above title-word matches (tier 2)
       // above broad title-or-description matches (tier 3, "related" -
       // excluded from the default result set entirely unless requested).
@@ -164,7 +197,7 @@ router.get('/', async (req, res) => {
       // dropped the tier-3-only params while still receiving the full array
       // would error. Routing everything through one CTE keeps every query
       // referencing every param, consistently.
-      const tiering = buildSearchTiering(search, params);
+      const tiering = buildSearchTiering(keywords, params, { scope });
       const wantRelated = includeRelated === 'true';
 
       const scoredCte = `WITH scored AS (

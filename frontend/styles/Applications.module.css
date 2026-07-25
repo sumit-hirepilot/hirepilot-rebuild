@@ -196,3 +196,71 @@
   opacity: 0.6;
   cursor: default;
 }
+
+.pendingReviewSection {
+  border-radius: 16px;
+  border: 1px solid var(--primary);
+  background-color: rgba(232, 163, 61, 0.06);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.pendingReviewTitle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 0 0 0.875rem;
+}
+
+.pendingReviewRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.pendingReviewRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pendingReviewActions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.approveButton {
+  padding: 0.4rem 0.875rem;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approveButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.discardButton {
+  padding: 0.4rem 0.875rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--error);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.discardButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

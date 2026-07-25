@@ -23,9 +23,11 @@ export default function Applications() {
   const [kanban, setKanban] = useState(null);
   const [rejected, setRejected] = useState([]);
   const [failed, setFailed] = useState([]);
+  const [pendingReview, setPendingReview] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('grid');
   const [retrying, setRetrying] = useState(null);
+  const [reviewing, setReviewing] = useState(null);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -40,6 +42,7 @@ export default function Applications() {
         setKanban(data.kanban);
         setRejected(data.rejected || []);
         setFailed(data.failed || []);
+        setPendingReview(data.pendingReview || []);
       }
     } catch (err) {
       console.error('Failed to load applications', err);
@@ -60,6 +63,36 @@ export default function Applications() {
       console.error('Failed to retry application', err);
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const handleApprove = async (applicationId) => {
+    setReviewing(applicationId);
+    try {
+      const res = await fetch(`${base}/api/applications/${applicationId}/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) await loadApplications(token);
+    } catch (err) {
+      console.error('Failed to approve application', err);
+    } finally {
+      setReviewing(null);
+    }
+  };
+
+  const handleDiscard = async (applicationId) => {
+    setReviewing(applicationId);
+    try {
+      const res = await fetch(`${base}/api/applications/${applicationId}/discard`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) await loadApplications(token);
+    } catch (err) {
+      console.error('Failed to discard application', err);
+    } finally {
+      setReviewing(null);
     }
   };
 
@@ -134,6 +167,38 @@ export default function Applications() {
             </button>
           </div>
         </div>
+
+        {pendingReview.length > 0 && (
+          <div className={page.pendingReviewSection}>
+            <p className={page.pendingReviewTitle}>
+              Pending your review ({pendingReview.length}) - Auto-Pilot drafted these, approve to actually mark them applied
+            </p>
+            {pendingReview.map((app) => (
+              <div key={app.id} className={page.pendingReviewRow}>
+                <div>
+                  <p className={page.roleCell} style={{ marginBottom: '0.125rem' }}>{app.title}</p>
+                  <p className={styles.emptyState} style={{ margin: 0, fontSize: '0.75rem' }}>{app.company_name}</p>
+                </div>
+                <div className={page.pendingReviewActions}>
+                  <button
+                    className={page.approveButton}
+                    onClick={() => handleApprove(app.id)}
+                    disabled={reviewing === app.id}
+                  >
+                    {reviewing === app.id ? 'Working...' : 'Approve'}
+                  </button>
+                  <button
+                    className={page.discardButton}
+                    onClick={() => handleDiscard(app.id)}
+                    disabled={reviewing === app.id}
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>

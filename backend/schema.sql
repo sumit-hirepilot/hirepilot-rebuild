@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   auto_apply_min_score DECIMAL(3,2) DEFAULT 0.75,
   blacklist_companies VARCHAR(255)[] DEFAULT '{}',
   dream_companies VARCHAR(255)[] DEFAULT '{}',
+  resume_tailor_mode VARCHAR(20) DEFAULT 'honest', -- off, honest, aggressive
+  auto_tailor_resume BOOLEAN DEFAULT TRUE,
+  cover_letter_mode VARCHAR(20) DEFAULT 'always', -- always, when_requested, off
+  review_before_submit BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

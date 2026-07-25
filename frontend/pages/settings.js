@@ -48,6 +48,8 @@ export default function Settings() {
     defaultRoles: [], preferredLocations: [], workArrangements: [],
     autoApplyEnabled: false, autoApplyLimitPerDay: 10, autoApplyMinScore: 75,
     blacklistCompanies: [], dreamCompanies: [],
+    resumeTailorMode: 'honest', autoTailorResume: true,
+    coverLetterMode: 'always', reviewBeforeSubmit: false,
   });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [runningAutoPilot, setRunningAutoPilot] = useState(false);
@@ -77,6 +79,10 @@ export default function Settings() {
             autoApplyMinScore: Math.round((data.preferences.auto_apply_min_score || 0.75) * 100),
             blacklistCompanies: data.preferences.blacklist_companies || [],
             dreamCompanies: data.preferences.dream_companies || [],
+            resumeTailorMode: data.preferences.resume_tailor_mode || 'honest',
+            autoTailorResume: data.preferences.auto_tailor_resume !== false,
+            coverLetterMode: data.preferences.cover_letter_mode || 'always',
+            reviewBeforeSubmit: data.preferences.review_before_submit || false,
           });
         }
       }
@@ -162,6 +168,10 @@ export default function Settings() {
         autoApplyMinScore: preferences.autoApplyMinScore / 100,
         blacklistCompanies: preferences.blacklistCompanies,
         dreamCompanies: preferences.dreamCompanies,
+        resumeTailorMode: preferences.resumeTailorMode,
+        autoTailorResume: preferences.autoTailorResume,
+        coverLetterMode: preferences.coverLetterMode,
+        reviewBeforeSubmit: preferences.reviewBeforeSubmit,
         ...extra,
       }),
     });
@@ -330,6 +340,75 @@ export default function Settings() {
               onChange={(e) => setPreferences((p) => ({ ...p, autoApplyMinScore: Number(e.target.value) }))}
               className={page.slider}
             />
+
+            <div className={page.formGroup} style={{ marginTop: '1rem' }}>
+              <label>Resume tailoring</label>
+              <div className={page.chipRow}>
+                {[
+                  { value: 'off', label: 'Off' },
+                  { value: 'honest', label: 'Honest' },
+                  { value: 'aggressive', label: 'Aggressive' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={preferences.resumeTailorMode === opt.value ? page.toggleChipActive : page.toggleChip}
+                    onClick={() => setPreferences((p) => ({ ...p, resumeTailorMode: opt.value }))}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className={page.masterSubtitle} style={{ marginTop: '0.375rem' }}>
+                Honest only adds skills the job asks for that your resume is missing. Aggressive also restates skills you already have to boost keyword density. Never invents skills you don&apos;t have.
+              </p>
+            </div>
+
+            <div className={page.masterRow}>
+              <div>
+                <p className={page.masterTitle}>Auto-tailor resume for Auto-Pilot applications</p>
+                <p className={page.masterSubtitle}>Generates a tailored resume version for every job Auto-Pilot applies to.</p>
+              </div>
+              <button
+                type="button"
+                className={preferences.autoTailorResume ? page.toggleOn : page.toggleOff}
+                onClick={() => setPreferences((p) => ({ ...p, autoTailorResume: !p.autoTailorResume }))}
+              >
+                <span />
+              </button>
+            </div>
+
+            <div className={page.formGroup}>
+              <label>Cover letter</label>
+              <select
+                className={page.input}
+                value={preferences.coverLetterMode}
+                onChange={(e) => setPreferences((p) => ({ ...p, coverLetterMode: e.target.value }))}
+              >
+                <option value="always">Always generate one</option>
+                <option value="when_requested">Only when the job asks for one</option>
+                <option value="off">Never</option>
+              </select>
+            </div>
+
+            <div className={page.masterRow}>
+              <div>
+                <p className={page.masterTitle}>Review before submit</p>
+                <p className={page.masterSubtitle}>
+                  When on, Auto-Pilot applications wait in a Pending Review queue on the Applications page for you to
+                  approve before they count as applied. Note: this governs HirePilot&apos;s own internal tracking only -
+                  this app has never submitted real forms on external ATS platforms (Greenhouse, Workday, etc.) on your
+                  behalf; &quot;applying&quot; here has always meant creating a tracked record with your tailored materials.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={preferences.reviewBeforeSubmit ? page.toggleOn : page.toggleOff}
+                onClick={() => setPreferences((p) => ({ ...p, reviewBeforeSubmit: !p.reviewBeforeSubmit }))}
+              >
+                <span />
+              </button>
+            </div>
 
             <div className={page.formGroup} style={{ marginTop: '1rem' }}>
               <label>Blacklist companies</label>

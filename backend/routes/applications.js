@@ -37,12 +37,15 @@ router.get('/', verifyToken, async (req, res) => {
     };
     const rejected = [];
     const failed = [];
+    const pendingReview = [];
 
     for (const app of result.rows) {
       if (app.status === 'rejected') {
         rejected.push(app);
       } else if (app.status === 'failed') {
         failed.push(app);
+      } else if (app.status === 'pending_review') {
+        pendingReview.push(app);
       } else if (kanban[app.status]) {
         kanban[app.status].push(app);
       }
@@ -53,6 +56,7 @@ router.get('/', verifyToken, async (req, res) => {
       kanban,
       rejected,
       failed,
+      pendingReview,
       byStatus: {
         applied: kanban.applied.length,
         phone_screen: kanban.phone_screen.length,
@@ -62,6 +66,7 @@ router.get('/', verifyToken, async (req, res) => {
         hired: kanban.hired.length,
         rejected: rejected.length,
         failed: failed.length,
+        pending_review: pendingReview.length,
       },
     });
   } catch (err) {
@@ -188,6 +193,47 @@ router.post('/:id/retry', verifyToken, async (req, res) => {
   }
 });
 
+// Approve a pending-review Auto-Pilot application: marks it as actually
+// applied. This is the honest equivalent of "review before submit" - it
+// only ever confirms HirePilot's own internal tracked record, since this
+// app has never driven real form submission on an external ATS.
+router.post('/:id/approve', verifyToken, async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE applications SET status = 'applied', last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND user_id = $2 AND status = 'pending_review' RETURNING *`,
+      [req.params.id, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Pending application not found' });
+
+    await query(
+      `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
+       VALUES ($1, 'pending_review', 'applied', CURRENT_TIMESTAMP)`,
+      [req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Approve application error:', err);
+    res.status(500).json({ error: 'Failed to approve application' });
+  }
+});
+
+// Discard a pending-review Auto-Pilot application without applying.
+router.delete('/:id/discard', verifyToken, async (req, res) => {
+  try {
+    const result = await query(
+      `DELETE FROM applications WHERE id = $1 AND user_id = $2 AND status = 'pending_review' RETURNING id`,
+      [req.params.id, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Pending application not found' });
+    res.json({ message: 'Discarded' });
+  } catch (err) {
+    console.error('Discard application error:', err);
+    res.status(500).json({ error: 'Failed to discard application' });
+  }
+});
+
 // Manually trigger Full Auto Apply for the current user (normally runs on
 // the 6-hour scheduler cycle) - lets the user see it work immediately after
 // turning it on, rather than waiting for the next cron cycle.
@@ -196,7 +242,7 @@ router.post('/run-auto-pilot', verifyToken, async (req, res) => {
     await calculateMatchesForUser(req.user.id);
     const result = await runAutoApplyForUser(req.user);
     res.json({
-      message: `Auto-Pilot run complete: ${result.applied} application${result.applied === 1 ? '' : 's'} sent, ${result.flagged} flagged for review, ${result.skipped} skipped.`,
+      message: `Auto-Pilot run complete: ${result.applied} application${result.applied === 1 ? '' : 's'} sent${result.pendingReview ? `, ${result.pendingReview} pending your review` : ''}, ${result.flagged} flagged for review, ${result.skipped} skipped.`,
       ...result,
     });
   } catch (err) {
