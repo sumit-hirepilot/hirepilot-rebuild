@@ -257,6 +257,11 @@ export default function Agents() {
                   <button className={page.runButton} onClick={() => handleRun(agent.id)} disabled={runningId === agent.id}>
                     {runningId === agent.id ? 'Running...' : 'Run Now'}
                   </button>
+                  {agent.match_count > 0 && (
+                    <button className={page.secondaryButton} onClick={() => router.push(`/agents/${agent.id}`)}>
+                      View matches ({agent.match_count})
+                    </button>
+                  )}
                   <button className={page.secondaryButton} onClick={() => handleToggleActive(agent)}>
                     {agent.is_active ? 'Pause' : 'Resume'}
                   </button>
