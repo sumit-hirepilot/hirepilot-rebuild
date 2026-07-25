@@ -7,6 +7,24 @@ import page from '../styles/Resume.module.css';
 
 const TABS = ['Resume Manager', 'Tailor for a Job', 'Cover Letters', 'Screening Answers', 'ATS Checker'];
 
+// Downloads a file from an authenticated API endpoint (can't just use a
+// plain <a href> since the request needs a Bearer token).
+async function downloadAuthed(url, token, fallbackFilename) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return false;
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : fallbackFilename;
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+  return true;
+}
+
 export default function Resume() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -221,16 +239,6 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
     reload();
   };
 
-  const handleDownload = (filename, text) => {
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <>
       <div className={styles.card}>
@@ -322,7 +330,12 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
                 <p className={page.previewText}>{r.original_file_text.slice(0, 120)}&hellip;</p>
               </div>
               <div className={page.resumeActions}>
-                <button className={page.secondaryButton} onClick={() => handleDownload(`resume-${r.id}.txt`, r.original_file_text)}>Download</button>
+                <button
+                  className={page.secondaryButton}
+                  onClick={() => downloadAuthed(`${base}/api/resume/${r.id}/original`, token, r.label || `resume-${r.id}`)}
+                >
+                  Download original
+                </button>
                 <button className={page.deleteButton} onClick={() => handleDeleteResume(r.id)}>Delete</button>
               </div>
             </div>
@@ -335,13 +348,23 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
           <div key={t.id} className={styles.card} style={{ marginBottom: 0 }}>
             <p className={page.tailoredTitle}>{t.job_title}</p>
             <p className={page.tailoredCompany}>{t.company_name}</p>
-            <div className={page.scoreTrack}>
+            <span className={t.confirmed_at ? page.defaultBadge : page.draftBadge}>
+              {t.confirmed_at ? 'Confirmed' : 'Draft'}
+            </span>
+            <div className={page.scoreTrack} style={{ marginTop: '0.5rem' }}>
               <div className={page.scoreFill} style={{ width: `${t.ats_score}%` }} />
             </div>
             <p className={page.scoreNum}>{t.ats_score}</p>
             <p className={page.tailoredDate}>{new Date(t.created_at).toLocaleDateString()}</p>
             <div className={page.resumeActions}>
-              <button className={page.secondaryButton} onClick={() => handleDownload(`tailored-${t.id}.txt`, t.tailored_summary)}>Download</button>
+              {t.confirmed_at && (
+                <button
+                  className={page.secondaryButton}
+                  onClick={() => downloadAuthed(`${base}/api/resume/tailored/${t.id}/pdf`, token, `tailored-${t.job_title}.pdf`)}
+                >
+                  Download PDF
+                </button>
+              )}
               <button className={page.deleteButton} onClick={() => handleDeleteTailored(t.id)}>Delete</button>
             </div>
           </div>
@@ -360,12 +383,17 @@ function TailorForJob({ jobs, token, base, reload }) {
   const [tailoring, setTailoring] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [rejectedIndices, setRejectedIndices] = useState(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [confirmed, setConfirmed] = useState(null);
 
   const handleTailor = async () => {
     if (!jobId) return;
     setTailoring(true);
     setError('');
     setResult(null);
+    setConfirmed(null);
+    setRejectedIndices(new Set());
     try {
       const res = await fetch(`${base}/api/resume/tailor`, {
         method: 'POST',
@@ -383,6 +411,38 @@ function TailorForJob({ jobs, token, base, reload }) {
       setError('Failed to tailor resume');
     } finally {
       setTailoring(false);
+    }
+  };
+
+  const toggleChange = (index) => {
+    setRejectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  };
+
+  const addedParts = (result?.diff || []).filter((p) => p.added);
+  const acceptedCount = addedParts.length - rejectedIndices.size;
+
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try {
+      const acceptedIndices = addedParts.filter((p) => !rejectedIndices.has(p.index)).map((p) => p.index);
+      const res = await fetch(`${base}/api/resume/tailored/${result.id}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ acceptedIndices }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setConfirmed(data);
+        reload();
+      } else {
+        setError(data.error || 'Failed to confirm tailored resume');
+      }
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -405,19 +465,42 @@ function TailorForJob({ jobs, token, base, reload }) {
 
       {result && (
         <>
+          <p className={page.tailorNote}>
+            Your resume is preserved as-is - we only ever add missing job-relevant keywords, never rewrite or remove anything.
+            Click any added line below to accept or reject it individually.
+          </p>
+
           <div className={page.compareGrid}>
             <div className={page.compareCol}>
               <p className={page.compareLabel}>ORIGINAL</p>
-              <p className={page.compareText}>{result.original}</p>
+              <pre className={page.compareTextPre}>{result.originalText}</pre>
             </div>
             <div className={page.compareColHighlight}>
-              <p className={page.compareLabelHighlight}>TAILORED</p>
-              <p className={page.compareText}>{result.tailored}</p>
-              <div className={page.pillRow}>
-                {result.highlightedSkills.map((s) => (
-                  <span key={s} className={page.pill}>{s}</span>
-                ))}
-              </div>
+              <p className={page.compareLabelHighlight}>TAILORED ({acceptedCount} change{acceptedCount === 1 ? '' : 's'} accepted)</p>
+              <pre className={page.compareTextPre}>
+                {(result.diff || []).map((part) => {
+                  if (!part.added) return <span key={part.index}>{part.value}</span>;
+                  const rejected = rejectedIndices.has(part.index);
+                  return (
+                    <span
+                      key={part.index}
+                      onClick={() => toggleChange(part.index)}
+                      className={rejected ? page.diffRejected : page.diffAdded}
+                      title={rejected ? 'Rejected - click to accept' : 'Accepted - click to reject'}
+                    >
+                      {part.value}
+                    </span>
+                  );
+                })}
+              </pre>
+              {result.matchedSkills?.length > 0 && (
+                <>
+                  <p className={page.compareLabel} style={{ marginTop: '0.75rem' }}>Already in your resume</p>
+                  <div className={page.pillRow}>
+                    {result.matchedSkills.map((s) => <span key={s} className={page.pillGreen}>{s}</span>)}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -426,6 +509,31 @@ function TailorForJob({ jobs, token, base, reload }) {
             <div className={page.scoreFillLarge} style={{ width: `${result.atsScore}%` }} />
           </div>
           <p className={page.scoreNumLarge}>{result.atsScore}</p>
+
+          {!confirmed ? (
+            <button className={page.saveButton} onClick={handleConfirm} disabled={confirming} style={{ marginTop: '1rem' }}>
+              {confirming ? 'Confirming...' : `Confirm tailored version (${acceptedCount} change${acceptedCount === 1 ? '' : 's'})`}
+            </button>
+          ) : (
+            <div className={page.confirmedBox}>
+              <p className={page.confirmedText}>Tailored resume confirmed and saved for this application.</p>
+              <div className={page.resumeActions}>
+                <button
+                  className={page.secondaryButton}
+                  onClick={() => downloadAuthed(`${base}/api/resume/tailored/${result.id}/pdf`, token, `tailored-${result.jobTitle}.pdf`)}
+                >
+                  Download tailored PDF
+                </button>
+                <button
+                  className={page.secondaryButton}
+                  onClick={() => downloadAuthed(`${base}/api/resume/${result.resumeId}/original`, token, 'original-resume')}
+                  title="Original file, unmodified"
+                >
+                  Download original
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

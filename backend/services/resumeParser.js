@@ -103,4 +103,4 @@ function parseResume(text) {
   };
 }
 
-module.exports = { parseResume, extractSkills, extractExperience };
+module.exports = { parseResume, extractSkills, extractExperience, SKILL_DICTIONARY };

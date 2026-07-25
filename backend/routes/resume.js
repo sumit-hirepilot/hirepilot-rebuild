@@ -6,6 +6,8 @@ const { extractTextFromFile } = require('../services/fileTextExtractor');
 const { parseResume } = require('../services/resumeParser');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
+const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../services/resumeTailorEngine');
+const PDFDocument = require('pdfkit');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -135,6 +137,33 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Download the exact original uploaded file, byte-for-byte, unmodified.
+// Resumes uploaded before file storage was added (or saved via paste-text)
+// have no file_data - fall back to a plain-text download of the saved text.
+router.get('/:id/original', async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT file_data, original_filename, original_mimetype, original_file_text FROM resumes WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Resume not found' });
+    const resume = result.rows[0];
+
+    if (resume.file_data) {
+      res.setHeader('Content-Type', resume.original_mimetype || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${resume.original_filename || 'resume'}"`);
+      return res.send(resume.file_data);
+    }
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="resume.txt"');
+    res.send(resume.original_file_text || '');
+  } catch (err) {
+    console.error('Download original resume error:', err);
+    res.status(500).json({ error: 'Failed to download resume' });
+  }
+});
+
 // Upload a resume file (.txt, .docx, .pdf), extract text and parse
 // skills/experience for the user to review before saving to their profile.
 router.post('/upload', upload.single('file'), async (req, res) => {
@@ -160,9 +189,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     const saved = await query(
-      `INSERT INTO resumes (user_id, original_file_text, label, is_default)
-       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
-      [req.user.id, text, req.file.originalname, req.body.saveAsDefault === 'true']
+      `INSERT INTO resumes (user_id, original_file_text, label, is_default, file_data, original_filename, original_mimetype)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+      [
+        req.user.id, text, req.file.originalname, req.body.saveAsDefault === 'true',
+        req.file.buffer, req.file.originalname, req.file.mimetype,
+      ]
     );
 
     res.status(201).json({
@@ -224,6 +256,7 @@ router.get('/tailored', async (req, res) => {
   try {
     const result = await query(
       `SELECT tr.id, tr.tailored_summary, tr.highlighted_skills, tr.ats_score, tr.created_at,
+              tr.confirmed_at, tr.diff_json, tr.original_snapshot, tr.final_text,
               j.title as job_title, j.company_name
        FROM tailored_resumes tr
        JOIN jobs j ON tr.job_id = j.id
@@ -238,40 +271,47 @@ router.get('/tailored', async (req, res) => {
   }
 });
 
+// Generates a draft tailored resume: takes the user's actual saved resume
+// text and adds any job-relevant keywords it's missing (see
+// resumeTailorEngine.js) - never rewrites or removes existing content. A
+// new tailored_resumes row is created per job every time (never reused
+// across jobs), left unconfirmed until the user reviews the diff and
+// accepts/rejects each addition via POST /tailored/:id/confirm.
 router.post('/tailor', async (req, res) => {
   try {
     const { jobId } = req.body;
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
-    const [userResult, skillsResult, jobResult, defaultResumeResult] = await Promise.all([
-      query('SELECT full_name, title FROM users WHERE id = $1', [req.user.id]),
-      query('SELECT skill FROM user_skills WHERE user_id = $1 ORDER BY skill', [req.user.id]),
+    const [jobResult, resumeResult] = await Promise.all([
       query('SELECT title, company_name, description, requirements FROM jobs WHERE id = $1', [jobId]),
-      query('SELECT id FROM resumes WHERE user_id = $1 AND is_default = true LIMIT 1', [req.user.id]),
+      query(
+        `SELECT id, original_file_text FROM resumes WHERE user_id = $1
+         ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
+        [req.user.id]
+      ),
     ]);
 
     if (!jobResult.rows.length) return res.status(404).json({ error: 'Job not found' });
+    if (!resumeResult.rows.length || !resumeResult.rows[0].original_file_text?.trim()) {
+      return res.status(400).json({ error: 'Save or upload a resume first (Resume Manager tab) before tailoring for a job.' });
+    }
 
-    const user = userResult.rows[0];
-    const skills = skillsResult.rows.map((r) => r.skill);
     const job = jobResult.rows[0];
     job.title = fixMojibake(job.title);
     job.company_name = fixMojibake(job.company_name);
-    const name = user.full_name || 'Candidate';
-    const userTitle = user.title || job.title;
-
-    const skillsPhrase = skills.length ? skills.join(', ') : 'a strong, relevant background';
-
-    const original = `${name}, ${userTitle} with experience in ${skillsPhrase}.`;
-    const tailored = `${name} is a ${userTitle} with hands-on experience in ${skillsPhrase}, tailored for the ${job.title} role at ${job.company_name}.`;
+    const resume = resumeResult.rows[0];
+    const originalText = resume.original_file_text;
 
     const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
-    const { score } = checkAts(jobText, tailored);
+    const { tailoredText, addedSkills, matchedSkills } = buildTailoredText(originalText, jobText);
+    const diff = diffTailoring(originalText, tailoredText);
+    const { score } = checkAts(jobText, tailoredText);
 
     const saved = await query(
-      `INSERT INTO tailored_resumes (user_id, resume_id, job_id, tailored_summary, highlighted_skills, ats_score)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
-      [req.user.id, defaultResumeResult.rows[0]?.id || null, jobId, tailored, skills, score]
+      `INSERT INTO tailored_resumes
+       (user_id, resume_id, job_id, tailored_summary, highlighted_skills, ats_score, original_snapshot, diff_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
+      [req.user.id, resume.id, jobId, tailoredText, matchedSkills, score, originalText, JSON.stringify(diff)]
     );
 
     await query(
@@ -282,12 +322,15 @@ router.post('/tailor', async (req, res) => {
 
     res.status(201).json({
       id: saved.rows[0].id,
-      original,
-      tailored,
-      highlightedSkills: skills,
+      originalText,
+      tailoredText,
+      diff,
+      addedSkills,
+      matchedSkills,
       atsScore: score,
       jobTitle: job.title,
       companyName: job.company_name,
+      resumeId: resume.id,
       createdAt: saved.rows[0].created_at,
     });
   } catch (err) {
@@ -303,6 +346,83 @@ router.delete('/tailored/:id', async (req, res) => {
   } catch (err) {
     console.error('Delete tailored resume error:', err);
     res.status(500).json({ error: 'Failed to delete tailored resume' });
+  }
+});
+
+// User reviews the diff and accepts/rejects each addition individually;
+// this reconstructs and locks in the final approved text. Every application
+// that uses this tailored version uses this exact approved text, and it's
+// never reused for a different job (each /tailor call creates its own row).
+router.post('/tailored/:id/confirm', async (req, res) => {
+  try {
+    const { acceptedIndices } = req.body; // array of diff part indices to accept; omit/[] = accept none, omit param entirely = accept all
+    const result = await query(
+      'SELECT diff_json, tailored_summary FROM tailored_resumes WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Tailored resume not found' });
+    const row = result.rows[0];
+
+    let finalText;
+    if (!row.diff_json) {
+      finalText = row.tailored_summary;
+    } else {
+      const diff = row.diff_json;
+      const accepted = Array.isArray(acceptedIndices)
+        ? acceptedIndices
+        : diff.filter((p) => p.added).map((p) => p.index); // default: accept all additions
+      finalText = applyAcceptedChanges(diff, accepted);
+    }
+
+    const updated = await query(
+      `UPDATE tailored_resumes SET final_text = $1, confirmed_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND user_id = $3 RETURNING id, final_text, confirmed_at`,
+      [finalText, req.params.id, req.user.id]
+    );
+
+    res.json(updated.rows[0]);
+  } catch (err) {
+    console.error('Confirm tailored resume error:', err);
+    res.status(500).json({ error: 'Failed to confirm tailored resume' });
+  }
+});
+
+// Downloads the tailored resume as a clean, ATS-optimized PDF. This is a
+// freshly generated document, not a pixel-edit of the original upload -
+// reliably preserving an arbitrary uploaded PDF's exact internal layout
+// while changing its text isn't something open PDF tooling can do safely,
+// so a clean readable format is used instead. The original file is always
+// available unmodified via GET /:id/original.
+router.get('/tailored/:id/pdf', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT tr.final_text, tr.tailored_summary, j.title as job_title, j.company_name
+       FROM tailored_resumes tr JOIN jobs j ON tr.job_id = j.id
+       WHERE tr.id = $1 AND tr.user_id = $2`,
+      [req.params.id, req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Tailored resume not found' });
+    const row = result.rows[0];
+    const text = row.final_text || row.tailored_summary || '';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="tailored-resume-${req.params.id}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+    doc.fontSize(11).font('Helvetica');
+    text.split('\n').forEach((line) => {
+      if (/^[A-Z][A-Z\s&/]{3,}$/.test(line.trim()) && line.trim().length > 3) {
+        doc.moveDown(0.5).font('Helvetica-Bold').fontSize(12).text(line.trim());
+        doc.font('Helvetica').fontSize(11);
+      } else {
+        doc.text(line);
+      }
+    });
+    doc.end();
+  } catch (err) {
+    console.error('Generate tailored PDF error:', err);
+    res.status(500).json({ error: 'Failed to generate PDF' });
   }
 });
 

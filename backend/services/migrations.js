@@ -102,6 +102,21 @@ const STATEMENTS = [
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE INDEX IF NOT EXISTS idx_source_ingestion_runs_source ON source_ingestion_runs(source, created_at DESC)`,
+
+  // Store the exact original uploaded resume file so it can always be
+  // downloaded byte-for-byte unchanged, and so tailoring can diff against a
+  // stable original snapshot even if newer resumes are uploaded later.
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS file_data BYTEA`,
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS original_filename VARCHAR(255)`,
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS original_mimetype VARCHAR(100)`,
+
+  // Diff-based tailoring: keep the original text snapshot, the machine
+  // diff, and the user-approved final text (after accept/reject) alongside
+  // the draft tailored text.
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS original_snapshot TEXT`,
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS diff_json JSONB`,
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS final_text TEXT`,
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP`,
 ];
 
 const runMigrations = async () => {

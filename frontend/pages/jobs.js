@@ -589,8 +589,15 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
         {tailorResult && !tailorResult.error && (
           <div className={styles.tailorResult}>
             <p className={styles.tailorLabel}>TAILORED</p>
-            <p className={styles.drawerText}>{tailorResult.tailored}</p>
+            <p className={styles.drawerText}>
+              {tailorResult.addedSkills?.length > 0
+                ? `Added ${tailorResult.addedSkills.length} relevant skill${tailorResult.addedSkills.length === 1 ? '' : 's'} this job asks for that weren't in your resume: ${tailorResult.addedSkills.join(', ')}.`
+                : 'Your resume already covers everything this job is looking for - no changes needed.'}
+            </p>
             <p className={styles.tailorScore}>ATS score: {tailorResult.atsScore}</p>
+            <a href="/resume" className={styles.secondaryBtn} style={{ display: 'inline-block', marginTop: '0.5rem' }}>
+              Review full diff &amp; download on Resume page
+            </a>
           </div>
         )}
         {tailorResult?.error && <p className={styles.errorText}>{tailorResult.error}</p>}

@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS resumes (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   original_file_url VARCHAR(1024),
   original_file_text TEXT,
+  file_data BYTEA,
+  original_filename VARCHAR(255),
+  original_mimetype VARCHAR(100),
   label VARCHAR(255),
   is_default BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -80,6 +83,10 @@ CREATE TABLE IF NOT EXISTS tailored_resumes (
   tailored_summary TEXT,
   highlighted_skills VARCHAR(255)[],
   ats_score INTEGER,
+  original_snapshot TEXT,
+  diff_json JSONB,
+  final_text TEXT,
+  confirmed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tailored_resumes_user_id ON tailored_resumes(user_id);

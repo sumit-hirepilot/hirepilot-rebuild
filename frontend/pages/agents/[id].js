@@ -273,14 +273,16 @@ function BulkApplyReview({ jobs, token, base, onClose, onDone }) {
           }),
         ]);
         const tailorData = tailorRes.ok ? await tailorRes.json() : null;
+        const tailorError = !tailorRes.ok ? (await tailorRes.json().catch(() => null))?.error : null;
         const coverData = coverRes.ok ? await coverRes.json() : null;
 
         if (cancelled) return;
         setItems((prev) => prev.map((it) => it.jobId === item.jobId ? {
           ...it,
           status: 'ready',
-          tailoredResume: tailorData?.tailored || '',
+          tailoredResume: tailorData?.tailoredText || '',
           coverLetter: coverData?.content || '',
+          error: tailorError || undefined,
         } : it));
       } catch (err) {
         if (cancelled) return;
