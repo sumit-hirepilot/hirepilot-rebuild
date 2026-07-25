@@ -39,6 +39,10 @@ export default function Jobs() {
   const [savedIds, setSavedIds] = useState(new Set());
   const [savedJobs, setSavedJobs] = useState([]);
   const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [includeRelated, setIncludeRelated] = useState(false);
+  const [noExactMatches, setNoExactMatches] = useState(false);
+  const [relatedJobs, setRelatedJobs] = useState([]);
+  const [relatedTotal, setRelatedTotal] = useState(0);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -52,9 +56,11 @@ export default function Jobs() {
       const kw = params.keyword ?? keyword;
       const exp = params.experience ?? experience;
       const loc = params.location ?? location;
+      const related = params.includeRelated ?? includeRelated;
       if (kw) qs.set('search', kw);
       if (exp) qs.set('experience', exp);
       if (loc) qs.set('location', loc);
+      if (related) qs.set('includeRelated', 'true');
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
         fetch(`${base}/api/jobs?${qs.toString()}`),
@@ -68,6 +74,9 @@ export default function Jobs() {
         const data = await jobsRes.json();
         setJobs(data.jobs || []);
         setTotal(data.total || 0);
+        setNoExactMatches(!!data.noExactMatches);
+        setRelatedJobs(data.relatedJobs || []);
+        setRelatedTotal(data.relatedTotal || 0);
       }
 
       if (appsRes.ok) {
@@ -100,7 +109,7 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keyword, experience, location]);
+  }, [base, page_, keyword, experience, location, includeRelated]);
 
   useEffect(() => {
     const authToken = localStorage.getItem('token');
@@ -124,6 +133,12 @@ export default function Jobs() {
   const goToPage = (p) => {
     setPage(p);
     loadJobs(token, { page: p });
+  };
+
+  const handleShowRelated = () => {
+    setIncludeRelated(true);
+    setPage(1);
+    loadJobs(token, { page: 1, includeRelated: true });
   };
 
   const handleApply = async (jobId) => {
@@ -196,6 +211,51 @@ export default function Jobs() {
     });
   };
 
+  const renderJobRow = (job) => {
+    const match = matchByJobId[job.id];
+    const score = match ? Math.round(match.overall_score * 100) : null;
+    return (
+      <div key={job.id} className={page.jobRow}>
+        <input
+          type="checkbox"
+          checked={selectedIds.has(job.id)}
+          onChange={() => toggleSelect(job.id)}
+          className={page.checkbox}
+        />
+        <div className={page.avatar}>{job.company_name?.charAt(0) || '?'}</div>
+        <div className={page.jobInfo} onClick={() => setSelectedJob(job)}>
+          <p className={page.jobTitle}>{job.title}</p>
+          <p className={page.jobSubtitle}>{job.company_name}</p>
+          <p className={page.jobMeta}>
+            {job.location || 'Remote'}
+            {job.salary_min ? ` · $${Math.round(job.salary_min / 1000)}K${job.salary_max ? `-${Math.round(job.salary_max / 1000)}K` : '+'}` : ''}
+            {' · '}{timeAgo(job.posted_at)}
+          </p>
+        </div>
+        {score !== null && (
+          <div className={page.scoreRing}>{score}</div>
+        )}
+        <div className={page.jobActions}>
+          <button
+            className={page.saveButton}
+            onClick={() => toggleSave(job)}
+            aria-label={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
+            title={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
+          >
+            {savedIds.has(job.id) ? '★' : '☆'}
+          </button>
+          <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
+          {appliedIds.has(job.id) ? (
+            <span className={page.appliedBadge}>Applied</span>
+          ) : (
+            <button className={page.applyButton} onClick={() => handleApply(job.id)}>Apply Now</button>
+          )}
+          <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
+        </div>
+      </div>
+    );
+  };
+
   if (!user) return null;
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -245,6 +305,18 @@ export default function Jobs() {
             className={page.locInput}
           />
           <button type="submit" className={page.searchButton}>Search</button>
+          <label className={page.relatedToggle}>
+            <input
+              type="checkbox"
+              checked={includeRelated}
+              onChange={(e) => {
+                setIncludeRelated(e.target.checked);
+                setPage(1);
+                loadJobs(token, { page: 1, includeRelated: e.target.checked });
+              }}
+            />
+            Include related jobs
+          </label>
         </form>
 
         <div className={page.headerRow}>
@@ -297,62 +369,39 @@ export default function Jobs() {
           </div>
         )}
 
-        <div className={styles.card} style={{ marginBottom: 0 }}>
+        <div className={styles.card} style={{ marginBottom: noExactMatches && !includeRelated ? '1rem' : 0 }}>
           {loading ? (
             <p className={styles.emptyState}>Loading jobs&hellip;</p>
           ) : (showSavedOnly ? savedJobs : jobs).length === 0 ? (
             <p className={styles.emptyState}>
-              {showSavedOnly ? 'No saved jobs yet. Click the star on any job to save it for later.' : 'No jobs found. Try a different search term.'}
+              {showSavedOnly
+                ? 'No saved jobs yet. Click the star on any job to save it for later.'
+                : noExactMatches
+                  ? `No exact matches for "${keyword}".${relatedTotal > 0 ? ' See related jobs below, or search a different title.' : ' Try a different search term.'}`
+                  : 'No jobs found. Try a different search term.'}
             </p>
           ) : (
             <div className={page.list}>
-              {(showSavedOnly ? savedJobs : jobs).map((job) => {
-                const match = matchByJobId[job.id];
-                const score = match ? Math.round(match.overall_score * 100) : null;
-                return (
-                  <div key={job.id} className={page.jobRow}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(job.id)}
-                      onChange={() => toggleSelect(job.id)}
-                      className={page.checkbox}
-                    />
-                    <div className={page.avatar}>{job.company_name?.charAt(0) || '?'}</div>
-                    <div className={page.jobInfo} onClick={() => setSelectedJob(job)}>
-                      <p className={page.jobTitle}>{job.title}</p>
-                      <p className={page.jobSubtitle}>{job.company_name}</p>
-                      <p className={page.jobMeta}>
-                        {job.location || 'Remote'}
-                        {job.salary_min ? ` · $${Math.round(job.salary_min / 1000)}K${job.salary_max ? `-${Math.round(job.salary_max / 1000)}K` : '+'}` : ''}
-                        {' · '}{timeAgo(job.posted_at)}
-                      </p>
-                    </div>
-                    {score !== null && (
-                      <div className={page.scoreRing}>{score}</div>
-                    )}
-                    <div className={page.jobActions}>
-                      <button
-                        className={page.saveButton}
-                        onClick={() => toggleSave(job)}
-                        aria-label={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
-                        title={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
-                      >
-                        {savedIds.has(job.id) ? '★' : '☆'}
-                      </button>
-                      <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
-                      {appliedIds.has(job.id) ? (
-                        <span className={page.appliedBadge}>Applied</span>
-                      ) : (
-                        <button className={page.applyButton} onClick={() => handleApply(job.id)}>Apply Now</button>
-                      )}
-                      <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
-                    </div>
-                  </div>
-                );
-              })}
+              {(showSavedOnly ? savedJobs : jobs).map((job) => renderJobRow(job))}
             </div>
           )}
         </div>
+
+        {!showSavedOnly && noExactMatches && !includeRelated && relatedJobs.length > 0 && (
+          <>
+            <div className={page.relatedHeader}>
+              <h2 className={styles.greeting} style={{ fontSize: '1.125rem', margin: 0 }}>Related jobs</h2>
+              <button type="button" className={page.pageButton} onClick={handleShowRelated}>
+                Show all {relatedTotal} related jobs
+              </button>
+            </div>
+            <div className={styles.card} style={{ marginBottom: 0 }}>
+              <div className={page.list}>
+                {relatedJobs.map((job) => renderJobRow(job))}
+              </div>
+            </div>
+          </>
+        )}
       </DashboardLayout>
 
       {selectedJob && (

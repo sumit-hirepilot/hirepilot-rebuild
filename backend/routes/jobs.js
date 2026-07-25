@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
+const { buildSearchTiering } = require('../services/jobSearch');
 
 const router = express.Router();
 
@@ -114,67 +115,107 @@ router.get('/sources', async (req, res) => {
 });
 
 // Get all active jobs with pagination and filters
+const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, location, work_arrangement,
+              salary_min, salary_max, job_type, posted_at, created_at`;
+
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, source, location, experience } = req.query;
+    const { page = 1, limit = 20, search, source, location, experience, includeRelated } = req.query;
     const offset = (page - 1) * limit;
 
-    let whereClause = 'WHERE is_active = true';
     const params = [];
-
-    if (search) {
-      // Match each word independently (title OR description) rather than
-      // requiring the whole query as one literal phrase - "Senior Product
-      // Designer" should match a "Senior Product Designer" listing even if
-      // the words aren't contiguous, or match "Product Designer (Senior)".
-      const words = search.trim().split(/\s+/).filter(Boolean).slice(0, 8);
-      for (const word of words) {
-        whereClause += ' AND (title ILIKE $' + (params.length + 1) + ' OR description ILIKE $' + (params.length + 2) + ')';
-        params.push(`%${word}%`, `%${word}%`);
-      }
-    }
+    let filterClause = 'is_active = true';
 
     if (source) {
-      whereClause += ' AND source = $' + (params.length + 1);
       params.push(source);
+      filterClause += ` AND source = $${params.length}`;
     }
 
     if (location) {
-      whereClause += ' AND location ILIKE $' + (params.length + 1);
       params.push(`%${location}%`);
+      filterClause += ` AND location ILIKE $${params.length}`;
     }
 
     if (experience === 'senior') {
-      whereClause += ` AND title ~* '(senior|sr\\.?|lead|head of)'`;
+      filterClause += ` AND title ~* '(senior|sr\\.?|lead|head of)'`;
     } else if (experience === 'staff') {
-      whereClause += ` AND title ~* '(staff|principal|distinguished)'`;
+      filterClause += ` AND title ~* '(staff|principal|distinguished)'`;
     } else if (experience === 'entry') {
-      whereClause += ` AND title ~* '(junior|jr\\.?|entry|intern|graduate)'`;
+      filterClause += ` AND title ~* '(junior|jr\\.?|entry|intern|graduate)'`;
     } else if (experience === 'mid') {
-      whereClause += ` AND title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`;
+      filterClause += ` AND title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`;
     }
 
-    const countResult = await query(
-      `SELECT COUNT(*) as count FROM jobs ${whereClause}`,
-      params
-    );
+    let jobs = [];
+    let total = 0;
+    let relatedJobs = [];
+    let relatedTotal = 0;
+    let noExactMatches = false;
 
-    const result = await query(
-      `SELECT id, source, title, company_name, company_url, job_url, location, work_arrangement,
-              salary_min, salary_max, job_type, posted_at, created_at
-       FROM jobs ${whereClause}
-       ORDER BY posted_at DESC
-       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
-    );
+    if (search && search.trim()) {
+      // Rank exact title matches (tier 1) above title-word matches (tier 2)
+      // above broad title-or-description matches (tier 3, "related" -
+      // excluded from the default result set entirely unless requested).
+      const tiering = buildSearchTiering(search, params);
+      const wantRelated = includeRelated === 'true';
+      const scopeCondition = wantRelated ? tiering.broadCondition : tiering.narrowCondition;
 
-    const jobs = result.rows.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));
+      const countResult = await query(
+        `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND ${scopeCondition}`,
+        params
+      );
+      total = parseInt(countResult.rows[0].count, 10);
+
+      const result = await query(
+        `SELECT ${JOB_COLUMNS}, ${tiering.tierCaseExpr} as match_tier
+         FROM jobs WHERE ${filterClause} AND ${scopeCondition}
+         ORDER BY match_tier ASC, posted_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
+      jobs = result.rows;
+
+      if (!wantRelated && total === 0) {
+        noExactMatches = true;
+        const relatedCountResult = await query(
+          `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND ${tiering.relatedOnlyCondition}`,
+          params
+        );
+        relatedTotal = parseInt(relatedCountResult.rows[0].count, 10);
+
+        const relatedResult = await query(
+          `SELECT ${JOB_COLUMNS}
+           FROM jobs WHERE ${filterClause} AND ${tiering.relatedOnlyCondition}
+           ORDER BY posted_at DESC
+           LIMIT $${params.length + 1}`,
+          [...params, limit]
+        );
+        relatedJobs = relatedResult.rows;
+      }
+    } else {
+      const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}`, params);
+      total = parseInt(countResult.rows[0].count, 10);
+
+      const result = await query(
+        `SELECT ${JOB_COLUMNS}
+         FROM jobs WHERE ${filterClause}
+         ORDER BY posted_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
+      jobs = result.rows;
+    }
+
+    const decorate = (list) => list.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));
 
     res.json({
-      total: parseInt(countResult.rows[0].count),
+      total,
       page: parseInt(page),
       limit: parseInt(limit),
-      jobs,
+      jobs: decorate(jobs),
+      noExactMatches,
+      relatedJobs: decorate(relatedJobs),
+      relatedTotal,
     });
   } catch (err) {
     console.error('Get jobs error:', err);
