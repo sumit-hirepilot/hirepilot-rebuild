@@ -41,15 +41,34 @@ export default function Resume() {
   const loadData = useCallback(async (authToken) => {
     setLoading(true);
     try {
-      const [resumesRes, tailoredRes, jobsRes] = await Promise.all([
+      const [resumesRes, tailoredRes, matchesRes] = await Promise.all([
         fetch(`${base}/api/resume`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/resume/tailored`, { headers: { Authorization: `Bearer ${authToken}` } }),
-        fetch(`${base}/api/jobs?limit=50`),
+        fetch(`${base}/api/matches?limit=50&minScore=0`, { headers: { Authorization: `Bearer ${authToken}` } }),
       ]);
 
       if (resumesRes.ok) setResumes((await resumesRes.json()).resumes || []);
       if (tailoredRes.ok) setTailoredHistory((await tailoredRes.json()).tailored || []);
-      if (jobsRes.ok) setJobs((await jobsRes.json()).jobs || []);
+
+      // The job picker should offer your actual matches (ranked, relevant),
+      // not an arbitrary global "most recent" list unrelated to your profile -
+      // otherwise a job you actually want to tailor for often isn't even an
+      // option if it's more than ~50 postings old. Fall back to recent jobs
+      // only if matching hasn't run yet, so the picker is never empty.
+      if (matchesRes.ok) {
+        const matchData = await matchesRes.json();
+        const matchJobs = (matchData.matches || matchData || []).map((m) => ({
+          id: m.job_id,
+          title: m.title,
+          company_name: m.company_name,
+        }));
+        if (matchJobs.length) {
+          setJobs(matchJobs);
+        } else {
+          const fallback = await fetch(`${base}/api/jobs?limit=50`);
+          if (fallback.ok) setJobs((await fallback.json()).jobs || []);
+        }
+      }
     } catch (err) {
       console.error('Failed to load resume data', err);
     } finally {
