@@ -55,7 +55,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3fbe84;
+  color: var(--success);
   font-size: 0.875rem;
 }
 
@@ -64,8 +64,8 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 2px solid #3fbe84;
-  color: #3fbe84;
+  border: 2px solid var(--success);
+  color: var(--success);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -101,8 +101,8 @@
 .appliedBadge {
   padding: 0.25rem 0.625rem;
   border-radius: 999px;
-  background-color: rgba(63, 190, 132, 0.15);
-  color: #3fbe84;
+  background-color: rgba(5, 150, 105, 0.15);
+  color: var(--success);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: capitalize;
@@ -356,7 +356,7 @@
 .statusApplied {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #3fbe84;
+  color: var(--success);
 }
 
 .statusFailed {

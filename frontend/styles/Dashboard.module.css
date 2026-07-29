@@ -16,7 +16,7 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
-  background-color: #0a1420;
+  background-color: var(--bg-secondary);
 }
 
 .navOverlay {
@@ -116,17 +116,24 @@
   font-weight: 500;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
 }
 
+/* --bg-secondary is now white, the same as the sidebar, so the old hover was
+   invisible in light mode. Tint toward the page background instead, plus a
+   small nudge right for tactile feedback. */
 .navItem:hover {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-subtle);
   color: var(--text);
+  transform: translateX(2px);
 }
 
 .navItemActive {
-  background-color: var(--bg-secondary);
-  color: var(--text);
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .navActiveBar {
@@ -176,7 +183,7 @@
   width: 2rem;
   height: 2rem;
   border-radius: 999px;
-  background-color: rgba(232, 163, 61, 0.2);
+  background-color: rgba(124, 58, 237, 0.2);
   font-family: var(--font-display);
   font-size: 0.875rem;
   font-weight: 600;
@@ -225,28 +232,42 @@
   height: 4rem;
   padding: 0 1.5rem;
   border-bottom: 1px solid var(--border);
-  background-color: rgba(14, 26, 43, 0.9);
-  backdrop-filter: blur(8px);
+  /* Was the old dark navy rgba(14,26,43,.9) - left dark text on a dark bar. */
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .headerTitle {
   font-family: var(--font-display);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 0.9375rem;
+  font-weight: 700;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .searchButton {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background-color: var(--bg-secondary);
+  /* --bg-secondary is white, same as the header - use the subtle grey so the
+     field reads as an input rather than dissolving into the bar. */
+  background-color: var(--bg-subtle);
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
   color: var(--text-secondary);
   margin-left: 0.5rem;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+
+.searchButton:focus-within {
+  border-color: var(--primary);
+  background-color: var(--bg-secondary);
+  box-shadow: var(--shadow-focus);
 }
 
 .headerSearchInput {
@@ -373,12 +394,12 @@
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
-  background-color: rgba(232, 163, 61, 0.06);
+  background-color: rgba(124, 58, 237, 0.06);
   border-left: 2px solid var(--primary);
 }
 
 .notifItemUnread:hover {
-  background-color: rgba(232, 163, 61, 0.1);
+  background-color: rgba(124, 58, 237, 0.1);
 }
 
 .notifText {
@@ -418,7 +439,7 @@
   width: 32px;
   height: 18px;
   border-radius: 999px;
-  background-color: rgba(232, 163, 61, 0.25);
+  background-color: rgba(124, 58, 237, 0.25);
   border: 1px solid var(--primary);
   position: relative;
 }
@@ -521,11 +542,19 @@
 }
 
 .card {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background-color: var(--bg-secondary);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration) var(--ease-out),
+              border-color var(--duration) var(--ease-out);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-strong);
 }
 
 .autopilotRow {
@@ -546,7 +575,7 @@
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 999px;
-  background-color: #3fbe84;
+  background-color: var(--success);
   flex-shrink: 0;
 }
 
@@ -577,7 +606,7 @@
   gap: 1rem;
   border-radius: 12px;
   border: 1px solid var(--primary);
-  background-color: rgba(232, 163, 61, 0.08);
+  background-color: rgba(124, 58, 237, 0.08);
   padding: 1rem 1.25rem;
   margin-bottom: 1.25rem;
 }
@@ -659,10 +688,20 @@
 }
 
 .statCard {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background-color: var(--bg-secondary);
   padding: 1.25rem;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration) var(--ease-out),
+              transform var(--duration) var(--ease-out),
+              border-color var(--duration) var(--ease-out);
+}
+
+.statCard:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
 }
 
 .statLabel {
@@ -692,7 +731,7 @@
   margin-top: 0.375rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: #3fbe84;
+  color: var(--success);
 }
 
 .twoColGrid {
@@ -742,12 +781,18 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 0.75rem;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
 }
 
+/* Was rgba(255,255,255,0.02) - white-on-white, i.e. no visible hover at all
+   once the theme went light. */
 .matchRow:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--bg-subtle);
+  transform: translateX(3px);
 }
 
 .matchScore {
@@ -758,8 +803,8 @@
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 999px;
-  border: 2px solid #3fbe84;
-  color: #3fbe84;
+  border: 2px solid var(--success);
+  color: var(--success);
   font-size: 0.75rem;
   font-weight: 700;
 }
@@ -901,8 +946,8 @@
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
-  border: 3px solid #3fbe84;
-  color: #3fbe84;
+  border: 3px solid var(--success);
+  color: var(--success);
   font-weight: 700;
   font-size: 1rem;
 }
@@ -1002,8 +1047,8 @@
 .appliedTag {
   padding: 0.5rem 1rem;
   border-radius: 8px;
-  background-color: rgba(63, 190, 132, 0.15);
-  color: #3fbe84;
+  background-color: rgba(5, 150, 105, 0.15);
+  color: var(--success);
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -1025,7 +1070,7 @@
 .tailorScore {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #3fbe84;
+  color: var(--success);
   margin: 0.5rem 0 0;
 }
 

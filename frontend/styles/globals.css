@@ -4,21 +4,65 @@
   box-sizing: border-box;
 }
 
+/*
+ * Light theme. Tokens are semantic (--surface, --text-secondary) rather than
+ * literal (--white, --grey-200) so components never need to know the concrete
+ * value - which is what let this palette be swapped wholesale from the old
+ * dark navy/orange scheme without touching most component stylesheets.
+ */
 :root {
-  --primary: #e8a33d;
-  --primary-dark: #d4923a;
-  --primary-foreground: #0a1420;
-  --bg: #0e1a2b;
-  --bg-secondary: #16283f;
-  --text: #f4f1e9;
-  --text-secondary: #a9b4c2;
-  --border: #22344a;
-  --success: #22c55e;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  --info: #0ea5e9;
-  --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+  /* Brand - violet accent reads as "modern SaaS" and clears 4.5:1 on white */
+  --primary: #7c3aed;
+  --primary-dark: #6d28d9;
+  --primary-light: #ede9fe;
+  --primary-foreground: #ffffff;
+
+  /* Surfaces: page sits slightly grey so white cards lift off it without shadow */
+  --bg: #f7f8fc;
+  --bg-secondary: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --surface-hover: #f8fafc;
+
+  /* Text - 15.8:1 and 5.7:1 on --bg-secondary respectively */
+  --text: #0f172a;
+  --text-secondary: #5b6b84;
+  --text-tertiary: #64748b;
+
+  --border: #e6e9f0;
+  --border-strong: #d3d9e4;
+
+  /* Status - all AA on white */
+  --success: #047857;
+  --success-bg: #ecfdf5;
+  --error: #dc2626;
+  --error-bg: #fef2f2;
+  --warning: #b45309;
+  --warning-bg: #fffbeb;
+  --info: #2563eb;
+  --info-bg: #eff6ff;
+
+  /* Elevation. Light UI needs real shadows to express depth, where the old
+     dark theme could lean on background-lightness alone. */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.10), 0 4px 8px rgba(15, 23, 42, 0.05);
+  --shadow-focus: 0 0 0 3px rgba(124, 58, 237, 0.18);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Motion. 150-250ms keeps feedback perceptibly instant; the spring easing is
+     what makes presses feel physical rather than linear. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration: 220ms;
+
+  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
 html, body {
@@ -35,9 +79,11 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.02em;
   margin-bottom: 1rem;
+  color: var(--text);
 }
 
 h1 { font-size: 2.5rem; }
@@ -55,58 +101,81 @@ p {
 a {
   color: var(--primary);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
-a:hover {
-  color: var(--primary-dark);
-}
+a:hover { color: var(--primary-dark); }
 
 button {
+  font-family: inherit;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-spring);
 }
+
+/* Micro-interaction: lift on hover, settle *below* rest on press. The press
+   state is what sells the button as a physical control. */
+button:not(:disabled):hover { transform: translateY(-1px); }
+button:not(:disabled):active { transform: translateY(0) scale(0.98); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .btn-primary {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover {
   background-color: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 140, 66, 0.3);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-secondary {
-  background-color: transparent;
-  color: var(--primary);
-  border: 2px solid var(--primary);
+  background-color: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
 }
 
 .btn-secondary:hover {
-  background-color: var(--primary);
-  color: #ffffff;
+  background-color: var(--surface-hover);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 input, textarea, select {
   font-family: inherit;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  font-size: 0.9375rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background-color: var(--bg-secondary);
   color: var(--text);
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
+
+input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.1);
+  box-shadow: var(--shadow-focus);
+}
+
+/* Keyboard focus must stay visible even where a component removes the default
+   outline - never trade this away for aesthetics. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .container {
@@ -115,59 +184,90 @@ input:focus, textarea:focus, select:focus {
   padding: 0 20px;
 }
 
-.grid {
-  display: grid;
-  gap: 2rem;
-}
-
-.grid-2 {
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-}
-
-.grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-}
+.grid { display: grid; gap: 2rem; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 
 .card {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 2rem;
-  transition: all 0.3s;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration) var(--ease-out),
+              transform var(--duration) var(--ease-out),
+              border-color var(--duration) var(--ease-out);
 }
 
 .card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
 }
 
-.error {
-  color: var(--error);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-}
+.error { color: var(--error); font-size: 0.875rem; margin-top: 0.5rem; }
+.success { color: var(--success); font-size: 0.875rem; margin-top: 0.5rem; }
 
-.success {
-  color: var(--success);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-}
-
-.loading {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
+.loading { display: inline-block; animation: spin 1s linear infinite; }
 
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
+/* Entrance animation used for lists/grids. Paired with an inline
+   animation-delay in JS to produce a stagger. */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rise-in {
+  animation: riseIn 380ms var(--ease-out) both;
+}
+
+/* Skeleton shimmer for loading states - reserves layout space, so it also
+   prevents the layout shift a spinner-then-content swap would cause. */
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
 @media (max-width: 768px) {
   h1 { font-size: 1.875rem; }
   h2 { font-size: 1.5rem; }
   h3 { font-size: 1.25rem; }
+  .container { padding: 0 15px; }
+}
 
-  .container {
-    padding: 0 15px;
+/* Users who opt out of motion get the end state immediately, never a
+   half-applied animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  button:not(:disabled):hover,
+  button:not(:disabled):active {
+    transform: none;
   }
 }

@@ -22,8 +22,8 @@
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  background-color: rgba(63, 190, 132, 0.1);
-  border-left: 3px solid #3fbe84;
+  background-color: rgba(5, 150, 105, 0.1);
+  border-left: 3px solid var(--success);
   font-size: 0.875rem;
   color: var(--text);
 }
@@ -56,8 +56,8 @@
 .badgeActive {
   font-size: 0.6875rem;
   font-weight: 600;
-  color: #3fbe84;
-  background-color: rgba(63, 190, 132, 0.15);
+  color: var(--success);
+  background-color: rgba(5, 150, 105, 0.15);
   border-radius: 999px;
   padding: 0.25rem 0.625rem;
   flex-shrink: 0;
@@ -224,7 +224,7 @@
   gap: 0.25rem;
   padding: 0.25rem 0.25rem 0.25rem 0.625rem;
   border-radius: 999px;
-  background-color: rgba(232, 163, 61, 0.15);
+  background-color: rgba(124, 58, 237, 0.15);
   color: var(--primary);
   font-size: 0.75rem;
   font-weight: 500;
