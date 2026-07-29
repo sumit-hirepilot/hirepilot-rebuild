@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
@@ -32,6 +32,120 @@ function ChipInput({ values, onChange, placeholder, className }) {
         onBlur={addChip}
         placeholder={values.length ? '' : placeholder}
       />
+    </div>
+  );
+}
+
+/*
+ * Multi-select facet dropdown: label button, checkbox list with live counts,
+ * and an explicit Apply. Selections are staged locally and only committed on
+ * Apply, so ticking three boxes triggers one query rather than three - and
+ * the user can back out via Cancel without having already changed results.
+ */
+function FilterPanel({ label, options, selected, onApply, searchable = false }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(selected);
+  const [term, setTerm] = useState('');
+  const [alignRight, setAlignRight] = useState(false);
+  const ref = useRef(null);
+
+  // Panels are left-aligned to their trigger by default, but triggers sitting
+  // near the right edge would push the panel (and its Apply button) off
+  // screen. Measure on open and flip the anchor when it would overflow.
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const { left } = ref.current.getBoundingClientRect();
+    const PANEL_WIDTH = 272; // keep in sync with .filterPanel width
+    setAlignRight(left + PANEL_WIDTH > window.innerWidth - 16);
+  }, [open]);
+
+  useEffect(() => { setDraft(selected); }, [selected, open]);
+
+  // Close on outside click / Escape - expected dismissal for a popover.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const toggle = (value) => {
+    setDraft((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  };
+
+  const visible = searchable && term
+    ? options.filter((o) => o.label.toLowerCase().includes(term.toLowerCase()))
+    : options;
+
+  return (
+    <div className={page.filterPanelWrap} ref={ref}>
+      <button
+        type="button"
+        className={selected.length ? page.filterTriggerActive : page.filterTrigger}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
+        {label}
+        {selected.length > 0 && <span className={page.filterCount}>{selected.length}</span>}
+        <span aria-hidden="true" className={page.filterCaret}>{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div className={alignRight ? page.filterPanelRight : page.filterPanel} role="dialog" aria-label={label}>
+          <div className={page.filterPanelHead}>
+            <span className={page.filterPanelTitle}>{label}</span>
+            <button type="button" className={page.filterPanelClose} onClick={() => setOpen(false)} aria-label={`Close ${label}`}>×</button>
+          </div>
+
+          {searchable && (
+            <input
+              className={page.filterSearch}
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder={`Search ${label.toLowerCase()}`}
+            />
+          )}
+
+          <div className={page.filterOptions}>
+            {visible.length === 0 && <p className={page.filterEmpty}>No options match.</p>}
+            {visible.map((o) => (
+              <label key={o.value} className={page.filterOption}>
+                <input
+                  type="checkbox"
+                  checked={draft.includes(o.value)}
+                  onChange={() => toggle(o.value)}
+                />
+                <span className={page.filterOptionLabel}>{o.label}</span>
+                <span className={page.filterOptionCount}>({o.count.toLocaleString()})</span>
+              </label>
+            ))}
+          </div>
+
+          <div className={page.filterPanelFoot}>
+            <button
+              type="button"
+              className={page.filterClear}
+              onClick={() => setDraft([])}
+              disabled={draft.length === 0}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className={page.filterApply}
+              onClick={() => { onApply(draft); setOpen(false); }}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -69,7 +183,10 @@ export default function Jobs() {
   const [experience, setExperience] = useState('');
   const [location, setLocation] = useState('');
   const [datePosted, setDatePosted] = useState('');
-  const [jobType, setJobType] = useState('');
+  const [jobTypes, setJobTypes] = useState([]);
+  const [workArrangements, setWorkArrangements] = useState([]);
+  const [salary, setSalary] = useState('');
+  const [facets, setFacets] = useState(null);
   const [company, setCompany] = useState('');
   const [loading, setLoading] = useState(true);
   const [appliedIds, setAppliedIds] = useState(new Set());
@@ -104,7 +221,9 @@ export default function Jobs() {
       const loc = params.location ?? location;
       const related = params.includeRelated ?? includeRelated;
       const dp = params.datePosted ?? datePosted;
-      const jt = params.jobType ?? jobType;
+      const jt = params.jobTypes ?? jobTypes;
+      const wa = params.workArrangements ?? workArrangements;
+      const sal = params.salary ?? salary;
       const co = params.company ?? company;
       kws.forEach((k) => k && qs.append('keywords', k));
       excl.forEach((e) => e && qs.append('exclude', e));
@@ -113,7 +232,9 @@ export default function Jobs() {
       if (loc) qs.set('location', loc);
       if (related) qs.set('includeRelated', 'true');
       if (dp) qs.set('datePosted', dp);
-      if (jt) qs.set('jobType', jt);
+      jt.forEach((v) => v && qs.append('jobType', v));
+      wa.forEach((v) => v && qs.append('workArrangement', v));
+      if (sal) qs.set('salary', sal);
       if (co) qs.set('company', co);
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
@@ -173,7 +294,16 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobType, company]);
+  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company]);
+
+  // Facet counts are fetched once and reflect the whole active job pool, so
+  // each option can show how many jobs it would match before it's applied.
+  useEffect(() => {
+    fetch(`${base}/api/jobs/facets`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setFacets(d))
+      .catch(() => {});
+  }, [base]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -413,13 +543,46 @@ export default function Jobs() {
             <option value="7d">Past 7 days</option>
             <option value="30d">Past 30 days</option>
           </select>
-          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className={page.expSelect}>
-            <option value="">Employment type</option>
-            <option value="full-time">Full-time</option>
-            <option value="part-time">Part-time</option>
-            <option value="contract">Contract</option>
-            <option value="internship">Internship</option>
-          </select>
+          <FilterPanel
+            label="Employment type"
+            searchable
+            selected={jobTypes}
+            options={(facets?.jobType || []).map((o) => ({
+              value: o.value,
+              label: o.value.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
+              count: o.count,
+            }))}
+            onApply={(vals) => { setJobTypes(vals); loadJobs(token, { page: 1, jobTypes: vals }); }}
+          />
+
+          <FilterPanel
+            label="Workplace"
+            selected={workArrangements}
+            options={(facets?.workArrangement || []).map((o) => ({
+              value: o.value,
+              label: o.value.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
+              count: o.count,
+            }))}
+            onApply={(vals) => { setWorkArrangements(vals); loadJobs(token, { page: 1, workArrangements: vals }); }}
+          />
+
+          {/* Salary is "is it published", not a money range - see the note in
+              the jobs route: only ~16% of rows carry a salary and they are in
+              mixed currencies, so ranges could not be computed honestly. */}
+          <FilterPanel
+            label="Salary"
+            selected={salary ? [salary] : []}
+            options={(facets?.salary || []).map((o) => ({
+              value: o.value,
+              label: o.value === 'listed' ? 'Salary published' : 'No salary published',
+              count: o.count,
+            }))}
+            onApply={(vals) => {
+              const next = vals[vals.length - 1] || '';
+              setSalary(next);
+              loadJobs(token, { page: 1, salary: next });
+            }}
+          />
           <input
             type="text"
             value={company}
@@ -427,14 +590,18 @@ export default function Jobs() {
             placeholder="Company"
             className={page.locInput}
           />
-          {(experience || location || datePosted || jobType || company) && (
+          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary || company) && (
             <button
               type="button"
               className={page.clearFiltersButton}
               onClick={() => {
-                setExperience(''); setLocation(''); setDatePosted(''); setJobType(''); setCompany('');
+                setExperience(''); setLocation(''); setDatePosted('');
+                setJobTypes([]); setWorkArrangements([]); setSalary(''); setCompany('');
                 setPage(1);
-                loadJobs(token, { page: 1, experience: '', location: '', datePosted: '', jobType: '', company: '' });
+                loadJobs(token, {
+                  page: 1, experience: '', location: '', datePosted: '',
+                  jobTypes: [], workArrangements: [], salary: '', company: '',
+                });
               }}
             >
               Clear filters
