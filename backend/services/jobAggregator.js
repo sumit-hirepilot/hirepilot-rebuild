@@ -262,8 +262,42 @@ const aggregateJobs = async () => {
     console.error('Error marking stale jobs as inactive:', err);
   }
 
+  await pruneStaleJobs(results);
+
   console.log('Aggregation complete:', results);
   return results;
+};
+
+// Retention. Previously jobs were only ever flagged is_active = false and
+// never removed, so the table grew without bound on every 6-hourly cycle -
+// which is what eventually filled the database volume to 100% and crash-
+// looped Postgres (it could no longer write WAL). Job rows are a refetchable
+// cache, so anything long-stale and not referenced by real user data is
+// safe to drop.
+//
+// Rows referenced by a user's own records are always kept, regardless of
+// age: those FKs are ON DELETE CASCADE, so deleting such a job would
+// silently destroy the user's application history along with it.
+const PRUNE_AFTER_DAYS = parseInt(process.env.JOB_RETENTION_DAYS || '21', 10);
+
+const pruneStaleJobs = async (results) => {
+  try {
+    const res = await query(
+      `DELETE FROM jobs j
+        WHERE j.is_active = false
+          AND j.fetched_at < CURRENT_TIMESTAMP - INTERVAL '${PRUNE_AFTER_DAYS} days'
+          AND NOT EXISTS (SELECT 1 FROM applications     x WHERE x.job_id = j.id)
+          AND NOT EXISTS (SELECT 1 FROM tailored_resumes x WHERE x.job_id = j.id)
+          AND NOT EXISTS (SELECT 1 FROM cover_letters    x WHERE x.job_id = j.id)
+          AND NOT EXISTS (SELECT 1 FROM saved_jobs       x WHERE x.job_id = j.id)
+          AND NOT EXISTS (SELECT 1 FROM agent_matches    x WHERE x.job_id = j.id)
+          AND NOT EXISTS (SELECT 1 FROM referrals        x WHERE x.job_id = j.id)`
+    );
+    results.pruned = res.rowCount;
+    if (res.rowCount) console.log(`Pruned ${res.rowCount} stale unreferenced jobs`);
+  } catch (err) {
+    console.error('Error pruning stale jobs:', err.message);
+  }
 };
 
 module.exports = {

@@ -1,4 +1,30 @@
+const fs = require('fs');
+const path = require('path');
 const { query } = require('../db');
+
+// schema.sql creates the base tables and is entirely CREATE TABLE IF NOT
+// EXISTS / CREATE INDEX IF NOT EXISTS, so running it on every boot is a
+// no-op once the schema exists. It was previously applied by hand exactly
+// once, which meant a fresh/replaced database came up with no tables at all
+// and every request failed - the migrations below only ALTER tables that
+// schema.sql is responsible for creating. Applying it here first makes the
+// app self-bootstrapping on an empty database.
+const applyBaseSchema = async () => {
+  const schemaPath = path.join(__dirname, '..', 'schema.sql');
+  let sql;
+  try {
+    sql = fs.readFileSync(schemaPath, 'utf8');
+  } catch (err) {
+    console.error('Could not read schema.sql, skipping base schema:', err.message);
+    return;
+  }
+  try {
+    await query(sql);
+    console.log('Base schema applied (no-op if it already existed)');
+  } catch (err) {
+    console.error('Base schema apply failed:', err.message);
+  }
+};
 
 // Idempotent, additive-only migrations. Safe to run on every startup.
 const STATEMENTS = [
@@ -140,6 +166,7 @@ const STATEMENTS = [
 ];
 
 const runMigrations = async () => {
+  await applyBaseSchema();
   for (const statement of STATEMENTS) {
     try {
       await query(statement);
