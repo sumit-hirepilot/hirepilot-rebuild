@@ -110,7 +110,14 @@ const storeJob = async (jobData) => {
       job_type, work_arrangement, location, country, posted_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     ON CONFLICT (source, external_id) DO UPDATE
-    SET fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP
+    SET title = EXCLUDED.title, company_name = EXCLUDED.company_name,
+        company_url = EXCLUDED.company_url, job_url = EXCLUDED.job_url,
+        description = EXCLUDED.description, requirements = EXCLUDED.requirements,
+        salary_min = EXCLUDED.salary_min, salary_max = EXCLUDED.salary_max,
+        currency = EXCLUDED.currency, job_type = EXCLUDED.job_type,
+        work_arrangement = EXCLUDED.work_arrangement, location = EXCLUDED.location,
+        country = EXCLUDED.country, fetched_at = CURRENT_TIMESTAMP, is_active = true,
+        updated_at = CURRENT_TIMESTAMP
     RETURNING id`,
     [
       jobData.source, jobData.external_id, jobData.title, jobData.company_name,
