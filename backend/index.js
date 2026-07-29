@@ -81,16 +81,33 @@ app.use((err, req, res, next) => {
   });
 });
 
-async function startServer() {
-  await runMigrations();
-
-  if (process.env.NODE_ENV !== 'test') {
-    startScheduler();
-  }
+// Start listening FIRST, independent of the database. Previously this
+// awaited runMigrations() before ever calling app.listen() - fine when the
+// DB is healthy, but if it's unreachable, ~35 sequential migration
+// statements each waiting out the full connection/statement timeout adds
+// up to several minutes before the server binds to its port at all. That's
+// longer than a typical platform deploy health-check window, so the
+// container gets killed and restarted before startup ever finishes,
+// looping indefinitely with zero live server the whole time - including no
+// way to hit /api/health and see what's actually wrong. Listening
+// immediately means the app (and its real-time diagnostics) stays
+// reachable even during a database outage; only DB-backed routes fail,
+// each already handling that per-request via their own try/catch.
+function startServer() {
   app.listen(PORT, () => {
     console.log(`HirePilot API Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
+
+  runMigrations()
+    .then(() => {
+      if (process.env.NODE_ENV !== 'test') {
+        startScheduler();
+      }
+    })
+    .catch((err) => {
+      console.error('Migrations failed to complete:', err.message);
+    });
 }
 
 startServer();
