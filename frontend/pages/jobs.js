@@ -86,6 +86,7 @@ export default function Jobs() {
   const [noExactMatches, setNoExactMatches] = useState(false);
   const [relatedJobs, setRelatedJobs] = useState([]);
   const [relatedTotal, setRelatedTotal] = useState(0);
+  const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(0);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
 
@@ -130,6 +131,7 @@ export default function Jobs() {
         setNoExactMatches(!!data.noExactMatches);
         setRelatedJobs(data.relatedJobs || []);
         setRelatedTotal(data.relatedTotal || 0);
+        setExcludedUnknownDateCount(data.excludedUnknownDateCount || 0);
       } else {
         // Never silently keep showing a stale/previous result set on
         // failure - that reads as "search is broken and ignoring me".
@@ -137,6 +139,7 @@ export default function Jobs() {
         setTotal(0);
         setNoExactMatches(false);
         setRelatedJobs([]);
+        setExcludedUnknownDateCount(0);
         setMessage('Failed to load jobs. Please try your search again.');
       }
 
@@ -442,6 +445,11 @@ export default function Jobs() {
         <div className={page.headerRow}>
           <h1 className={styles.greeting} style={{ margin: 0 }}>Jobs</h1>
           <span className={page.resultsCount}>{showSavedOnly ? savedIds.size : total} results</span>
+          {!showSavedOnly && datePosted && excludedUnknownDateCount > 0 && (
+            <span className={page.unknownDateNote} title="These jobs' sources don't expose a reliable original-publish date, so we can't confirm they fall in this window - shown separately rather than guessing.">
+              +{excludedUnknownDateCount} more with unknown publish date (excluded from this filter)
+            </span>
+          )}
           <button
             type="button"
             className={showSavedOnly ? page.pageActive : page.pageButton}

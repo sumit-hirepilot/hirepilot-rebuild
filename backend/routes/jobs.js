@@ -160,10 +160,18 @@ router.get('/', async (req, res) => {
       filterClause += ` AND job_type = $${params.length}`;
     }
 
+    // Kept separate from filterClause (rather than appended inline) so it
+    // can be applied at the same point results are read while still
+    // allowing a companion query for jobs with an unknown posted_at -
+    // `posted_at >= ...` is neither true nor false against NULL, so those
+    // jobs are silently dropped by this filter (correctly - we can't claim
+    // an unknown-date job falls in the window), but the count of how many
+    // were excluded for that reason needs to be surfaced, not silent.
+    let dateFilterSql = '';
     if (datePosted) {
       const intervalMap = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
       const interval = intervalMap[datePosted];
-      if (interval) filterClause += ` AND posted_at >= CURRENT_TIMESTAMP - INTERVAL '${interval}'`;
+      if (interval) dateFilterSql = ` AND posted_at >= CURRENT_TIMESTAMP - INTERVAL '${interval}'`;
     }
 
     if (experience === 'senior') {
@@ -184,6 +192,7 @@ router.get('/', async (req, res) => {
     let relatedJobs = [];
     let relatedTotal = 0;
     let noExactMatches = false;
+    let excludedUnknownDateCount = 0;
 
     if (keywords.some((k) => k && k.trim())) {
       // Rank exact title matches (tier 1) above title-word matches (tier 2)
@@ -207,29 +216,37 @@ router.get('/', async (req, res) => {
       const tierFilter = wantRelated ? 'match_tier <= 3' : 'match_tier <= 2';
 
       const countResult = await query(
-        `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter}`,
+        `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter}${dateFilterSql}`,
         params
       );
       total = parseInt(countResult.rows[0].count, 10);
 
       const result = await query(
-        `${scoredCte} SELECT * FROM scored WHERE ${tierFilter}
+        `${scoredCte} SELECT * FROM scored WHERE ${tierFilter}${dateFilterSql}
          ORDER BY match_tier ASC, posted_at DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       );
       jobs = result.rows;
 
+      if (datePosted) {
+        const unknownDateResult = await query(
+          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter} AND posted_at IS NULL`,
+          params
+        );
+        excludedUnknownDateCount = parseInt(unknownDateResult.rows[0].count, 10);
+      }
+
       if (!wantRelated && total === 0) {
         noExactMatches = true;
         const relatedCountResult = await query(
-          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE match_tier = 3`,
+          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE match_tier = 3${dateFilterSql}`,
           params
         );
         relatedTotal = parseInt(relatedCountResult.rows[0].count, 10);
 
         const relatedResult = await query(
-          `${scoredCte} SELECT * FROM scored WHERE match_tier = 3
+          `${scoredCte} SELECT * FROM scored WHERE match_tier = 3${dateFilterSql}
            ORDER BY posted_at DESC
            LIMIT $${params.length + 1}`,
           [...params, limit]
@@ -237,17 +254,25 @@ router.get('/', async (req, res) => {
         relatedJobs = relatedResult.rows;
       }
     } else {
-      const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}`, params);
+      const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}${dateFilterSql}`, params);
       total = parseInt(countResult.rows[0].count, 10);
 
       const result = await query(
         `SELECT ${JOB_COLUMNS}
-         FROM jobs WHERE ${filterClause}
+         FROM jobs WHERE ${filterClause}${dateFilterSql}
          ORDER BY posted_at DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       );
       jobs = result.rows;
+
+      if (datePosted) {
+        const unknownDateResult = await query(
+          `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND posted_at IS NULL`,
+          params
+        );
+        excludedUnknownDateCount = parseInt(unknownDateResult.rows[0].count, 10);
+      }
     }
 
     const decorate = (list) => list.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));
@@ -260,6 +285,7 @@ router.get('/', async (req, res) => {
       noExactMatches,
       relatedJobs: decorate(relatedJobs),
       relatedTotal,
+      excludedUnknownDateCount,
     });
   } catch (err) {
     console.error('Get jobs error:', err);
