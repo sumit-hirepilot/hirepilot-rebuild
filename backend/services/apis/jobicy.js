@@ -39,7 +39,7 @@ const fetchJobs = async () => {
         currency: j.salaryCurrency || 'USD',
         work_arrangement: 'remote',
         job_type: (j.jobType?.[0] || 'full-time').toLowerCase().replace(/\s+/g, '-'),
-        posted_at: j.pubDate ? new Date(j.pubDate) : new Date(),
+        posted_at: j.pubDate ? new Date(j.pubDate) : null,
       }));
   } catch (err) {
     console.error('Jobicy API error:', err.message);

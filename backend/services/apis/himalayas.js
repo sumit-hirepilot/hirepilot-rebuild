@@ -41,7 +41,15 @@ const fetchJobs = async () => {
         currency: job.currency || 'USD',
         job_type: job.employmentType || 'full-time',
         work_arrangement: 'remote',
-        posted_at: job.pubDate ? new Date(job.pubDate * 1000) : new Date(),
+        // Himalayas's public pubDate field does not reliably reflect the
+        // job's true original publish date - confirmed live: multiple
+        // unrelated companies' postings all carried a pubDate clustered
+        // within the same ~hour window HirePilot happened to fetch them,
+        // while the same job's own Himalayas page showed a "Posted on"
+        // date up to 2 months earlier. It reads as a last-synced/bumped
+        // timestamp on Himalayas's side, not an original-post date, and
+        // their public API exposes no other date field to fall back to.
+        posted_at: null,
       }));
   } catch (err) {
     console.error('Himalayas API error:', err.message);

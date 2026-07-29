@@ -82,7 +82,11 @@ const fetchGreenhouseCompany = async (slug) => {
     country: '',
     work_arrangement: /remote/i.test(j.location?.name || '') ? 'remote' : 'on-site',
     job_type: 'full-time',
-    posted_at: j.updated_at ? new Date(j.updated_at) : new Date(),
+    // first_published is the job's genuine original post date; updated_at
+    // bumps on every edit (even a typo fix), which was making old postings
+    // look freshly posted - confirmed live on a Stripe job where updated_at
+    // was 7 weeks after the real first_published date.
+    posted_at: j.first_published ? new Date(j.first_published) : null,
   }));
 };
 
@@ -103,7 +107,7 @@ const fetchLeverCompany = async (slug) => {
     country: '',
     work_arrangement: /remote/i.test(j.categories?.location || '') ? 'remote' : 'on-site',
     job_type: (j.categories?.commitment || 'full-time').toLowerCase().replace(/\s+/g, '-'),
-    posted_at: j.createdAt ? new Date(j.createdAt) : new Date(),
+    posted_at: j.createdAt ? new Date(j.createdAt) : null,
   }));
 };
 
@@ -123,7 +127,7 @@ const fetchAshbyCompany = async (slug) => {
     country: '',
     work_arrangement: j.isRemote ? 'remote' : 'on-site',
     job_type: (j.employmentType || 'full-time').toLowerCase().replace(/\s+/g, '-'),
-    posted_at: j.publishedAt ? new Date(j.publishedAt) : new Date(),
+    posted_at: j.publishedAt ? new Date(j.publishedAt) : null,
   }));
 };
 

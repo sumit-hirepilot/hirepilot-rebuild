@@ -47,6 +47,15 @@ function timeAgo(dateStr) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+// Some sources don't expose a trustworthy original-publish-date field (or
+// only expose a "last synced/updated" timestamp that isn't the same thing) -
+// posted_at is left null rather than backend fabricating a fake recent date,
+// so this must say so plainly instead of computing a misleading "Xh ago".
+function postedTimeAgo(dateStr) {
+  if (!dateStr) return 'Publication date unavailable';
+  return timeAgo(dateStr);
+}
+
 export default function Jobs() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -289,7 +298,7 @@ export default function Jobs() {
           <p className={page.jobMeta}>
             {job.location || 'Remote'}
             {job.salary_min ? ` · $${Math.round(job.salary_min / 1000)}K${job.salary_max ? `-${Math.round(job.salary_max / 1000)}K` : '+'}` : ''}
-            {' · '}{timeAgo(job.posted_at)}
+            {' · '}{postedTimeAgo(job.posted_at)}
           </p>
         </div>
         {score !== null && (

@@ -127,6 +127,16 @@ const STATEMENTS = [
   `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS cover_letter_mode VARCHAR(20) DEFAULT 'always'`,
   `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS review_before_submit BOOLEAN DEFAULT false`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS tailored_resume_id INTEGER REFERENCES tailored_resumes(id) ON DELETE SET NULL`,
+
+  // One-time correction: Himalayas's public pubDate field was found to not
+  // reliably reflect a job's true original publish date (confirmed against
+  // the same job's own Himalayas page showing a date up to 2 months
+  // earlier) - the parser no longer trusts it, but rows already ingested
+  // under the old mapping need clearing too. Jobs still within the active
+  // re-fetch window self-heal to null automatically going forward; this
+  // catches the rest (aged-out/inactive rows the ingester no longer
+  // revisits) in one pass. Safe to run repeatedly - a no-op once applied.
+  `UPDATE jobs SET posted_at = NULL WHERE source = 'himalayas' AND posted_at IS NOT NULL`,
 ];
 
 const runMigrations = async () => {

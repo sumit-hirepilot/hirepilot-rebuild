@@ -53,7 +53,7 @@ const fetchJobs = async () => {
           currency: o.currency_code || 'EUR',
           work_arrangement: o.remote ? 'remote' : 'on-site',
           job_type: (o.type || 'full-time').toLowerCase().replace(/\s+/g, '-'),
-          posted_at: o.published_at ? new Date(o.published_at) : new Date(),
+          posted_at: o.published_at ? new Date(o.published_at) : null,
         };
       });
   } catch (err) {

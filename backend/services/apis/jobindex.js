@@ -59,7 +59,7 @@ const fetchJobs = async () => {
           country: 'Denmark',
           work_arrangement: 'on-site',
           job_type: 'full-time',
-          posted_at: item.pubDate ? new Date(item.pubDate) : new Date(),
+          posted_at: item.pubDate ? new Date(item.pubDate) : null,
         };
       });
   } catch (err) {

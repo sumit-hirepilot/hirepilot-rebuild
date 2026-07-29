@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   location VARCHAR(255),
   country VARCHAR(100),
   timezone VARCHAR(50),
-  posted_at TIMESTAMP, -- CRITICAL: When job was originally posted (never reset on re-fetch)
+  posted_at TIMESTAMP, -- Original publish date from the source; null if the source has no trustworthy date field. Refreshed on every re-fetch so a corrected source mapping self-heals existing rows.
   fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- When we last fetched this job
   is_active BOOLEAN DEFAULT TRUE,
   is_featured BOOLEAN DEFAULT FALSE,

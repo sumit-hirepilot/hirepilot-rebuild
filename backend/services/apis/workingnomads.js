@@ -37,7 +37,7 @@ const fetchJobs = async () => {
         country: '',
         work_arrangement: 'remote',
         job_type: 'full-time',
-        posted_at: j.pub_date ? new Date(j.pub_date) : new Date(),
+        posted_at: j.pub_date ? new Date(j.pub_date) : null,
       }));
   } catch (err) {
     console.error('Working Nomads API error:', err.message);

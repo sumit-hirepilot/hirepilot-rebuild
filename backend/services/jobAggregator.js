@@ -35,9 +35,13 @@ const SOURCES = [
 ];
 
 const normalizeJob = (job, source) => {
+  // posted_at must reflect the source's genuine original-publish date, never
+  // the moment we happened to fetch it - a source with no trustworthy date
+  // field (or a malformed one) should leave this null, not silently fall
+  // back to "now", which fabricates a fake "just posted" freshness signal.
   const rawDate = job.posted_at || job.postedAt;
-  const parsedDate = rawDate ? new Date(rawDate) : new Date();
-  const postedAt = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+  const parsedDate = rawDate ? new Date(rawDate) : null;
+  const postedAt = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
 
   return {
     source,
@@ -79,17 +83,35 @@ const findCrossSourceDuplicate = async (title, companyName, postedAt) => {
   return result.rows[0]?.id || null;
 };
 
+const UPDATE_FIELDS_SQL = `title = $1, company_name = $2, company_url = $3, job_url = $4,
+   description = $5, requirements = $6, salary_min = $7, salary_max = $8, currency = $9,
+   job_type = $10, work_arrangement = $11, location = $12, country = $13, posted_at = $14,
+   fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP`;
+const updateFieldsParams = (jobData) => [
+  jobData.title, jobData.company_name, jobData.company_url, jobData.job_url,
+  jobData.description, jobData.requirements, jobData.salary_min, jobData.salary_max,
+  jobData.currency, jobData.job_type, jobData.work_arrangement, jobData.location,
+  jobData.country, jobData.posted_at,
+];
+
 const storeJob = async (jobData) => {
+  // Exact (source, external_id) match: this is the common re-fetch case, so
+  // it's handled directly rather than falling through to the cross-source
+  // duplicate check below - that query matches on title/company/date with
+  // no id exclusion, so a same-job re-fetch would otherwise find itself and
+  // take the duplicate-merge branch (fetched_at only, no field refresh).
+  // An earlier version of this fast path only bumped fetched_at/is_active
+  // here too, which is exactly why stale metadata (e.g. a wrong company_name
+  // or posted_at) never corrected itself on later re-fetches even after the
+  // upstream source parser was fixed - now every re-fetch fully refreshes.
   const existing = await query(
     'SELECT id FROM jobs WHERE source = $1 AND external_id = $2',
     [jobData.source, jobData.external_id]
   );
-
   if (existing.rows.length > 0) {
-    // Update only fetched_at, never reset posted_at (CRITICAL for staleness bug fix)
     await query(
-      'UPDATE jobs SET fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [existing.rows[0].id]
+      `UPDATE jobs SET ${UPDATE_FIELDS_SQL} WHERE id = $15`,
+      [...updateFieldsParams(jobData), existing.rows[0].id]
     );
     return { id: existing.rows[0].id, isNew: false, isDuplicateMerge: false };
   }
@@ -116,8 +138,8 @@ const storeJob = async (jobData) => {
         salary_min = EXCLUDED.salary_min, salary_max = EXCLUDED.salary_max,
         currency = EXCLUDED.currency, job_type = EXCLUDED.job_type,
         work_arrangement = EXCLUDED.work_arrangement, location = EXCLUDED.location,
-        country = EXCLUDED.country, fetched_at = CURRENT_TIMESTAMP, is_active = true,
-        updated_at = CURRENT_TIMESTAMP
+        country = EXCLUDED.country, posted_at = EXCLUDED.posted_at,
+        fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP
     RETURNING id`,
     [
       jobData.source, jobData.external_id, jobData.title, jobData.company_name,

@@ -59,7 +59,7 @@ const fetchJobs = async () => {
         currency: p.salary?.currency || 'PLN',
         work_arrangement: isRemote ? 'remote' : 'on-site',
         job_type: 'full-time',
-        posted_at: p.posted ? new Date(Number(p.posted)) : new Date(),
+        posted_at: p.posted ? new Date(Number(p.posted)) : null,
       };
     });
   } catch (err) {

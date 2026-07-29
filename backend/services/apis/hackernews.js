@@ -53,7 +53,7 @@ const parseComment = (comment) => {
     country: '',
     work_arrangement: isRemote ? 'remote' : 'unknown',
     job_type: 'full-time',
-    posted_at: comment.time ? new Date(comment.time * 1000) : new Date(),
+    posted_at: comment.time ? new Date(comment.time * 1000) : null,
   };
 };
 
