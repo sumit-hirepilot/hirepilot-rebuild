@@ -152,6 +152,20 @@ function FilterPanel({ label, options, selected, onApply, searchable = false, hi
   );
 }
 
+// Salary was previously printed as `$${salary_min/1000}K` for every job
+// regardless of the row's actual currency, so a 25,000 PLN/month NoFluffJobs
+// figure rendered as "$25K" - wrong currency and wrong period at once.
+// Show the real currency, and mark per-month figures as such.
+const MONTHLY_SOURCES = new Set(['nofluffjobs']);
+
+function formatSalary(job) {
+  const cur = job.currency || 'USD';
+  const per = MONTHLY_SOURCES.has(job.source) ? '/mo' : '';
+  const k = (n) => (n >= 10000 ? `${Math.round(n / 1000)}K` : `${Math.round(n)}`);
+  const range = job.salary_max ? `${k(job.salary_min)}-${k(job.salary_max)}` : `${k(job.salary_min)}+`;
+  return `${cur} ${range}${per}`;
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return 'never';
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -432,7 +446,7 @@ export default function Jobs() {
           <p className={page.jobSubtitle}>{job.company_name}</p>
           <p className={page.jobMeta}>
             {job.location || 'Remote'}
-            {job.salary_min ? ` · $${Math.round(job.salary_min / 1000)}K${job.salary_max ? `-${Math.round(job.salary_max / 1000)}K` : '+'}` : ''}
+            {job.salary_min ? ` · ${formatSalary(job)}` : ''}
             {' · '}{postedTimeAgo(job.posted_at)}
           </p>
         </div>

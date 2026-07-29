@@ -85,11 +85,19 @@ const USD_RATES = {
 const USD_CASE = `CASE COALESCE(NULLIF(currency,''),'USD') ${
   Object.entries(USD_RATES).map(([c, r]) => `WHEN '${c}' THEN ${r}`).join(' ')
 } ELSE NULL END`;
-// Some feeds quote monthly pay (notably the PLN boards); a sub-2k "annual"
-// USD figure is far more likely monthly, so scale it to a yearly equivalent.
-const SALARY_USD = `(CASE WHEN salary_min * ${USD_CASE} < 2000
-    THEN salary_min * ${USD_CASE} * 12
-    ELSE salary_min * ${USD_CASE} END)`;
+// Period normalisation is per SOURCE, not per magnitude. NoFluffJobs quotes
+// monthly pay in every currency it carries (PLN ~20.7k, HUF ~1.17m, EUR ~4.2k,
+// USD ~4.9k, CZK ~85k per month); every other source quotes annual figures
+// (Himalayas USD ~97.6k, Jobicy ~133k, Landing.jobs EUR ~49k per year).
+//
+// An earlier version guessed "monthly" from a low converted value, which
+// failed exactly where it mattered: 20,671 PLN/month converts to ~$5.2k,
+// comfortably above any sane threshold, so ~2,400 Polish jobs were read as
+// $5k-a-year and swept into the lowest band.
+const MONTHLY_SOURCES = ['nofluffjobs'];
+const SALARY_USD = `(salary_min * ${USD_CASE} * CASE WHEN source IN (${
+  MONTHLY_SOURCES.map((s) => `'${s}'`).join(', ')
+}) THEN 12 ELSE 1 END)`;
 
 const SALARY_BANDS = [
   { value: 'lt50', label: 'Under $50K', min: null, max: 50000 },
