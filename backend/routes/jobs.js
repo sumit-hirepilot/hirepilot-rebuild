@@ -57,6 +57,62 @@ const ALL_SOURCES = [
 
 // Status + health of each live job source: active job count, last successful
 // fetch, and recent ingestion run metrics (latency, success rate, errors).
+// Canonical job_type values. Sources spell the same thing several ways
+// ("full-time", "fulltime", "Full Time", "full_time"), which fragmented the
+// facet and made the exact-match filter silently miss thousands of rows -
+// selecting "Full-time" matched 12,473 of the 16,789 jobs that actually are
+// full-time. Normalising at query time keeps already-stored rows correct
+// without a migration.
+const JOB_TYPE_SQL = `CASE
+    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('fulltime') THEN 'full-time'
+    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('parttime') THEN 'part-time'
+    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('contract','contractor','b2b') THEN 'contract'
+    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('internship','intern') THEN 'internship'
+    WHEN COALESCE(job_type,'') = '' THEN 'unspecified'
+    ELSE lower(job_type)
+  END`;
+
+// Facet counts for the filter panels. Every count here is a real COUNT(*)
+// over live rows - no estimates - so a filter never advertises results it
+// cannot deliver.
+router.get('/facets', async (req, res) => {
+  try {
+    const [workArrangement, jobType, salary, experience] = await Promise.all([
+      query(`SELECT COALESCE(NULLIF(work_arrangement,''),'unknown') AS value, COUNT(*)::int AS count
+             FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
+      query(`SELECT ${JOB_TYPE_SQL} AS value, COUNT(*)::int AS count
+             FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
+      query(`SELECT
+               COUNT(*) FILTER (WHERE salary_min IS NOT NULL)::int AS listed,
+               COUNT(*) FILTER (WHERE salary_min IS NULL)::int AS not_listed
+             FROM jobs WHERE is_active = true`),
+      query(`SELECT
+               COUNT(*) FILTER (WHERE title ~* '(junior|jr\\.?|entry|intern|graduate)')::int AS entry,
+               COUNT(*) FILTER (WHERE title ~* '(senior|sr\\.?|lead|head of)')::int AS senior,
+               COUNT(*) FILTER (WHERE title ~* '(staff|principal|distinguished)')::int AS staff
+             FROM jobs WHERE is_active = true`),
+    ]);
+
+    const exp = experience.rows[0];
+    res.json({
+      workArrangement: workArrangement.rows,
+      jobType: jobType.rows,
+      salary: [
+        { value: 'listed', count: salary.rows[0].listed },
+        { value: 'not_listed', count: salary.rows[0].not_listed },
+      ],
+      experience: [
+        { value: 'entry', count: exp.entry },
+        { value: 'senior', count: exp.senior },
+        { value: 'staff', count: exp.staff },
+      ],
+    });
+  } catch (err) {
+    console.error('Get facets error:', err);
+    res.status(500).json({ error: 'Failed to fetch filter facets' });
+  }
+});
+
 router.get('/sources', async (req, res) => {
   try {
     const [countsResult, runsResult] = await Promise.all([
@@ -155,10 +211,31 @@ router.get('/', async (req, res) => {
       filterClause += ` AND company_name ILIKE $${params.length}`;
     }
 
-    if (jobType) {
-      params.push(jobType);
-      filterClause += ` AND job_type = $${params.length}`;
+    // Multi-select facets. Each accepts repeated params
+    // (?jobType=full-time&jobType=contract) and OR's within a facet while
+    // AND'ing across facets, which is the behaviour a checkbox filter panel
+    // implies. Single values still work, so existing callers are unaffected.
+    const asArray = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).filter(Boolean);
+
+    const jobTypes = asArray(jobType);
+    if (jobTypes.length) {
+      // Compare against the normalised expression, not the raw column - the
+      // raw values are fragmented across several spellings per type.
+      const ph = jobTypes.map((t) => { params.push(t); return `$${params.length}`; });
+      filterClause += ` AND ${JOB_TYPE_SQL} IN (${ph.join(', ')})`;
     }
+
+    const workArrangements = asArray(req.query.workArrangement);
+    if (workArrangements.length) {
+      const ph = workArrangements.map((w) => { params.push(w); return `$${params.length}`; });
+      filterClause += ` AND COALESCE(NULLIF(work_arrangement,''),'unknown') IN (${ph.join(', ')})`;
+    }
+
+    // Salary is only present on ~16% of rows and in mixed currencies, so the
+    // honest facet is "is a salary published at all", not a money range.
+    const salaryFilter = req.query.salary;
+    if (salaryFilter === 'listed') filterClause += ' AND salary_min IS NOT NULL';
+    else if (salaryFilter === 'not_listed') filterClause += ' AND salary_min IS NULL';
 
     // Kept separate from filterClause (rather than appended inline) so it
     // can be applied at the same point results are read while still
