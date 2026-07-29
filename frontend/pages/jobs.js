@@ -639,6 +639,11 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
           <div>
             <h2 className={styles.drawerTitle}>{job.title}</h2>
             <p className={styles.drawerSubtitle}>{job.company_name} &middot; {job.location || 'Remote'}</p>
+            <p className={styles.drawerPosted}>
+              {job.posted_at
+                ? `Posted ${postedTimeAgo(job.posted_at)} · ${new Date(job.posted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : 'Publication date unavailable'}
+            </p>
           </div>
           <button className={styles.drawerClose} onClick={onClose}>&times;</button>
         </div>

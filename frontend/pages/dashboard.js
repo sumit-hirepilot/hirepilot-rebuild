@@ -190,7 +190,11 @@ export default function Dashboard() {
                   <div className={styles.matchScore}>{Math.round(m.overall_score * 100)}</div>
                   <div>
                     <p className={styles.matchTitle}>{m.title}</p>
-                    <p className={styles.matchSubtitle}>{m.company_name} &middot; {m.location}</p>
+                    <p className={styles.matchSubtitle}>
+                      {m.company_name} &middot; {m.location}
+                      {' · '}
+                      {m.posted_at ? timeAgo(m.posted_at) : 'date unavailable'}
+                    </p>
                   </div>
                 </div>
               ))
