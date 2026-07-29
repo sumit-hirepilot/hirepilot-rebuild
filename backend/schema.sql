@@ -77,6 +77,34 @@ CREATE TABLE IF NOT EXISTS resumes (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Jobs (aggregated from external sources)
+CREATE TABLE IF NOT EXISTS jobs (
+  id SERIAL PRIMARY KEY,
+  source VARCHAR(50) NOT NULL, -- 'remoteok', 'weworkremotely', 'remotive'
+  external_id VARCHAR(255) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  company_name VARCHAR(255) NOT NULL,
+  company_url VARCHAR(1024),
+  job_url VARCHAR(1024) NOT NULL UNIQUE,
+  description TEXT,
+  requirements TEXT,
+  salary_min INTEGER,
+  salary_max INTEGER,
+  currency VARCHAR(10),
+  job_type VARCHAR(50), -- full-time, part-time, contract, etc
+  work_arrangement VARCHAR(50), -- remote, hybrid, on-site
+  location VARCHAR(255),
+  country VARCHAR(100),
+  timezone VARCHAR(50),
+  posted_at TIMESTAMP, -- Original publish date from the source; null if the source has no trustworthy date field. Refreshed on every re-fetch so a corrected source mapping self-heals existing rows.
+  fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- When we last fetched this job
+  is_active BOOLEAN DEFAULT TRUE,
+  is_featured BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(source, external_id)
+);
+
 
 -- Tailored resume history (per job)
 CREATE TABLE IF NOT EXISTS tailored_resumes (
@@ -125,33 +153,6 @@ CREATE TABLE IF NOT EXISTS saved_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_saved_jobs_user_id ON saved_jobs(user_id);
 
--- Jobs (aggregated from external sources)
-CREATE TABLE IF NOT EXISTS jobs (
-  id SERIAL PRIMARY KEY,
-  source VARCHAR(50) NOT NULL, -- 'remoteok', 'weworkremotely', 'remotive'
-  external_id VARCHAR(255) NOT NULL,
-  title VARCHAR(255) NOT NULL,
-  company_name VARCHAR(255) NOT NULL,
-  company_url VARCHAR(1024),
-  job_url VARCHAR(1024) NOT NULL UNIQUE,
-  description TEXT,
-  requirements TEXT,
-  salary_min INTEGER,
-  salary_max INTEGER,
-  currency VARCHAR(10),
-  job_type VARCHAR(50), -- full-time, part-time, contract, etc
-  work_arrangement VARCHAR(50), -- remote, hybrid, on-site
-  location VARCHAR(255),
-  country VARCHAR(100),
-  timezone VARCHAR(50),
-  posted_at TIMESTAMP, -- Original publish date from the source; null if the source has no trustworthy date field. Refreshed on every re-fetch so a corrected source mapping self-heals existing rows.
-  fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- When we last fetched this job
-  is_active BOOLEAN DEFAULT TRUE,
-  is_featured BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(source, external_id)
-);
 
 -- Per-source job aggregation ingestion metrics (latency, success/failure)
 CREATE TABLE IF NOT EXISTS source_ingestion_runs (
