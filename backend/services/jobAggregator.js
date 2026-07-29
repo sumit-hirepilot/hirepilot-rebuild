@@ -34,6 +34,21 @@ const SOURCES = [
   // without circumventing it, which we won't do.
 ];
 
+// Job descriptions are by far the largest column and dominate database size:
+// a full aggregation is ~17k postings, and at full length that alone was
+// enough to fill the entire volume and crash-loop Postgres. Keyword matching
+// and search only need the substantive body text, not the boilerplate tail
+// (EEO statements, benefits blurb, application instructions), so descriptions
+// are capped. Raising this materially raises storage use - size it against
+// the actual volume, not optimistically.
+const MAX_DESCRIPTION_CHARS = parseInt(process.env.MAX_DESCRIPTION_CHARS || '4000', 10);
+
+const capText = (text) => {
+  if (typeof text !== 'string') return text;
+  if (text.length <= MAX_DESCRIPTION_CHARS) return text;
+  return `${text.slice(0, MAX_DESCRIPTION_CHARS)}…`;
+};
+
 const normalizeJob = (job, source) => {
   // posted_at must reflect the source's genuine original-publish date, never
   // the moment we happened to fetch it - a source with no trustworthy date
@@ -50,8 +65,8 @@ const normalizeJob = (job, source) => {
     company_name: job.company || job.companyName,
     company_url: job.company_url || job.companyUrl,
     job_url: job.url || job.job_url || job.jobUrl,
-    description: job.description || job.jobDescription,
-    requirements: job.requirements || '',
+    description: capText(job.description || job.jobDescription),
+    requirements: capText(job.requirements || ''),
     salary_min: job.salary_min || job.salaryMin || null,
     salary_max: job.salary_max || job.salaryMax || null,
     currency: job.currency || 'USD',
