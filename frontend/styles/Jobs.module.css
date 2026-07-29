@@ -603,3 +603,16 @@
   left: auto;
   right: 0;
 }
+
+.filterHint {
+  margin: 0 1rem 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.contactNote {
+  margin: 0.375rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+}

@@ -72,6 +72,68 @@ const JOB_TYPE_SQL = `CASE
     ELSE lower(job_type)
   END`;
 
+// Approximate FX to USD so salaries from mixed-currency sources can be
+// compared and bucketed. These are static reference rates, not live: they are
+// good enough to sort a job into a broad band, and every surface that uses
+// them labels the figure "approx". They are deliberately NOT used to display a
+// precise converted salary, which would imply accuracy this doesn't have.
+const USD_RATES = {
+  USD: 1, EUR: 1.08, GBP: 1.27, CHF: 1.12, CAD: 0.73, AUD: 0.66,
+  PLN: 0.25, CZK: 0.043, HUF: 0.0028, SEK: 0.095, NOK: 0.093, DKK: 0.145,
+  INR: 0.012, BRL: 0.18, MXN: 0.05, ZAR: 0.055, SGD: 0.74, JPY: 0.0064,
+};
+const USD_CASE = `CASE COALESCE(NULLIF(currency,''),'USD') ${
+  Object.entries(USD_RATES).map(([c, r]) => `WHEN '${c}' THEN ${r}`).join(' ')
+} ELSE NULL END`;
+// Some feeds quote monthly pay (notably the PLN boards); a sub-2k "annual"
+// USD figure is far more likely monthly, so scale it to a yearly equivalent.
+const SALARY_USD = `(CASE WHEN salary_min * ${USD_CASE} < 2000
+    THEN salary_min * ${USD_CASE} * 12
+    ELSE salary_min * ${USD_CASE} END)`;
+
+const SALARY_BANDS = [
+  { value: 'lt50', label: 'Under $50K', min: null, max: 50000 },
+  { value: '50-100', label: '$50K – $100K', min: 50000, max: 100000 },
+  { value: '100-150', label: '$100K – $150K', min: 100000, max: 150000 },
+  { value: '150-200', label: '$150K – $200K', min: 150000, max: 200000 },
+  { value: 'gt200', label: '$200K+', min: 200000, max: null },
+];
+
+const bandCondition = (band) => {
+  const b = SALARY_BANDS.find((x) => x.value === band);
+  if (!b) return null;
+  const parts = ['salary_min IS NOT NULL', `${USD_CASE} IS NOT NULL`];
+  if (b.min !== null) parts.push(`${SALARY_USD} >= ${b.min}`);
+  if (b.max !== null) parts.push(`${SALARY_USD} < ${b.max}`);
+  return `(${parts.join(' AND ')})`;
+};
+
+// Pull contact addresses that the employer actually published in the posting
+// text. These are real, verifiable, and already public in the job ad.
+//
+// Deliberately NOT guessed: no first.last@company.com construction, no
+// pattern inference. A guessed address either bounces - leaving someone
+// believing they contacted a hiring manager when they did not - or reaches a
+// real person who has nothing to do with the role. Only addresses genuinely
+// present in the source text are returned.
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Addresses that are published but are not application contacts.
+const EMAIL_NOISE = /(noreply|no-reply|donotreply|privacy|legal|abuse|security|unsubscribe|support@(wordpress|wixpress))/i;
+
+function extractContactEmails(description) {
+  if (!description) return [];
+  const found = String(description).match(EMAIL_RE) || [];
+  const seen = new Set();
+  return found
+    .map((e) => e.replace(/[.,;:)\]]+$/, '').toLowerCase())
+    .filter((e) => {
+      if (EMAIL_NOISE.test(e) || seen.has(e)) return false;
+      seen.add(e);
+      return true;
+    })
+    .slice(0, 3);
+}
+
 // Facet counts for the filter panels. Every count here is a real COUNT(*)
 // over live rows - no estimates - so a filter never advertises results it
 // cannot deliver.
@@ -83,7 +145,7 @@ router.get('/facets', async (req, res) => {
       query(`SELECT ${JOB_TYPE_SQL} AS value, COUNT(*)::int AS count
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
       query(`SELECT
-               COUNT(*) FILTER (WHERE salary_min IS NOT NULL)::int AS listed,
+               ${SALARY_BANDS.map((b) => `COUNT(*) FILTER (WHERE ${bandCondition(b.value)})::int AS "${b.value}"`).join(',\n               ')},
                COUNT(*) FILTER (WHERE salary_min IS NULL)::int AS not_listed
              FROM jobs WHERE is_active = true`),
       query(`SELECT
@@ -97,9 +159,11 @@ router.get('/facets', async (req, res) => {
     res.json({
       workArrangement: workArrangement.rows,
       jobType: jobType.rows,
+      // Bands are USD-equivalent via static reference rates - the frontend
+      // labels them "approx" for that reason.
       salary: [
-        { value: 'listed', count: salary.rows[0].listed },
-        { value: 'not_listed', count: salary.rows[0].not_listed },
+        ...SALARY_BANDS.map((b) => ({ value: b.value, label: b.label, count: salary.rows[0][b.value] })),
+        { value: 'not_listed', label: 'No salary published', count: salary.rows[0].not_listed },
       ],
       experience: [
         { value: 'entry', count: exp.entry },
@@ -231,11 +295,15 @@ router.get('/', async (req, res) => {
       filterClause += ` AND COALESCE(NULLIF(work_arrangement,''),'unknown') IN (${ph.join(', ')})`;
     }
 
-    // Salary is only present on ~16% of rows and in mixed currencies, so the
-    // honest facet is "is a salary published at all", not a money range.
-    const salaryFilter = req.query.salary;
-    if (salaryFilter === 'listed') filterClause += ' AND salary_min IS NOT NULL';
-    else if (salaryFilter === 'not_listed') filterClause += ' AND salary_min IS NULL';
+    // Salary bands are USD-equivalent (mixed source currencies converted with
+    // static reference rates). Multiple bands OR together.
+    const salaryBands = asArray(req.query.salary);
+    if (salaryBands.length) {
+      const conds = salaryBands
+        .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
+        .filter(Boolean);
+      if (conds.length) filterClause += ` AND (${conds.join(' OR ')})`;
+    }
 
     // Kept separate from filterClause (rather than appended inline) so it
     // can be applied at the same point results are read while still
@@ -437,7 +505,11 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    res.json({ ...sanitizeJob(result.rows[0]), experienceLevel: classifyExperience(result.rows[0].title) });
+    res.json({
+      ...sanitizeJob(result.rows[0]),
+      experienceLevel: classifyExperience(result.rows[0].title),
+      contactEmails: extractContactEmails(result.rows[0].description),
+    });
   } catch (err) {
     console.error('Get job error:', err);
     res.status(500).json({ error: 'Failed to fetch job' });

@@ -2,7 +2,12 @@
   display: flex;
   min-height: 100dvh;
   max-width: 100vw;
-  overflow-x: hidden;
+  /* Must be `clip`, not `hidden`. `overflow: hidden` makes this element a
+     scroll container, which silently breaks `position: sticky` on the sidebar
+     below - it scrolled away with the page instead of staying put. `clip`
+     contains overflow the same way without establishing a scroll container,
+     so the sidebar stays pinned. */
+  overflow-x: clip;
   background-color: var(--bg);
 }
 
@@ -99,6 +104,10 @@
 
 .nav {
   flex: 1;
+  /* min-height:0 lets this flex child actually shrink so its own scrollbar
+     engages, instead of the list overflowing the pinned sidebar. */
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

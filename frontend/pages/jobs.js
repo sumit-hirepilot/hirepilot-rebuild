@@ -42,7 +42,7 @@ function ChipInput({ values, onChange, placeholder, className }) {
  * Apply, so ticking three boxes triggers one query rather than three - and
  * the user can back out via Cancel without having already changed results.
  */
-function FilterPanel({ label, options, selected, onApply, searchable = false }) {
+function FilterPanel({ label, options, selected, onApply, searchable = false, hint }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(selected);
   const [term, setTerm] = useState('');
@@ -102,6 +102,8 @@ function FilterPanel({ label, options, selected, onApply, searchable = false }) 
             <span className={page.filterPanelTitle}>{label}</span>
             <button type="button" className={page.filterPanelClose} onClick={() => setOpen(false)} aria-label={`Close ${label}`}>×</button>
           </div>
+
+          {hint && <p className={page.filterHint}>{hint}</p>}
 
           {searchable && (
             <input
@@ -185,7 +187,7 @@ export default function Jobs() {
   const [datePosted, setDatePosted] = useState('');
   const [jobTypes, setJobTypes] = useState([]);
   const [workArrangements, setWorkArrangements] = useState([]);
-  const [salary, setSalary] = useState('');
+  const [salary, setSalary] = useState([]);
   const [facets, setFacets] = useState(null);
   const [company, setCompany] = useState('');
   const [loading, setLoading] = useState(true);
@@ -234,7 +236,7 @@ export default function Jobs() {
       if (dp) qs.set('datePosted', dp);
       jt.forEach((v) => v && qs.append('jobType', v));
       wa.forEach((v) => v && qs.append('workArrangement', v));
-      if (sal) qs.set('salary', sal);
+      sal.forEach((v) => v && qs.append('salary', v));
       if (co) qs.set('company', co);
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
@@ -566,22 +568,19 @@ export default function Jobs() {
             onApply={(vals) => { setWorkArrangements(vals); loadJobs(token, { page: 1, workArrangements: vals }); }}
           />
 
-          {/* Salary is "is it published", not a money range - see the note in
-              the jobs route: only ~16% of rows carry a salary and they are in
-              mixed currencies, so ranges could not be computed honestly. */}
+          {/* USD-equivalent bands. Source salaries are in mixed currencies and
+              converted with static reference rates, hence "approx" - the band
+              is reliable, the exact figure isn't, so we don't show one. */}
           <FilterPanel
-            label="Salary"
-            selected={salary ? [salary] : []}
+            label="Salary (USD)"
+            hint="Converted to USD at approximate rates. Only ~16% of postings publish pay."
+            selected={salary}
             options={(facets?.salary || []).map((o) => ({
               value: o.value,
-              label: o.value === 'listed' ? 'Salary published' : 'No salary published',
+              label: o.label || o.value,
               count: o.count,
             }))}
-            onApply={(vals) => {
-              const next = vals[vals.length - 1] || '';
-              setSalary(next);
-              loadJobs(token, { page: 1, salary: next });
-            }}
+            onApply={(vals) => { setSalary(vals); loadJobs(token, { page: 1, salary: vals }); }}
           />
           <input
             type="text"
@@ -590,17 +589,17 @@ export default function Jobs() {
             placeholder="Company"
             className={page.locInput}
           />
-          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary || company) && (
+          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary.length || company) && (
             <button
               type="button"
               className={page.clearFiltersButton}
               onClick={() => {
                 setExperience(''); setLocation(''); setDatePosted('');
-                setJobTypes([]); setWorkArrangements([]); setSalary(''); setCompany('');
+                setJobTypes([]); setWorkArrangements([]); setSalary([]); setCompany('');
                 setPage(1);
                 loadJobs(token, {
                   page: 1, experience: '', location: '', datePosted: '',
-                  jobTypes: [], workArrangements: [], salary: '', company: '',
+                  jobTypes: [], workArrangements: [], salary: [], company: '',
                 });
               }}
             >
@@ -728,19 +727,19 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
     setRecruiterAdded(false);
     setRecruiterLoading(true);
 
+    // Only surfaces a contact the employer actually published in the posting.
+    // This previously called /api/network/suggest, which invents a plausible
+    // name and title from hardcoded lists - that read as a real hiring manager
+    // in the UI when no such person had been identified.
     async function loadRecruiter() {
       try {
-        const res = await fetch(`${base}/api/network/suggest`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ company: job.company_name }),
-        });
+        const res = await fetch(`${base}/api/jobs/${job.id}`);
         if (!res.ok) return;
         const data = await res.json();
-        const hiringContact = (data.suggestions || []).find((s) => s.relationshipType === 'hiring_manager');
-        if (!cancelled) setRecruiter(hiringContact || null);
+        const emails = data.contactEmails || [];
+        if (!cancelled) setRecruiter(emails.length ? { emails } : null);
       } catch (err) {
-        console.error('Failed to detect recruiter contact', err);
+        console.error('Failed to load published contact details', err);
       } finally {
         if (!cancelled) setRecruiterLoading(false);
       }
@@ -827,29 +826,29 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
           </div>
         )}
 
-        <h3 className={styles.drawerSectionTitle}>Recruiter contact</h3>
+        <h3 className={styles.drawerSectionTitle}>Contact from this posting</h3>
         {recruiterLoading ? (
-          <p className={styles.drawerText}>Scanning for a hiring contact at {job.company_name}&hellip;</p>
+          <p className={styles.drawerText}>Checking the posting for a published contact&hellip;</p>
         ) : recruiter ? (
           <div className={styles.fitCard} style={{ alignItems: 'flex-start' }}>
-            <div className={page.avatar}>{recruiter.firstName.charAt(0)}</div>
             <div className={styles.fitBars}>
-              <p className={styles.fitTitle}>{recruiter.firstName} {recruiter.lastName} &middot; {recruiter.title}</p>
-              <p className={styles.drawerText}>{recruiter.message}</p>
-              <div className={styles.drawerActions} style={{ marginTop: '0.5rem' }}>
-                {recruiterAdded ? (
-                  <span className={styles.appliedTag}>Added to network</span>
-                ) : (
-                  <button className={styles.secondaryBtn} onClick={handleAddRecruiter}>Add to network</button>
-                )}
-                <a href={recruiter.linkedinSearchUrl} target="_blank" rel="noreferrer" className={styles.secondaryBtn}>
-                  Find on LinkedIn
-                </a>
-              </div>
+              <p className={styles.fitTitle}>Published in this job ad</p>
+              {recruiter.emails.map((em) => (
+                <p key={em} className={styles.drawerText} style={{ marginBottom: '0.25rem' }}>
+                  <a href={`mailto:${em}?subject=${encodeURIComponent(`Application - ${job.title}`)}`}>{em}</a>
+                </p>
+              ))}
+              <p className={page.contactNote}>
+                Taken directly from the posting text — not guessed from a name pattern.
+              </p>
             </div>
           </div>
         ) : (
-          <p className={styles.drawerText}>No hiring contact detected for {job.company_name} yet. Try Find Referrals below to search more broadly.</p>
+          <p className={styles.drawerText}>
+            This posting doesn&apos;t publish a contact address. Apply through the
+            original posting instead — HirePilot won&apos;t invent an email, since a
+            guessed address either bounces or reaches an unrelated person.
+          </p>
         )}
 
         <h3 className={styles.drawerSectionTitle}>Description</h3>
