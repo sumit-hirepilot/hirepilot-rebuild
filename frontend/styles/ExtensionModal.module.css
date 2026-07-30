@@ -235,3 +235,86 @@
   .modal { padding: 24px 20px 20px; }
   .actions { flex-direction: column; }
 }
+
+/* --- Inline info popover --- */
+
+.infoWrap {
+  position: relative;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.infoBtn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong, #cbd5e1);
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.infoBtn:hover,
+.infoBtn[aria-expanded='true'] {
+  background: #f5f3ff;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.infoPop {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 5;
+  width: 300px;
+  max-width: min(300px, calc(100vw - 64px));
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: normal;
+  animation: infoIn 140ms ease both;
+}
+
+/* Caret */
+.infoPop::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.infoPop strong { color: var(--text); font-weight: 600; }
+.infoPop em {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-style: normal;
+  font-size: 0.7rem;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+@keyframes infoIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-3px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

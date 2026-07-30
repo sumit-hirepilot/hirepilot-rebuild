@@ -18,6 +18,48 @@ import styles from '../styles/ExtensionModal.module.css';
 const DISMISS_KEY = 'hp_ext_prompt_dismissed';
 const EXT_PATH = 'hirepilot-rebuild/extension';
 
+/*
+ * Inline "i" popover. Developer mode is the step people stall on - it sounds
+ * riskier than it is, and the toggle is easy to miss - so the explanation sits
+ * next to the step rather than in a separate help page.
+ */
+function InfoButton({ label, children }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onDown = (e) => {
+      if (!e.target.closest?.(`[data-info="${label}"]`)) setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [open, label]);
+
+  return (
+    <span className={styles.infoWrap} data-info={label}>
+      <button
+        type="button"
+        className={styles.infoBtn}
+        aria-label={`More about ${label}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        i
+      </button>
+      {open && (
+        <span className={styles.infoPop} role="tooltip">
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function ExtensionInstallModal({ token, apiBase }) {
   const [detected, setDetected] = useState(null); // null = still checking
   const [open, setOpen] = useState(false);
@@ -104,7 +146,25 @@ export default function ExtensionInstallModal({ token, apiBase }) {
           <li>
             <span className={styles.stepNum}>2</span>
             <div>
-              <p className={styles.stepTitle}>Turn on <strong>Developer mode</strong></p>
+              <p className={styles.stepTitle}>
+                Turn on <strong>Developer mode</strong>
+                <InfoButton label="Developer mode">
+                  <strong>Where it is:</strong> a toggle in the top-right corner of
+                  the <em>chrome://extensions</em> page, on the same row as the
+                  &ldquo;Extensions&rdquo; heading.
+                  <br /><br />
+                  <strong>What it does:</strong> it lets Chrome load an extension
+                  from a folder on your machine instead of only from the Chrome Web
+                  Store. That is the only reason it is needed here &mdash; HirePilot
+                  Apply is not published to the store.
+                  <br /><br />
+                  <strong>Is it safe:</strong> it changes nothing on its own. It only
+                  reveals the &ldquo;Load unpacked&rdquo; button. Chrome will show a
+                  &ldquo;Disable developer mode extensions&rdquo; warning on startup;
+                  that is expected, and you can turn the toggle back off once the
+                  extension is loaded.
+                </InfoButton>
+              </p>
               <p className={styles.hint}>Toggle at the top right of that page.</p>
             </div>
           </li>
