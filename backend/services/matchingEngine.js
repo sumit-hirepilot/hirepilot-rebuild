@@ -116,8 +116,10 @@ const scoreJobAgainstContext = (job, context) => {
     experience_match_score: experienceScore,
     location_match_score: locationScore,
     salary_match_score: salaryScore,
+    // Only matched_skills is consumed (agents/[id].js). user_skills used to be
+    // stored here too, identically on every row for a user, which is the same
+    // array duplicated thousands of times for no reader.
     match_details: {
-      user_skills: context.userSkills,
       matched_skills: matchedSkills,
     },
   };
@@ -141,6 +143,14 @@ const calculateJobMatch = async (userId, jobId) => {
 
 const MATCH_THRESHOLD = 0.3;
 const UPSERT_CHUNK_SIZE = 500;
+
+// Only the strongest matches are persisted. Previously every job scoring above
+// the threshold was stored, which for one user against ~18k active jobs meant
+// ~18k rows (23MB) - and that figure is per user, so a handful of accounts
+// would have exhausted the 500MB volume on this table alone. Nobody reviews
+// 18k matches; the UI pages through the top of the list. Keeping the top N
+// preserves everything anyone actually sees.
+const MATCH_STORE_LIMIT = Number(process.env.MATCH_STORE_LIMIT) || 500;
 
 // Batches the upsert into chunks of multi-row INSERT...ON CONFLICT statements
 // instead of one round-trip per job - the previous version issued one INSERT
@@ -192,17 +202,37 @@ const calculateMatchesForUser = async (userId) => {
       ),
     ]);
 
-    const matchedRows = [];
+    const scored = [];
     for (const job of jobsResult.rows) {
       const score = scoreJobAgainstContext(job, context);
       if (score.overall_score > MATCH_THRESHOLD) {
-        matchedRows.push({ jobId: job.id, ...score });
+        scored.push({ jobId: job.id, ...score });
       }
     }
 
+    scored.sort((a, b) => b.overall_score - a.overall_score);
+    const matchedRows = scored.slice(0, MATCH_STORE_LIMIT);
+
     await upsertMatchesBatch(userId, matchedRows);
 
-    return { matchesCreated: matchedRows.length };
+    // Drop anything that fell out of the top N (or below threshold) on this
+    // run, so repeated recalculation converges on the cap instead of
+    // accumulating every job the user has ever matched.
+    const keepIds = matchedRows.map((r) => r.jobId);
+    if (keepIds.length) {
+      await query(
+        'DELETE FROM job_matches WHERE user_id = $1 AND NOT (job_id = ANY($2::int[]))',
+        [userId, keepIds]
+      );
+    } else {
+      await query('DELETE FROM job_matches WHERE user_id = $1', [userId]);
+    }
+
+    return {
+      matchesCreated: matchedRows.length,
+      matchesConsidered: scored.length,
+      capped: scored.length > MATCH_STORE_LIMIT,
+    };
   } catch (err) {
     console.error('Calculate matches for user error:', err);
     throw err;

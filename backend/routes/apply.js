@@ -183,9 +183,9 @@ router.post('/queue', verifyToken, async (req, res) => {
     if (req.body.allMatching) {
       const minScore = Number(req.body.minScore) || 0.6;
       const m = await query(
-        `SELECT job_id FROM matches
-         WHERE user_id = $1 AND match_score >= $2
-         ORDER BY match_score DESC LIMIT $3`,
+        `SELECT job_id FROM job_matches
+         WHERE user_id = $1 AND overall_score >= $2
+         ORDER BY overall_score DESC LIMIT $3`,
         [userId, minScore, MAX_BULK]
       );
       jobIds = m.rows.map((r) => r.job_id);
