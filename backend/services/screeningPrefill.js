@@ -13,6 +13,8 @@
  * require sponsorship" both contain "work" and "require").
  */
 
+const { findSimilar } = require('./questionMatcher');
+
 // Maps a job's location string onto a country so work-authorisation and
 // sponsorship questions can be answered per posting rather than globally.
 // Deliberately conservative: an unrecognised location yields null, which makes
@@ -205,11 +207,47 @@ function prefillAnswers(questions, profile, jobContext = {}) {
       };
     }
 
-    // An exact custom answer the user saved for this question wins over any
-    // pattern rule.
+    // A saved answer for this exact question wins over any pattern rule.
     const customKey = normalizeKey(text);
-    if (custom[customKey] !== undefined && custom[customKey] !== null && custom[customKey] !== '') {
-      return { ...base, answer: String(custom[customKey]), source: 'profile_custom' };
+    const exact = custom[customKey];
+    const exactAnswer = typeof exact === 'string' ? exact : (exact && exact.answer);
+    if (exactAnswer !== undefined && exactAnswer !== null && exactAnswer !== '') {
+      return { ...base, answer: String(exactAnswer), source: 'profile_custom' };
+    }
+
+    /*
+     * Then a saved answer to the SAME question worded differently. Every ATS
+     * phrases these its own way, so without this the profile accumulates a
+     * near-duplicate per employer and keeps asking what it already knows.
+     * matchedQuestion is surfaced so the review screen can show which saved
+     * answer was reused rather than presenting it as if freshly known.
+     */
+    const similar = findSimilar(text, custom);
+    if (similar) {
+      // Still honour the form's own options - a reused answer that is not on
+      // the list must not be silently submitted.
+      if (allOptions && allOptions.length) {
+        const hit = allOptions.find(
+          (o) => String(o).trim().toLowerCase() === similar.answer.trim().toLowerCase()
+        );
+        if (!hit) {
+          return {
+            ...base,
+            answer: null,
+            source: 'requires_user',
+            suggestion: similar.answer,
+            reason: `Your saved answer to "${similar.matchedQuestion.slice(0, 70)}" is not one of this form's options.`,
+          };
+        }
+        return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion, matchScore: similar.score };
+      }
+      return {
+        ...base,
+        answer: similar.answer,
+        source: 'profile_similar',
+        matchedQuestion: similar.matchedQuestion,
+        matchScore: similar.score,
+      };
     }
 
     if (DEMOGRAPHIC.test(text)) {

@@ -133,7 +133,14 @@ router.put('/profile', verifyToken, async (req, res) => {
       custom = {};
       for (const [k, v] of Object.entries(req.body.custom_answers)) {
         if (v === null || v === '') continue;
-        custom[normalizeKey(k)] = String(v);
+        // Accept either a bare answer or {answer, question}; store the wording
+        // so semantic matching has something real to compare against.
+        const answer = typeof v === 'object' && v !== null ? v.answer : v;
+        if (answer === null || answer === undefined || answer === '') continue;
+        custom[normalizeKey(k)] = {
+          answer: String(answer),
+          question: String((typeof v === 'object' && v.question) || k).slice(0, 400),
+        };
       }
     }
 
@@ -619,7 +626,12 @@ router.patch('/queue/:id/answers', verifyToken, async (req, res) => {
     if (req.body.saveToProfile) {
       const custom = {};
       for (const [q, v] of Object.entries(edits)) {
-        if (v !== null && v !== '') custom[normalizeKey(q)] = String(v);
+        // Keep the employer's original wording alongside the answer. The key is
+        // a normalised, truncated slug; the matcher needs real text to compare
+        // a differently-worded question against.
+        if (v !== null && v !== '') {
+          custom[normalizeKey(q)] = { answer: String(v), question: String(q).slice(0, 400) };
+        }
       }
       if (Object.keys(custom).length) {
         await query(
