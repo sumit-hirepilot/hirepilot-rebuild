@@ -16,7 +16,9 @@ import styles from '../styles/ExtensionModal.module.css';
  */
 
 const DISMISS_KEY = 'hp_ext_prompt_dismissed';
-const EXT_PATH = 'hirepilot-rebuild/extension';
+// Packaged at build time by scripts/build-extension-zip.js, so the download can
+// never be a stale copy of the extension folder.
+const ZIP_URL = '/hirepilot-extension.zip';
 
 /*
  * Inline "i" popover. Developer mode is the step people stall on - it sounds
@@ -218,6 +220,25 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
           <li>
             <span className={styles.stepNum}>1</span>
             <div>
+              <p className={styles.stepTitle}>Download and unzip it</p>
+              <a className={styles.downloadBtn} href={ZIP_URL} download>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3v12" />
+                  <path d="m7 11 5 5 5-5" />
+                  <path d="M4 19h16" />
+                </svg>
+                Download hirepilot-extension.zip
+              </a>
+              <p className={styles.hint}>
+                Unzip it and keep the folder somewhere permanent &mdash; Chrome loads
+                an unpacked extension from that folder each time it starts, so
+                deleting it later disables the extension.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className={styles.stepNum}>2</span>
+            <div>
               <p className={styles.stepTitle}>Open Chrome&apos;s extensions page</p>
               <code className={styles.code}>chrome://extensions</code>
               <p className={styles.hint}>
@@ -226,7 +247,7 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
             </div>
           </li>
           <li>
-            <span className={styles.stepNum}>2</span>
+            <span className={styles.stepNum}>3</span>
             <div>
               <p className={styles.stepTitle}>
                 Turn on <strong>Developer mode</strong>
@@ -251,19 +272,18 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
             </div>
           </li>
           <li>
-            <span className={styles.stepNum}>3</span>
+            <span className={styles.stepNum}>4</span>
             <div>
-              <p className={styles.stepTitle}>Click <strong>Load unpacked</strong> and pick this folder</p>
-              <div className={styles.copyRow}>
-                <code className={styles.code}>{EXT_PATH}</code>
-                <button className={styles.copyBtn} onClick={() => copy(EXT_PATH, 'path')}>
-                  {copied === 'path' ? 'Copied' : 'Copy'}
-                </button>
-              </div>
+              <p className={styles.stepTitle}>Click <strong>Load unpacked</strong> and pick the unzipped folder</p>
+              <p className={styles.hint}>
+                Select the folder itself, the one containing{' '}
+                <code className={styles.codeInline}>manifest.json</code> &mdash; not the
+                zip and not a folder above it.
+              </p>
             </div>
           </li>
           <li>
-            <span className={styles.stepNum}>4</span>
+            <span className={styles.stepNum}>5</span>
             <div>
               <p className={styles.stepTitle}>Connect it to your account</p>
               <p className={styles.hint}>

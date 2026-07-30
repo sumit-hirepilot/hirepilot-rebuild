@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prebuild": "node scripts/build-extension-zip.js",
+    "build:extension": "node scripts/build-extension-zip.js"
   },
   "dependencies": {
     "react": "^18.2.0",
