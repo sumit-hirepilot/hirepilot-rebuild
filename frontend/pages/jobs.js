@@ -170,6 +170,32 @@ const sourceLabels = {
   ashby: 'Ashby',
 };
 
+// Thresholds match the bands buildAtsGuide() uses on the backend, so the badge
+// colour never disagrees with the written verdict inside the drawer.
+function atsBadgeClass(score) {
+  if (score >= 70) return page.atsBadgeGood;
+  if (score >= 45) return page.atsBadgeWarn;
+  return page.atsBadgeBad;
+}
+
+function atsRingClass(score) {
+  if (score >= 70) return page.atsRingGood;
+  if (score >= 45) return page.atsRingWarn;
+  return page.atsRingBad;
+}
+
+function atsSeverityClass(sev) {
+  if (sev === 'good') return page.sevGood;
+  if (sev === 'warn') return page.sevWarn;
+  if (sev === 'bad') return page.sevBad;
+  if (sev === 'action') return page.sevAction;
+  return page.sevInfo;
+}
+
+function severityLabel(sev) {
+  return { good: 'OK', warn: 'Check', bad: 'Risk', action: 'Do', info: 'Note' }[sev] || 'Note';
+}
+
 // "on-site" -> "On site", "full-time" -> "Full time"
 function titleCase(v) {
   if (!v) return '';
@@ -228,6 +254,8 @@ export default function Jobs() {
   const [workArrangements, setWorkArrangements] = useState([]);
   const [salary, setSalary] = useState([]);
   const [facets, setFacets] = useState(null);
+  const [atsScores, setAtsScores] = useState({});
+  const [hasResume, setHasResume] = useState(true);
   const [company, setCompany] = useState('');
   const [loading, setLoading] = useState(true);
   const [appliedIds, setAppliedIds] = useState(new Set());
@@ -247,6 +275,27 @@ export default function Jobs() {
   const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(0);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
+
+  // Scored in one batch per page rather than per row. Failure is silent by
+  // design: an ATS score is supplementary, and a scoring outage shouldn't stop
+  // the job list itself from rendering.
+  const loadAtsScores = useCallback(async (jobList, authToken) => {
+    const ids = (jobList || []).map((j) => j.id).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const res = await fetch(`${base}/api/jobs/ats-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ jobIds: ids }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setHasResume(data.hasResume !== false);
+      setAtsScores((prev) => ({ ...prev, ...(data.scores || {}) }));
+    } catch (err) {
+      // Non-fatal - rows simply render without an ATS badge.
+    }
+  }, [base]);
 
   const loadJobs = useCallback(async (authToken, params = {}) => {
     setLoading(true);
@@ -289,6 +338,7 @@ export default function Jobs() {
       if (jobsRes.ok) {
         const data = await jobsRes.json();
         setJobs(data.jobs || []);
+        loadAtsScores(data.jobs || [], authToken);
         setTotal(data.total || 0);
         setNoExactMatches(!!data.noExactMatches);
         setRelatedJobs(data.relatedJobs || []);
@@ -335,7 +385,7 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company]);
+  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company, loadAtsScores]);
 
   // Facet counts are fetched once and reflect the whole active job pool, so
   // each option can show how many jobs it would match before it's applied.
@@ -476,7 +526,20 @@ export default function Jobs() {
           </p>
         </div>
         {score !== null && (
-          <div className={page.scoreRing}>{score}</div>
+          <div className={page.scoreRing} title="Profile match score: skills, experience and location">{score}</div>
+        )}
+        {/* ATS keyword coverage is a different measure from the match score
+            above: match compares your profile to the role, this compares your
+            resume's wording to this posting's wording. Both are shown so a
+            strong profile fit with weak keyword coverage is visible. */}
+        {atsScores[job.id] !== undefined && (
+          <div
+            className={atsBadgeClass(atsScores[job.id])}
+            title={`ATS keyword coverage: ${atsScores[job.id]}% of this posting's meaningful terms appear in your resume. Open the job for the full breakdown.`}
+          >
+            <span className={page.atsBadgeLabel}>ATS</span>
+            {atsScores[job.id]}%
+          </div>
         )}
         <div className={page.jobActions}>
           <button
@@ -742,6 +805,7 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
   const [tailorResult, setTailorResult] = useState(null);
   const [recruiter, setRecruiter] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [ats, setAts] = useState(null);
   const [recruiterLoading, setRecruiterLoading] = useState(true);
   const [recruiterAdded, setRecruiterAdded] = useState(false);
 
@@ -751,6 +815,7 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
     // Clear too, or the previously-opened job's skills/experience linger in
     // the meta grid until the new fetch resolves.
     setDetail(null);
+    setAts(null);
     setRecruiterAdded(false);
     setRecruiterLoading(true);
 
@@ -775,6 +840,20 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
       }
     }
 
+    async function loadAts() {
+      try {
+        const res = await fetch(`${base}/api/jobs/${job.id}/ats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setAts(data);
+      } catch (err) {
+        // Leave the section in its loading state rather than asserting a score.
+      }
+    }
+
+    loadAts();
     if (job.company_name) loadRecruiter();
     return () => { cancelled = true; };
   }, [job.id, job.company_name, base, token]);
@@ -919,6 +998,47 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
             <p className={page.contactNote}>
               Matched from terms written in this posting — not inferred from the job title.
             </p>
+          </>
+        )}
+
+        <h3 className={styles.drawerSectionTitle}>ATS keyword check</h3>
+        {ats === null ? (
+          <p className={styles.drawerText}>Checking your resume against this posting&hellip;</p>
+        ) : ats.hasResume === false ? (
+          <p className={styles.drawerText}>{ats.message}</p>
+        ) : (
+          <>
+            <div className={page.atsHeadRow}>
+              <div className={atsRingClass(ats.score)}>{ats.score}%</div>
+              <p className={page.atsHeadText}>
+                {ats.matched?.length ?? 0} of {ats.totalKeywords} meaningful terms in this
+                posting also appear in your resume.
+              </p>
+            </div>
+
+            <div className={page.atsGuide}>
+              {(ats.guide || []).map((g, i) => (
+                <div key={i} className={page.atsGuideItem}>
+                  <span className={atsSeverityClass(g.severity)}>{severityLabel(g.severity)}</span>
+                  <div>
+                    <p className={page.atsGuideTitle}>{g.title}</p>
+                    <p className={page.atsGuideDetail}>{g.detail}</p>
+                    {g.note && <p className={page.atsGuideNote}>{g.note}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {ats.missing?.length > 0 && (
+              <>
+                <p className={page.atsSubhead}>Missing terms</p>
+                <div className={page.skillChips}>
+                  {ats.missing.slice(0, 18).map((m) => (
+                    <span key={m} className={page.atsMissingChip}>{m}</span>
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
 

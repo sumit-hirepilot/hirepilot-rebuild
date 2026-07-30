@@ -671,3 +671,135 @@
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* ---- ATS keyword coverage ---- */
+
+.atsBadgeGood, .atsBadgeWarn, .atsBadgeBad {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: help;
+  border: 1px solid transparent;
+}
+
+.atsBadgeLabel {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+
+.atsBadgeGood { background-color: var(--success-bg); color: var(--success); border-color: var(--success); }
+.atsBadgeWarn { background-color: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+.atsBadgeBad  { background-color: var(--error-bg);   color: var(--error);   border-color: var(--error); }
+
+.atsHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-bottom: 0.875rem;
+}
+
+.atsRingGood, .atsRingWarn, .atsRingBad {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  border: 3px solid;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.atsRingGood { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+.atsRingWarn { border-color: var(--warning); color: var(--warning); background: var(--warning-bg); }
+.atsRingBad  { border-color: var(--error);   color: var(--error);   background: var(--error-bg); }
+
+.atsHeadText {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.atsGuide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-bottom: 1rem;
+}
+
+.atsGuideItem {
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+}
+
+.atsGuideTitle {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.atsGuideDetail {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.atsGuideNote {
+  margin: 0.375rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.sevGood, .sevWarn, .sevBad, .sevAction, .sevInfo {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sevGood   { background-color: var(--success-bg); color: var(--success); }
+.sevWarn   { background-color: var(--warning-bg); color: var(--warning); }
+.sevBad    { background-color: var(--error-bg);   color: var(--error); }
+.sevAction { background-color: var(--primary-light); color: var(--primary-dark); }
+.sevInfo   { background-color: var(--bg-subtle);  color: var(--text-tertiary); }
+
+.atsSubhead {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.atsMissingChip {
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  background-color: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}

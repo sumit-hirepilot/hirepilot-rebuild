@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { checkAts, buildAtsGuide } = require('../services/atsChecker');
 const { extractTextFromFile } = require('../services/fileTextExtractor');
 const { parseResume } = require('../services/resumeParser');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
@@ -13,62 +14,6 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 router.use(verifyToken);
-
-const STOPWORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'of', 'for',
-  'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'this', 'that',
-  'these', 'those', 'we', 'you', 'your', 'our', 'it', 'as', 'by', 'from',
-  'will', 'would', 'should', 'can', 'could', 'have', 'has', 'had', 'do',
-  'does', 'did', 'not', 'no', 'so', 'if', 'than', 'then', 'about', 'into',
-]);
-
-function tokenize(text) {
-  return (text || '')
-    .toLowerCase()
-    .match(/[a-z0-9']{2,}/g) || [];
-}
-
-function uniqueKeywords(text) {
-  const tokens = tokenize(text).filter((t) => !STOPWORDS.has(t));
-  return Array.from(new Set(tokens));
-}
-
-// Real keyword-overlap ATS check (no LLM configured for this app - this is
-// honest word-tokenization matching, not a fabricated AI score).
-function checkAts(jobDescription, resumeText) {
-  const jobKeywords = uniqueKeywords(jobDescription);
-  // Filter stopwords from the resume side too - otherwise short connector
-  // words (e.g. "in") false-positive match as substrings of unrelated,
-  // longer job keywords (e.g. "prototyping" contains "in").
-  const resumeTokens = tokenize(resumeText).filter((t) => !STOPWORDS.has(t));
-
-  const matched = [];
-  const missing = [];
-
-  for (const kw of jobKeywords) {
-    const found = resumeTokens.some((r) => {
-      const shorter = r.length < kw.length ? r : kw;
-      if (shorter.length < 3) return r === kw;
-      return r.includes(kw) || kw.includes(r);
-    });
-    if (found) matched.push(kw);
-    else missing.push(kw);
-  }
-
-  const score = jobKeywords.length ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
-
-  const tips = [];
-  if (missing.length) {
-    tips.push(`Add these keywords if genuinely true: ${missing.slice(0, 8).join(', ')}.`);
-  }
-  tips.push('Add quantifiable metrics (%, $, time saved) to strengthen impact.');
-  tips.push('Use bullet points so an ATS parser can segment your experience.');
-  if (tokenize(resumeText).length < 40) {
-    tips.push('Your resume text looks short. Add more relevant detail per role.');
-  }
-
-  return { score, matched, missing, tips, totalKeywords: jobKeywords.length };
-}
 
 // --- Resume Manager ---
 
@@ -610,7 +555,11 @@ router.post('/ats-check', async (req, res) => {
     }
 
     const result = checkAts(jobDescription, resumeText);
-    res.json(result);
+    // `tips` used to be a flat string list; the guide is structured (severity,
+    // title, detail) so the UI can rank and style advice. Both are returned so
+    // the existing ATS Checker tab keeps working.
+    const guide = buildAtsGuide(result, resumeText);
+    res.json({ ...result, guide, tips: guide.map((g) => g.detail) });
   } catch (err) {
     console.error('ATS check error:', err);
     res.status(500).json({ error: 'Failed to check resume' });

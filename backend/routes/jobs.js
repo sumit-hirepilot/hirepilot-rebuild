@@ -5,6 +5,23 @@ const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
 const { extractSkills } = require('../services/resumeParser');
+const { checkAts, buildAtsGuide } = require('../services/atsChecker');
+
+// The user's resume text, used for per-job ATS scoring. Prefers the default
+// resume, falling back to the most recently updated one - same precedence the
+// tailoring flow uses, so a score and a tailored draft never disagree about
+// which resume they were based on.
+async function getResumeText(userId) {
+  const r = await query(
+    `SELECT original_file_text FROM resumes
+     WHERE user_id = $1 AND original_file_text IS NOT NULL
+     ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
+    [userId]
+  );
+  return r.rows[0]?.original_file_text || null;
+}
+
+const jobAtsText = (j) => `${j.title || ''} ${j.description || ''} ${j.requirements || ''}`;
 
 const router = express.Router();
 
@@ -142,6 +159,68 @@ function extractContactEmails(description) {
     })
     .slice(0, 3);
 }
+
+// ATS keyword-coverage scores for a page of jobs, against the signed-in
+// user's resume. Batched deliberately: the jobs list renders 20 rows, and one
+// request beats 20 round trips.
+router.post('/ats-batch', verifyToken, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.jobIds) ? req.body.jobIds.slice(0, 50) : [];
+    if (!ids.length) return res.json({ scores: {}, hasResume: true });
+
+    const resumeText = await getResumeText(req.user.id);
+    // No resume means no honest score to give - say so rather than returning
+    // zeros, which would read as "every job is a terrible match".
+    if (!resumeText) return res.json({ scores: {}, hasResume: false });
+
+    const jobs = await query(
+      'SELECT id, title, description, requirements FROM jobs WHERE id = ANY($1::int[])',
+      [ids]
+    );
+
+    const scores = {};
+    for (const j of jobs.rows) {
+      scores[j.id] = checkAts(jobAtsText(j), resumeText).score;
+    }
+    res.json({ scores, hasResume: true });
+  } catch (err) {
+    console.error('ATS batch error:', err);
+    res.status(500).json({ error: 'Failed to score jobs' });
+  }
+});
+
+// Full ATS breakdown plus guidance for one job.
+router.get('/:id/ats', verifyToken, async (req, res) => {
+  try {
+    const jobRes = await query(
+      'SELECT id, title, description, requirements FROM jobs WHERE id = $1',
+      [req.params.id]
+    );
+    if (!jobRes.rows.length) return res.status(404).json({ error: 'Job not found' });
+
+    const resumeText = await getResumeText(req.user.id);
+    if (!resumeText) {
+      return res.json({
+        hasResume: false,
+        message: 'Upload or paste a resume on the Resume page to see how it scores against this posting.',
+      });
+    }
+
+    const result = checkAts(jobAtsText(jobRes.rows[0]), resumeText);
+    res.json({
+      hasResume: true,
+      ...result,
+      // Trimmed: the full matched list can run to hundreds of words and the UI
+      // only needs enough to show the check is real.
+      matched: result.matched.slice(0, 30),
+      missing: result.missing.slice(0, 30),
+      guide: buildAtsGuide(result, resumeText),
+    });
+  } catch (err) {
+    console.error('ATS detail error:', err);
+    res.status(500).json({ error: 'Failed to score this job' });
+  }
+});
 
 // Facet counts for the filter panels. Every count here is a real COUNT(*)
 // over live rows - no estimates - so a filter never advertises results it
