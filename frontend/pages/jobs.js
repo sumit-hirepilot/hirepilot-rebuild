@@ -152,7 +152,32 @@ function FilterPanel({ label, options, selected, onApply, searchable = false, hi
   );
 }
 
-// Salary was previously printed as `$${salary_min/1000}K` for every job
+// Shared by the source-health strip and the detail drawer, so it lives at
+// module scope rather than inside one component.
+const sourceLabels = {
+  remoteok: 'Remote OK',
+  remotive: 'Remotive',
+  weworkremotely: 'We Work Remotely',
+  himalayas: 'Himalayas',
+  hackernews: 'HN Who’s Hiring',
+  nofluffjobs: 'No Fluff Jobs',
+  landingjobs: 'Landing.jobs',
+  workingnomads: 'Working Nomads',
+  jobicy: 'Jobicy',
+  jobindex: 'Jobindex',
+  greenhouse: 'Greenhouse',
+  lever: 'Lever',
+  ashby: 'Ashby',
+};
+
+// "on-site" -> "On site", "full-time" -> "Full time"
+function titleCase(v) {
+  if (!v) return '';
+  const t = String(v).replace(/[-_]+/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+// Salary was previously printed as `$<salary_min/1000>K` for every job
 // regardless of the row's actual currency, so a 25,000 PLN/month NoFluffJobs
 // figure rendered as "$25K" - wrong currency and wrong period at once.
 // Show the real currency, and mark per-month figures as such.
@@ -477,22 +502,6 @@ export default function Jobs() {
   if (!user) return null;
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const sourceLabels = {
-    remoteok: 'Remote OK',
-    remotive: 'Remotive',
-    weworkremotely: 'We Work Remotely',
-    himalayas: 'Himalayas',
-    hackernews: 'HN Who’s Hiring',
-    nofluffjobs: 'No Fluff Jobs',
-    landingjobs: 'Landing.jobs',
-    workingnomads: 'Working Nomads',
-    jobicy: 'Jobicy',
-    jobindex: 'Jobindex',
-    greenhouse: 'Greenhouse',
-    lever: 'Lever',
-    ashby: 'Ashby',
-  };
-
   return (
     <>
       <Head>
@@ -732,12 +741,16 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
   const [tailoring, setTailoring] = useState(false);
   const [tailorResult, setTailorResult] = useState(null);
   const [recruiter, setRecruiter] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [recruiterLoading, setRecruiterLoading] = useState(true);
   const [recruiterAdded, setRecruiterAdded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setRecruiter(null);
+    // Clear too, or the previously-opened job's skills/experience linger in
+    // the meta grid until the new fetch resolves.
+    setDetail(null);
     setRecruiterAdded(false);
     setRecruiterLoading(true);
 
@@ -751,7 +764,10 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
         if (!res.ok) return;
         const data = await res.json();
         const emails = data.contactEmails || [];
-        if (!cancelled) setRecruiter(emails.length ? { emails } : null);
+        if (!cancelled) {
+          setDetail(data);
+          setRecruiter(emails.length ? { emails } : null);
+        }
       } catch (err) {
         console.error('Failed to load published contact details', err);
       } finally {
@@ -838,6 +854,72 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
               <div className={styles.fitRow}><span>Location</span><div className={styles.fitTrack}><div className={styles.fitFill} style={{ width: `${locPct}%` }} /></div><span>{locPct}%</span></div>
             </div>
           </div>
+        )}
+
+        {/* At-a-glance facts. Every row is rendered only when the underlying
+            column actually has a value, so an absent field is simply omitted
+            rather than shown as "N/A" or filled with a plausible default. */}
+        <div className={page.metaGrid}>
+          <div className={page.metaItem}>
+            <span className={page.metaLabel}>Location</span>
+            <span className={page.metaValue}>{job.location || 'Not specified'}</span>
+          </div>
+          {job.work_arrangement && (
+            <div className={page.metaItem}>
+              <span className={page.metaLabel}>Workplace</span>
+              <span className={page.metaValue}>{titleCase(job.work_arrangement)}</span>
+            </div>
+          )}
+          {job.job_type && (
+            <div className={page.metaItem}>
+              <span className={page.metaLabel}>Employment type</span>
+              <span className={page.metaValue}>{titleCase(job.job_type)}</span>
+            </div>
+          )}
+          {(detail?.experienceLevel || job.experienceLevel) && (
+            <div className={page.metaItem}>
+              <span className={page.metaLabel}>Experience</span>
+              <span className={page.metaValue}>{titleCase(detail?.experienceLevel || job.experienceLevel)}</span>
+            </div>
+          )}
+          {job.salary_min && (
+            <div className={page.metaItem}>
+              <span className={page.metaLabel}>Salary (as published)</span>
+              <span className={page.metaValue}>{formatSalary(job)}</span>
+            </div>
+          )}
+          <div className={page.metaItem}>
+            <span className={page.metaLabel}>Posted</span>
+            <span className={page.metaValue}>
+              {job.posted_at
+                ? new Date(job.posted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+                : 'Not published by source'}
+            </span>
+          </div>
+          <div className={page.metaItem}>
+            <span className={page.metaLabel}>Listed via</span>
+            <span className={page.metaValue}>{sourceLabels[job.source] || job.source}</span>
+          </div>
+          {job.country && (
+            <div className={page.metaItem}>
+              <span className={page.metaLabel}>Country</span>
+              <span className={page.metaValue}>{job.country}</span>
+            </div>
+          )}
+        </div>
+
+        {detail?.skills?.length > 0 && (
+          <>
+            <h3 className={styles.drawerSectionTitle}>Skills &amp; technologies</h3>
+            <div className={page.skillChips}>
+              {detail.skills.map((s) => (
+                <span key={s} className={page.skillChip}>{s}</span>
+              ))}
+            </div>
+            <p className={page.contactNote}>
+              Matched from terms written in this posting — not inferred from the job title.
+            </p>
+          </>
         )}
 
         <h3 className={styles.drawerSectionTitle}>Contact from this posting</h3>

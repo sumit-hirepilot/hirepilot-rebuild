@@ -4,6 +4,7 @@ const { verifyToken } = require('../middleware/auth');
 const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
+const { extractSkills } = require('../services/resumeParser');
 
 const router = express.Router();
 
@@ -513,10 +514,18 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
+    const job = result.rows[0];
+    // Skills are matched out of the posting's own text against the same
+    // dictionary used for resume parsing, so every chip shown is a term the
+    // employer actually wrote. Nothing is inferred from the job title or
+    // guessed from the role family.
+    const jobText = `${job.title || ''} ${job.description || ''} ${job.requirements || ''}`;
     res.json({
-      ...sanitizeJob(result.rows[0]),
-      experienceLevel: classifyExperience(result.rows[0].title),
-      contactEmails: extractContactEmails(result.rows[0].description),
+      ...sanitizeJob(job),
+      experienceLevel: classifyExperience(job.title),
+      contactEmails: extractContactEmails(job.description),
+      skills: extractSkills(jobText),
+      isMonthlySalary: MONTHLY_SOURCES.includes(job.source),
     });
   } catch (err) {
     console.error('Get job error:', err);
