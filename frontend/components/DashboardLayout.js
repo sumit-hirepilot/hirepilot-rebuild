@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from '../styles/Dashboard.module.css';
 import NotificationBell from './NotificationBell';
-import ExtensionInstallModal, { useExtensionDetected, DISMISS_KEY } from './ExtensionInstallModal';
+import ExtensionInstallModal, { useExtensionDetected, extensionPrompt, DISMISS_KEY } from './ExtensionInstallModal';
 
 const NAV_ITEMS = [
   {
@@ -115,7 +115,6 @@ export default function DashboardLayout({ children, title, user }) {
    */
   const extensionDetected = useExtensionDetected();
   const [extModalOpen, setExtModalOpen] = useState(false);
-  const [promptedOnce, setPromptedOnce] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const base = process.env.NEXT_PUBLIC_API_URL;
@@ -144,13 +143,14 @@ export default function DashboardLayout({ children, title, user }) {
   }, [token, base]);
 
   useEffect(() => {
-    if (promptedOnce) return;
-    // Only when detection has concluded (false, not null) and the user has not
-    // already dismissed it - reopening from the CTA is a separate path.
+    // Only once detection has concluded (false, not null). The once-per-session
+    // guard lives in extensionPrompt rather than component state, because this
+    // layout remounts on every route change.
     if (extensionDetected !== false) return;
-    setPromptedOnce(true);
-    if (localStorage.getItem(DISMISS_KEY) !== '1') setExtModalOpen(true);
-  }, [extensionDetected, promptedOnce]);
+    if (!extensionPrompt.shouldShow()) return;
+    extensionPrompt.markShown();
+    setExtModalOpen(true);
+  }, [extensionDetected]);
 
   const handleToggleAutoPilot = async () => {
     if (!token || toggling) return;

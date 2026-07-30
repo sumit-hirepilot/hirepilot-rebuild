@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from '../styles/ExtensionModal.module.css';
 
 /*
@@ -66,47 +66,104 @@ function InfoButton({ label, children }) {
  *
  * Returns null while still checking, a version string when detected, false when
  * concluded absent - three states, because "not yet known" must not look the
- * same as "not installed" or the CTA flashes on every page load.
+ * same as "not installed".
+ *
+ * The result is cached OUTSIDE React. Every page mounts its own DashboardLayout,
+ * so navigating unmounts and remounts it; without a cache the hook reset to null
+ * and re-ran the 1.2s probe on each route change, which made the CTA vanish and
+ * pop back in on every navigation. The cache makes the answer immediate after
+ * the first determination.
+ *
+ * sessionStorage backs it so a full reload is also instant. Caching a negative
+ * is safe because the DOM attribute is checked synchronously first, so a newly
+ * installed extension is picked up immediately regardless of what was cached.
  */
-export function useExtensionDetected() {
-  const [detected, setDetected] = useState(null);
+const CACHE_KEY = 'hp_ext_detected';
+let cachedDetection; // undefined = never determined this session
 
-  const check = useCallback(() => {
-    const attr = document.documentElement.getAttribute('data-hirepilot-extension');
-    if (attr) { setDetected(attr); return true; }
-    return false;
-  }, []);
+/*
+ * Whether the automatic prompt has already fired this session.
+ *
+ * Module-level, not component state: DashboardLayout remounts on every route
+ * change, and now that detection resolves instantly from cache, a component-state
+ * flag would re-open the modal on every single navigation.
+ */
+let promptShownThisSession = false;
+export const extensionPrompt = {
+  shouldShow() {
+    if (promptShownThisSession) return false;
+    try { if (localStorage.getItem(DISMISS_KEY) === '1') return false; } catch { /* private mode */ }
+    return true;
+  },
+  markShown() { promptShownThisSession = true; },
+};
+
+function readAttr() {
+  if (typeof document === 'undefined') return null;
+  return document.documentElement.getAttribute('data-hirepilot-extension');
+}
+
+function initialDetection() {
+  // Present right now wins over anything cached.
+  const attr = readAttr();
+  if (attr) return attr;
+  if (cachedDetection !== undefined) return cachedDetection;
+  if (typeof sessionStorage !== 'undefined') {
+    const stored = sessionStorage.getItem(CACHE_KEY);
+    if (stored === 'false') { cachedDetection = false; return false; }
+    if (stored) { cachedDetection = stored; return stored; }
+  }
+  return null;
+}
+
+function remember(value) {
+  cachedDetection = value;
+  try { sessionStorage.setItem(CACHE_KEY, String(value)); } catch { /* private mode */ }
+}
+
+export function useExtensionDetected() {
+  // Seeded from the cache, so a remount renders the correct state on the first
+  // paint rather than flickering through "unknown".
+  const [detected, setDetected] = useState(initialDetection);
 
   useEffect(() => {
-    let settled = false;
+    // Already known - but still listen, in case it is installed mid-session.
+    let settled = detected !== null;
 
     const onMessage = (e) => {
       if (e.source !== window || !e.data) return;
       if (e.data.type === 'HIREPILOT_EXT_PONG') {
         settled = true;
-        setDetected(e.data.version || 'installed');
+        const v = e.data.version || 'installed';
+        remember(v);
+        setDetected(v);
       }
     };
     window.addEventListener('message', onMessage);
 
-    if (check()) {
+    const attr = readAttr();
+    if (attr) {
+      remember(attr);
+      setDetected(attr);
       settled = true;
     } else {
       window.postMessage({ type: 'HIREPILOT_EXT_PING' }, window.location.origin);
     }
 
-    // Give the content script a moment to land before concluding it is absent -
-    // otherwise a slow inject shows the prompt to someone who already has it.
-    const timer = setTimeout(() => {
-      if (settled || check()) return;
+    // Only wait out the grace period when there is no answer yet. A cached
+    // result means this remount does not need to re-probe.
+    const timer = settled ? null : setTimeout(() => {
+      if (readAttr()) return;
+      remember(false);
       setDetected(false);
     }, 1200);
 
     return () => {
       window.removeEventListener('message', onMessage);
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     };
-  }, [check]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return detected;
 }
