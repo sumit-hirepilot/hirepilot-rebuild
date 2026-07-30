@@ -2,7 +2,6 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
-import ExtensionInstallModal from '../components/ExtensionInstallModal';
 import styles from '../styles/Dashboard.module.css';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,7 +27,6 @@ function getGreeting() {
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [authToken, setAuthToken] = useState(null);
   const [matches, setMatches] = useState([]);
   const [appStats, setAppStats] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -37,7 +35,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    setAuthToken(token);
     const storedUser = localStorage.getItem('user');
 
     if (!token || !storedUser) {
@@ -114,13 +111,6 @@ export default function Dashboard() {
       <Head>
         <title>Dashboard - HirePilot</title>
       </Head>
-
-      {/* The extension is what actually submits applications, so prompt for it
-          once after sign-in. Self-hides when the extension announces itself. */}
-      <ExtensionInstallModal
-        token={authToken}
-        apiBase={process.env.NEXT_PUBLIC_API_URL}
-      />
 
       <DashboardLayout title="Dashboard" user={user}>
         <p className={styles.dateLabel}>{dateLabel}</p>

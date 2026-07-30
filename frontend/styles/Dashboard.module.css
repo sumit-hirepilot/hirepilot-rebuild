@@ -1190,3 +1190,74 @@
   margin: 0 0 0.85rem;
 }
 .drawerBody p:last-child { margin-bottom: 0; }
+
+/* ==========================================================================
+   Top-bar "Download Extension" CTA
+   Opens the same ExtensionInstallModal the post-sign-in prompt uses; the layout
+   owns that modal so this works from any page. Rendered only while detection has
+   concluded the extension is absent.
+   ========================================================================== */
+
+.extensionCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 7px 14px;
+  margin-right: 4px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.24);
+  transition:
+    background 150ms var(--ease-out, ease),
+    box-shadow 150ms var(--ease-out, ease),
+    transform 150ms var(--ease-spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.extensionCta:hover {
+  background: var(--primary-dark, #6d28d9);
+  border-color: var(--primary-dark, #6d28d9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+/* Press: settles back down rather than lifting, so the click reads as a press. */
+.extensionCta:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.24);
+  transition-duration: 60ms;
+}
+
+.extensionCta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.35);
+}
+
+/* The download arrow nudges down on hover - a small hint at what the button does. */
+.extensionCta svg {
+  transition: transform 180ms var(--ease-spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.extensionCta:hover svg { transform: translateY(1.5px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .extensionCta,
+  .extensionCta svg { transition: background 150ms ease; }
+  .extensionCta:hover { transform: none; }
+  .extensionCta:hover svg { transform: none; }
+  .extensionCta:active { transform: none; }
+}
+
+/* Below this the bar is tight, so the CTA keeps the icon and drops the label -
+   it stays reachable rather than being hidden on mobile. */
+@media (max-width: 720px) {
+  .extensionCtaLabel { display: none; }
+  .extensionCta { padding: 8px; gap: 0; }
+}

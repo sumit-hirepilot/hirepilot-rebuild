@@ -60,10 +60,16 @@ function InfoButton({ label, children }) {
   );
 }
 
-export default function ExtensionInstallModal({ token, apiBase }) {
-  const [detected, setDetected] = useState(null); // null = still checking
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(null);
+/*
+ * Detection, shared by the modal's auto-prompt and the nav CTA (which hides
+ * itself once the extension is present).
+ *
+ * Returns null while still checking, a version string when detected, false when
+ * concluded absent - three states, because "not yet known" must not look the
+ * same as "not installed" or the CTA flashes on every page load.
+ */
+export function useExtensionDetected() {
+  const [detected, setDetected] = useState(null);
 
   const check = useCallback(() => {
     const attr = document.documentElement.getAttribute('data-hirepilot-extension');
@@ -79,7 +85,6 @@ export default function ExtensionInstallModal({ token, apiBase }) {
       if (e.data.type === 'HIREPILOT_EXT_PONG') {
         settled = true;
         setDetected(e.data.version || 'installed');
-        setOpen(false);
       }
     };
     window.addEventListener('message', onMessage);
@@ -95,7 +100,6 @@ export default function ExtensionInstallModal({ token, apiBase }) {
     const timer = setTimeout(() => {
       if (settled || check()) return;
       setDetected(false);
-      if (localStorage.getItem(DISMISS_KEY) !== '1') setOpen(true);
     }, 1200);
 
     return () => {
@@ -104,9 +108,30 @@ export default function ExtensionInstallModal({ token, apiBase }) {
     };
   }, [check]);
 
+  return detected;
+}
+
+export { DISMISS_KEY };
+
+/*
+ * Controlled: the owner decides when it is open, so the same component serves
+ * both the one-time prompt after sign-in and the "Download Extension" CTA in the
+ * top bar. `onDismiss` is what the CTA path skips - reopening from the nav should
+ * not un-dismiss the automatic prompt, and closing it there should not re-arm it.
+ */
+export default function ExtensionInstallModal({ token, apiBase, open, onClose, onDismiss }) {
+  const [copied, setCopied] = useState(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, '1');
-    setOpen(false);
+    if (onDismiss) onDismiss();
+    onClose();
   };
 
   const copy = (text, which) => {
@@ -116,7 +141,7 @@ export default function ExtensionInstallModal({ token, apiBase }) {
     );
   };
 
-  if (!open || detected) return null;
+  if (!open) return null;
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="extTitle">

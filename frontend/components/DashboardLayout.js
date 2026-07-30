@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from '../styles/Dashboard.module.css';
 import NotificationBell from './NotificationBell';
+import ExtensionInstallModal, { useExtensionDetected, DISMISS_KEY } from './ExtensionInstallModal';
 
 const NAV_ITEMS = [
   {
@@ -107,6 +108,14 @@ export default function DashboardLayout({ children, title, user }) {
   const router = useRouter();
   const [autoPilotOn, setAutoPilotOn] = useState(false);
   const [autoPilotLoaded, setAutoPilotLoaded] = useState(false);
+  /*
+   * The extension modal lives here rather than on one page, so the top-bar CTA
+   * can open it from anywhere and the one-time prompt is not tied to the
+   * dashboard route.
+   */
+  const extensionDetected = useExtensionDetected();
+  const [extModalOpen, setExtModalOpen] = useState(false);
+  const [promptedOnce, setPromptedOnce] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const base = process.env.NEXT_PUBLIC_API_URL;
@@ -133,6 +142,15 @@ export default function DashboardLayout({ children, title, user }) {
       })
       .catch(() => setAutoPilotLoaded(true));
   }, [token, base]);
+
+  useEffect(() => {
+    if (promptedOnce) return;
+    // Only when detection has concluded (false, not null) and the user has not
+    // already dismissed it - reopening from the CTA is a separate path.
+    if (extensionDetected !== false) return;
+    setPromptedOnce(true);
+    if (localStorage.getItem(DISMISS_KEY) !== '1') setExtModalOpen(true);
+  }, [extensionDetected, promptedOnce]);
 
   const handleToggleAutoPilot = async () => {
     if (!token || toggling) return;
@@ -233,6 +251,24 @@ export default function DashboardLayout({ children, title, user }) {
           <p className={styles.headerTitle}>{title}</p>
           <HeaderSearch router={router} />
           <div className={styles.headerSpacer} />
+          {/* Hidden once the extension is present - it would be dead weight in
+              the bar. Also hidden while detection is still pending (null) so it
+              does not flash in and out on every page load. */}
+          {extensionDetected === false && (
+            <button
+              type="button"
+              className={styles.extensionCta}
+              onClick={() => setExtModalOpen(true)}
+              title="Install the browser extension that submits your applications"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 11 5 5 5-5" />
+                <path d="M4 19h16" />
+              </svg>
+              <span className={styles.extensionCtaLabel}>Download Extension</span>
+            </button>
+          )}
           <NotificationBell token={token} base={base} />
           <button
             type="button"
@@ -245,6 +281,14 @@ export default function DashboardLayout({ children, title, user }) {
             <span className={autoPilotOn ? styles.toggleOn : styles.toggleOff} />
           </button>
         </header>
+
+        <ExtensionInstallModal
+          token={token}
+          apiBase={base}
+          open={extModalOpen}
+          onClose={() => setExtModalOpen(false)}
+          onDismiss={() => localStorage.setItem(DISMISS_KEY, '1')}
+        />
 
         <main className={styles.content}>{children}</main>
       </div>
