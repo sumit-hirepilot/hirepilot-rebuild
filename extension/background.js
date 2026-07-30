@@ -423,9 +423,19 @@ async function processOne(item) {
   }, 120000);
 
   if (exec && exec.paused) {
-    await pause(item.applicationId, normalizePauseReason(exec.reason), exec.detail);
+    const reason = normalizePauseReason(exec.reason);
+    await pause(item.applicationId, reason, exec.detail);
     watchTabForResume(tab.id, item.applicationId);
-    return { paused: true };
+    /*
+     * An unanswered question stops THIS application, not the batch.
+     *
+     * The distinction was already made for the pre-execute path but not here,
+     * and this is the path that actually fires: a saved answer that is not on a
+     * particular form's option list parks the item mid-fill. One Checkr form
+     * whose Country list did not contain the saved value halted the seven jobs
+     * behind it.
+     */
+    return { paused: true, awaitingAnswer: reason === 'unmapped_required_field' };
   }
 
   /*
