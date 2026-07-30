@@ -185,7 +185,29 @@ router.put('/profile', verifyToken, async (req, res) => {
        RETURNING *`,
       params
     );
-    const profile = r.rows[0];
+    let profile = r.rows[0];
+
+    /*
+     * Deletion needs its own step, because custom_answers merges. Sending the
+     * set without a key does not remove it - `||` only ever adds - so there was
+     * no way to unlearn a wrong answer at all, and a bad one would be reused on
+     * every future application forever.
+     */
+    const remove = Array.isArray(req.body.removeAnswers) ? req.body.removeAnswers.slice(0, 100) : [];
+    if (remove.length) {
+      const keys = remove.map((k) => normalizeKey(k)).filter(Boolean);
+      if (keys.length) {
+        const d = await query(
+          `UPDATE application_profiles
+              SET custom_answers = COALESCE(custom_answers, '{}'::jsonb) - $2::text[],
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1 RETURNING *`,
+          [req.user.id, keys]
+        );
+        if (d.rows.length) profile = d.rows[0];
+      }
+    }
+
     res.json({ profile, completeness: completeness(profile) });
   } catch (err) {
     console.error('PUT /apply/profile failed:', err.message);
