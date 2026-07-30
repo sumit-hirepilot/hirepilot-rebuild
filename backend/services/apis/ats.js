@@ -53,16 +53,48 @@ const ASHBY_COMPANIES = [
 // as literal entity text (e.g. "&lt;h2&gt;") rather than real "<h2>", so
 // entities must be decoded before tags are stripped. Lever/Ashby's plain
 // text fields have no entities, so this is a harmless no-op for them.
-const stripHtml = (html) =>
-  (html || '')
+/*
+ * HTML -> readable plain text.
+ *
+ * The previous version collapsed ALL whitespace, including the block-level
+ * structure, so a posting arrived as one unbroken wall of text with no
+ * paragraphs or list items. That is what gets shown in the job preview and fed
+ * to keyword scoring, so block tags are now converted to newlines BEFORE
+ * whitespace is normalised, and list items keep a bullet.
+ */
+// Entities arrive double-encoded from some boards (&amp;nbsp;), so decoding
+// once leaves a literal &nbsp; in the text. Two passes resolves that; the
+// numeric form is handled too.
+const decodeEntities = (text) => {
+  const once = (t) => t
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
     .replace(/&#39;/g, "'")
+    .replace(/&#x27;/gi, "'")
     .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
+    .replace(/&rsquo;/g, '\u2019')
+    .replace(/&lsquo;/g, '\u2018')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&ndash;/g, '\u2013')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&amp;/g, '&');
+  return once(once(text));
+};
+
+const stripHtml = (html) =>
+  decodeEntities(html || '')
+    // Block boundaries become newlines so paragraphs survive.
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*\/\s*(p|div|section|article|h[1-6]|ul|ol|tr|blockquote)\s*>/gi, '\n\n')
+    .replace(/<\s*li[^>]*>/gi, '\n• ')
+    .replace(/<\s*\/\s*li\s*>/gi, '')
+    .replace(/<\s*(h[1-6])[^>]*>/gi, '\n\n')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
+    // Normalise horizontal whitespace only - newlines are meaningful now.
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 
 const fetchGreenhouseCompany = async (slug) => {

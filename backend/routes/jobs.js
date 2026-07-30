@@ -367,7 +367,7 @@ router.get('/sources', async (req, res) => {
 });
 
 // Get all active jobs with pagination and filters
-const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, location, work_arrangement,
+const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, apply_url, location, work_arrangement,
               salary_min, salary_max, job_type, posted_at, created_at`;
 
 router.get('/', async (req, res) => {
@@ -584,7 +584,7 @@ router.get('/saved/list', verifyToken, async (req, res) => {
   try {
     const result = await query(
       `SELECT sj.id as saved_id, sj.created_at as saved_at,
-              j.id, j.source, j.title, j.company_name, j.company_url, j.job_url,
+              j.id, j.source, j.title, j.company_name, j.company_url, j.job_url, j.apply_url,
               j.location, j.work_arrangement, j.salary_min, j.salary_max, j.job_type, j.posted_at
        FROM saved_jobs sj
        JOIN jobs j ON sj.job_id = j.id

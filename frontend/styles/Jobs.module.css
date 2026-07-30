@@ -814,7 +814,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid #ddd6fe;
   border-radius: 12px;
   padding: 10px 16px;
@@ -822,7 +822,7 @@
   box-shadow: 0 4px 16px rgba(124, 58, 237, 0.10);
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   animation: riseIn 180ms var(--ease-spring, ease) both;
 }
 
@@ -856,3 +856,31 @@
 }
 .bulkGhost:hover { border-color: var(--text-tertiary); }
 
+
+/* --- "All regions" row in a facet panel --- */
+
+.filterAll,
+.filterAllActive {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  margin-bottom: 4px;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 120ms ease;
+}
+.filterAll:hover { background: var(--bg-subtle); }
+.filterAllActive {
+  background: #f5f3ff;
+  color: var(--primary);
+  font-weight: 600;
+}

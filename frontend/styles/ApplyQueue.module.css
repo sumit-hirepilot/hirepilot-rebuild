@@ -8,7 +8,7 @@
 }
 
 .summaryCard {
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
@@ -19,7 +19,7 @@
 
 .summaryCardOk { border-color: #a7f3d0; background: #f0fdf9; }
 
-.summaryNum { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+.summaryNum { font-size: 1.5rem; font-weight: 700; color: var(--text); }
 .summaryCardOk .summaryNum { color: var(--success); }
 
 .summaryLabel {
@@ -52,7 +52,7 @@
   gap: 12px;
   width: 100%;
   text-align: left;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
@@ -74,7 +74,7 @@
 }
 
 .rowMain { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.rowTitle { font-weight: 600; font-size: 0.9375rem; color: var(--text-primary); }
+.rowTitle { font-weight: 600; font-size: 0.9375rem; color: var(--text); }
 .rowMeta { font-size: 0.8125rem; color: var(--text-secondary); }
 .rowTags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
 
@@ -86,7 +86,7 @@
 }
 .atsTag { background: #f5f3ff; color: var(--primary); }
 .manualTag { background: #fffbeb; color: var(--warning); }
-.scoreTag { background: var(--bg-secondary); color: var(--text-tertiary); }
+.scoreTag { background: var(--bg-subtle); color: var(--text-tertiary); }
 
 .status {
   font-size: 0.6875rem;
@@ -96,7 +96,7 @@
   padding: 4px 10px;
   border-radius: 999px;
   white-space: nowrap;
-  background: var(--bg-secondary);
+  background: var(--bg-subtle);
   color: var(--text-tertiary);
 }
 .s_ready_for_review { background: #f5f3ff; color: var(--primary); }
@@ -109,7 +109,7 @@
 /* --- Detail pane --- */
 
 .detail {
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 22px 24px;
@@ -156,7 +156,7 @@
   align-items: baseline;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--bg-secondary);
+  background: var(--bg-subtle);
   border-radius: 10px;
 }
 .docName { font-weight: 600; font-size: 0.875rem; }
@@ -173,7 +173,7 @@
   white-space: pre-wrap;
   font: 0.8125rem/1.6 inherit;
   font-family: inherit;
-  background: var(--bg-secondary);
+  background: var(--bg-subtle);
   border-radius: 10px;
   padding: 14px 16px;
   margin: 0;
@@ -190,7 +190,7 @@
   display: block;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   margin-bottom: 5px;
 }
 .req { color: #b91c1c; margin-left: 3px; }
@@ -202,8 +202,8 @@
   font-size: 0.875rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--bg-secondary);
+  color: var(--text);
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .input:focus {
@@ -288,13 +288,13 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary);
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
   transition: border-color 140ms ease, color 140ms ease;
 }
-.ghostBtn:hover:not(:disabled) { border-color: var(--text-tertiary); color: var(--text-primary); }
+.ghostBtn:hover:not(:disabled) { border-color: var(--text-tertiary); color: var(--text); }
 
 .bulkBtn {
   padding: 10px 16px;
@@ -320,7 +320,7 @@
 .muted { color: var(--text-tertiary); font-size: 0.875rem; }
 
 .empty {
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border: 1px dashed var(--border);
   border-radius: 12px;
   padding: 28px 24px;
