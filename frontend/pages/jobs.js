@@ -182,25 +182,6 @@ const sourceLabels = {
   ashby: 'Ashby',
 };
 
-/*
- * Which hosts can be shown in the preview pane.
- *
- * Checked against live response headers rather than assumed: Greenhouse and
- * Lever send no frame-ancestors and no X-Frame-Options, so they embed. Ashby
- * sends X-Frame-Options: DENY and company careers domains typically send
- * SAMEORIGIN, so those would render an empty frame - they get a content preview
- * built from the posting we already hold instead of a blank box.
- */
-const EMBEDDABLE_HOSTS = /(^|\.)(job-boards\.greenhouse\.io|boards\.greenhouse\.io|jobs\.lever\.co)$/i;
-
-function canEmbed(url) {
-  try {
-    return EMBEDDABLE_HOSTS.test(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
 // Same buckets the backend REGION_SQL produces, for display in the drawer.
 const REGION_LABELS = {
   north_america: 'North America',
@@ -1061,36 +1042,16 @@ export default function Jobs() {
           token={token}
           base={base}
           router={router}
-          onPrev={(() => {
-            const list = showSavedOnly ? savedJobs : jobs;
-            const i = list.findIndex((j) => j.id === selectedJob.id);
-            return i > 0 ? () => setSelectedJob(list[i - 1]) : null;
-          })()}
-          onNext={(() => {
-            const list = showSavedOnly ? savedJobs : jobs;
-            const i = list.findIndex((j) => j.id === selectedJob.id);
-            return i > -1 && i < list.length - 1 ? () => setSelectedJob(list[i + 1]) : null;
-          })()}
         />
       )}
     </>
   );
 }
 
-function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, router, onPrev, onNext }) {
-  /*
-   * Preview pane.
-   *
-   * Default is a rendering of the posting HirePilot already holds, NOT an
-   * iframe. Framing a third-party ATS is unreliable in practice: Ashby sends
-   * X-Frame-Options: DENY, company careers domains send SAMEORIGIN, and even
-   * where headers permit it the page can render blank. A blank white panel is
-   * worse than no preview, so the live page is opt-in via "Load live page" and
-   * only offered for hosts that actually allow framing.
-   */
-  const [showLive, setShowLive] = useState(false);
-  const previewUrl = job.apply_url || job.job_url;
-  const embeddable = canEmbed(previewUrl);
+function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, router }) {
+  // apply_url points at the ATS form where we have one; job_url can be the
+  // company careers page, which is not always the application itself.
+  const applyUrl = job.apply_url || job.job_url;
   const [tailoring, setTailoring] = useState(false);
   const [tailorResult, setTailorResult] = useState(null);
   const [recruiter, setRecruiter] = useState(null);
@@ -1107,7 +1068,6 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
     setDetail(null);
     setAts(null);
     setRecruiterAdded(false);
-    setShowLive(false);
     setRecruiterLoading(true);
 
     // Only surfaces a contact the employer actually published in the posting.
@@ -1201,111 +1161,7 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
   const region = regionFor(job.location);
 
   return (
-    <div className={styles.previewOverlay} onClick={onClose}>
-      {/* Left: the live posting where the ATS allows framing, otherwise a
-          preview built from the posting text we already hold. Never an empty
-          frame - Ashby and company careers domains refuse to be embedded. */}
-      <div className={styles.previewPane} onClick={(e) => e.stopPropagation()}>
-        {onPrev && (
-          <button className={styles.previewNavPrev} onClick={onPrev} aria-label="Previous job">&larr;</button>
-        )}
-        <div className={styles.previewFrame}>
-          {embeddable && showLive ? (
-            <iframe
-              key={previewUrl}
-              src={previewUrl}
-              title={`${job.title} at ${job.company_name}`}
-              className={styles.previewIframe}
-              /*
-               * allow-same-origin is required, not optional: these boards are
-               * React apps that read their own origin's storage on boot, and
-               * without it the frame renders blank white. It grants the frame
-               * access to ITS own origin (greenhouse.io), not to HirePilot -
-               * the document is cross-origin either way, so this does not
-               * expose anything of ours. allow-top-navigation is deliberately
-               * withheld so the embedded page cannot navigate the whole tab.
-               */
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-              referrerPolicy="no-referrer-when-downgrade"
-              onError={() => setPreviewFailed(true)}
-            />
-          ) : (
-            <div className={styles.previewFallback}>
-              <div className={styles.previewFallbackHead}>
-                <span className={styles.previewAvatar}>{job.company_name?.charAt(0) || '?'}</span>
-                <div>
-                  <p className={styles.previewFallbackTitle}>{job.title}</p>
-                  <p className={styles.previewFallbackCo}>
-                    {job.company_name}
-                    {job.location ? ` · ${job.location}` : ''}
-                  </p>
-                </div>
-                <div className={styles.previewToolbar}>
-                  {embeddable && (
-                    <button
-                      type="button"
-                      className={styles.previewLiveBtn}
-                      onClick={() => setShowLive(true)}
-                    >
-                      Load live page
-                    </button>
-                  )}
-                  <a
-                    className={styles.previewOpenBtn}
-                    href={previewUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    Open original &#8599;
-                  </a>
-                </div>
-              </div>
-              <div className={styles.previewFallbackBody}>
-                {/* The list endpoint omits description to keep the payload
-                    small; the drawer's own /api/jobs/:id fetch carries it. */}
-                {decodeLegacyEntities((detail && detail.description) || job.description
-                  || (detail === null ? 'Loading posting\u2026' : 'No description was published for this role.'))
-                  // Rows ingested before the stripHtml fix have no newlines at
-                  // all (it used to collapse every whitespace run), so fall back
-                  // to sentence-boundary splitting for those rather than
-                  // rewriting 13,869 rows on a nearly-full volume.
-                  .split(/\n+/).flatMap((block) => {
-                    const t = block.trim();
-                    if (!t) return [];
-                    if (t.length < 320) return [t];
-                    // Break before a capitalised word that follows sentence-end
-                    // punctuation - conservative enough not to split mid-acronym.
-                    return t.split(/(?<=[.!?:])\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean);
-                  })
-                  .slice(0, 120).map((para, i) => (
-                    <p key={i}>{para}</p>
-                  ))}
-              </div>
-              <p className={styles.previewFallbackNote}>
-                Posting text as HirePilot ingested it from{' '}
-                {sourceLabels[job.source] || job.source}
-                {embeddable
-                  ? '. "Load live page" embeds the employer\u2019s own page instead.'
-                  : `. ${job.company_name} does not allow its pages to be embedded, so open the original to see it on their site.`}
-              </p>
-            </div>
-          )}
-        </div>
-        {embeddable && showLive && (
-          <button
-            type="button"
-            className={styles.previewBackBtn}
-            onClick={() => setShowLive(false)}
-          >
-            &larr; Back to posting text
-          </button>
-        )}
-        {onNext && (
-          <button className={styles.previewNavNext} onClick={onNext} aria-label="Next job">&rarr;</button>
-        )}
-      </div>
-
-      {/* Right: the drawer */}
+    <div className={styles.drawerOverlay} onClick={onClose}>
       <div className={styles.drawer} onClick={(e) => e.stopPropagation()}>
         <div className={styles.drawerHeader}>
           <div>
@@ -1319,7 +1175,7 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
           <div className={styles.drawerHeadActions}>
             <a
               className={styles.drawerExternal}
-              href={previewUrl}
+              href={applyUrl}
               target="_blank"
               rel="noreferrer noopener"
               aria-label="Open original posting in a new tab"
@@ -1501,12 +1357,34 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
         )}
 
         <h3 className={styles.drawerSectionTitle}>Description</h3>
-        <p className={styles.drawerText}>{job.description || 'No description available.'}</p>
+        {/* The jobs list endpoint omits description to keep the payload small,
+            so this reads the drawer's own /api/jobs/:id fetch. Rendered as
+            paragraphs: rows ingested before the stripHtml fix arrived with no
+            newlines at all, so they are also split on sentence boundaries. */}
+        <div className={styles.drawerBody}>
+          {decodeLegacyEntities(
+            (detail && detail.description) || job.description
+            || (detail === null ? 'Loading posting\u2026' : 'No description available.')
+          )
+            .split(/\n+/)
+            .flatMap((block) => {
+              const t = block.trim();
+              if (!t) return [];
+              if (t.length < 320) return [t];
+              return t.split(/(?<=[.!?:])\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean);
+            })
+            .slice(0, 120)
+            .map((para, i) => <p key={i}>{para}</p>)}
+        </div>
 
-        {job.requirements && (
+        {(detail?.requirements || job.requirements) && (
           <>
             <h3 className={styles.drawerSectionTitle}>Requirements</h3>
-            <p className={styles.drawerText}>{job.requirements}</p>
+            <div className={styles.drawerBody}>
+              {decodeLegacyEntities(detail?.requirements || job.requirements)
+                .split(/\n+/).map((t) => t.trim()).filter(Boolean).slice(0, 60)
+                .map((para, i) => <p key={i}>{para}</p>)}
+            </div>
           </>
         )}
 
