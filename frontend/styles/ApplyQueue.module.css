@@ -328,3 +328,23 @@
 }
 .empty p { margin: 0 0 8px; }
 .empty .primaryBtn { margin-top: 8px; }
+
+/* --- Answer provenance: where a reused answer came from, and how sure --- */
+
+.confHigh, .confLow {
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+}
+.confHigh { background: #ecfdf5; color: var(--success); }
+.confLow  { background: #fffbeb; color: var(--warning); }
+
+.matchedFrom {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  font-style: italic;
+}

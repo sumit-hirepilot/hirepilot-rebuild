@@ -26,10 +26,12 @@ const STATUS_LABEL = {
 const SOURCE_LABEL = {
   profile: 'From your Application Profile',
   profile_custom: 'From a saved answer',
+  profile_similar: 'Reused from a similar question you answered',
+  low_confidence: 'Close match found - confirm before sending',
   user_edited: 'You edited this',
   profile_gap: 'Missing from your profile',
   requires_user: 'Only you can answer this',
-  unmapped: 'No saved answer covers this',
+  unmapped: 'New question - answer once and it is saved',
 };
 
 export default function ApplyQueue() {
@@ -380,8 +382,20 @@ export default function ApplyQueue() {
                         {edits[a.question] !== undefined
                           ? 'You edited this'
                           : SOURCE_LABEL[a.source] || a.source}
+                        {a.confidence !== undefined && edits[a.question] === undefined && (
+                          <span className={a.confidence >= 0.7 ? page.confHigh : page.confLow}>
+                            {' '}{Math.round(a.confidence * 100)}% match
+                          </span>
+                        )}
                         {a.reason ? ` — ${a.reason}` : ''}
                       </span>
+                      {a.matchedQuestion && edits[a.question] === undefined && (
+                        <span className={page.matchedFrom}>
+                          reused from: &ldquo;{a.matchedQuestion.slice(0, 90)}
+                          {a.matchedQuestion.length > 90 ? '…' : ''}&rdquo;
+                          {a.conceptLabel ? ` · ${a.conceptLabel}` : ''}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
