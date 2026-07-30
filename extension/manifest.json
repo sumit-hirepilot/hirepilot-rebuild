@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "HirePilot Apply",
+  "version": "1.0.0",
+  "description": "Executes your approved HirePilot applications on employer ATS pages, in your own browser session.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://boards.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://jobs.ashbyhq.com/*",
+    "https://hirepilot-production.up.railway.app/*",
+    "http://localhost:3001/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "HirePilot Apply"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://jobs.ashbyhq.com/*"
+      ],
+      "js": [
+        "content/fields.js",
+        "content/adapters/greenhouse.js",
+        "content/adapters/lever.js",
+        "content/adapters/ashby.js",
+        "content/runner.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

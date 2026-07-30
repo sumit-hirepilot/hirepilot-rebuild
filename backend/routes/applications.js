@@ -17,7 +17,7 @@ router.get('/', verifyToken, async (req, res) => {
        FROM applications a
        JOIN jobs j ON a.job_id = j.id
        WHERE a.user_id = $1
-       ORDER BY a.applied_at DESC`,
+       ORDER BY a.applied_at DESC NULLS LAST, a.created_at DESC`,
       [req.user.id]
     );
 

@@ -13,6 +13,7 @@ const networkRoutes = require('./routes/network');
 const activityRoutes = require('./routes/activity');
 const notificationsRoutes = require('./routes/notifications');
 const analyticsRoutes = require('./routes/analytics');
+const applyRoutes = require('./routes/apply');
 const { startScheduler } = require('./services/scheduler');
 const { runMigrations } = require('./services/migrations');
 
@@ -70,6 +71,10 @@ app.use('/api/notifications', notificationsRoutes);
 
 // Analytics routes
 app.use('/api/analytics', analyticsRoutes);
+
+// Application queue, Application Profile, and the submission-evidence ingest
+// the browser extension posts back to.
+app.use('/api/apply', applyRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

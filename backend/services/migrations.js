@@ -163,6 +163,86 @@ const STATEMENTS = [
   // catches the rest (aged-out/inactive rows the ingester no longer
   // revisits) in one pass. Safe to run repeatedly - a no-op once applied.
   `UPDATE jobs SET posted_at = NULL WHERE source = 'himalayas' AND posted_at IS NOT NULL`,
+
+  // Job Application Profile: the standard answers employer forms ask for on
+  // every application. Stored once so screening questions can be pre-filled
+  // instead of retyped per job. Deliberately separate from user_preferences,
+  // which holds Auto-Pilot behaviour rather than answers submitted to
+  // employers - these values go into legally binding forms, so they are kept
+  // as their own explicitly-managed record.
+  `CREATE TABLE IF NOT EXISTS application_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    full_name VARCHAR(255),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    current_location VARCHAR(255),
+    linkedin_url VARCHAR(512),
+    portfolio_url VARCHAR(512),
+    github_url VARCHAR(512),
+    years_experience NUMERIC(4,1),
+    current_company VARCHAR(255),
+    current_title VARCHAR(255),
+    -- Work authorisation answers. Nullable on purpose: an unanswered question
+    -- must stay unanswered rather than defaulting to a guess, because a wrong
+    -- value here is a misrepresentation on a real application.
+    work_authorization VARCHAR(100),
+    requires_sponsorship BOOLEAN,
+    willing_to_relocate BOOLEAN,
+    notice_period VARCHAR(100),
+    salary_expectation VARCHAR(100),
+    salary_currency VARCHAR(10),
+    pronouns VARCHAR(50),
+    -- Free-form answers keyed by a normalised question, for prompts that
+    -- recur but are not standard enough to be columns.
+    custom_answers JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Verified-submission tracking. Previously a row was inserted with
+  // status='applied' the moment the user clicked, which asserted an employer
+  // had received something when nothing had been sent. These columns make the
+  // distinction explicit and let the status be driven by evidence.
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS submission_channel VARCHAR(50)`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS employer_confirmation_id VARCHAR(255)`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS employer_confirmation_text TEXT`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS confirmation_captured_at TIMESTAMP`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS target_form_url VARCHAR(1024)`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS screening_answers JSONB DEFAULT '{}'::jsonb`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`,
+  // The queue is FIFO on creation time. applied_at/updated_at both move after
+  // the fact, so neither is a stable ordering key for a queue.
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+  `UPDATE applications SET created_at = COALESCE(applied_at, updated_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL`,
+  // applied_at carried DEFAULT CURRENT_TIMESTAMP, so every row got an "applied"
+  // date at INSERT - including queued and failed ones that never reached an
+  // employer. Analytics, the tracker and the auto-pilot daily cap all read this
+  // column, so they were all counting non-applications. Drop the default, clear
+  // the rows it contaminated, then enforce the rule in the schema so no future
+  // code path can reintroduce it.
+  `ALTER TABLE applications ALTER COLUMN applied_at DROP DEFAULT`,
+  `UPDATE applications SET applied_at = NULL WHERE status <> 'submitted' AND applied_at IS NOT NULL`,
+
+  // Legacy rows marked 'applied' by the pre-verification code path. They have
+  // no confirmation evidence because nothing was ever sent, so leaving them as
+  // "applied" would keep asserting an application the employer never received.
+  `UPDATE applications
+     SET status = 'failed',
+         applied_at = NULL,
+         failure_reason = COALESCE(failure_reason, '') ||
+           'Recorded as applied by an earlier build that created tracker rows without submitting to the employer. Never sent - re-queue it to apply for real.'
+   WHERE status = 'applied'
+     AND employer_confirmation_id IS NULL
+     AND verified_at IS NULL`,
+
+  `ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_applied_at_requires_submitted`,
+  `ALTER TABLE applications ADD CONSTRAINT applications_applied_at_requires_submitted
+     CHECK (applied_at IS NULL OR status = 'submitted')`,
+
+  `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
 ];
 
 const runMigrations = async () => {

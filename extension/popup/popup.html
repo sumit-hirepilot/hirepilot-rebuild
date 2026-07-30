@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>HirePilot Apply</title>
+</head>
+<body>
+  <header class="hdr">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>HirePilot Apply</strong>
+    </div>
+    <span id="conn" class="pill pill-off">Not connected</span>
+  </header>
+
+  <!-- Connect -->
+  <section id="connectView" class="view">
+    <p class="muted">
+      Paste your HirePilot access token to link this extension to your account.
+      Open HirePilot, go to <strong>Settings &rarr; Browser Extension</strong>, and copy the token.
+    </p>
+    <label class="lbl" for="apiBase">HirePilot URL</label>
+    <input id="apiBase" type="text" placeholder="https://hirepilot-production.up.railway.app" />
+    <label class="lbl" for="token">Access token</label>
+    <textarea id="token" rows="3" placeholder="eyJhbGciOi..."></textarea>
+    <button id="connectBtn" class="btn btn-primary">Connect</button>
+    <p id="connectErr" class="err"></p>
+  </section>
+
+  <!-- Main -->
+  <section id="mainView" class="view hidden">
+    <div class="stats">
+      <div class="stat"><span id="sQueued">0</span><label>Queued</label></div>
+      <div class="stat"><span id="sSubmitted" class="ok">0</span><label>Submitted</label></div>
+      <div class="stat"><span id="sFailed" class="bad">0</span><label>Failed</label></div>
+    </div>
+
+    <div id="pauseBox" class="notice hidden">
+      <strong id="pauseTitle"></strong>
+      <p id="pauseDetail" class="muted"></p>
+      <p class="tiny">HirePilot resumes on its own once you've done this.</p>
+    </div>
+
+    <div id="queueList" class="queue"></div>
+
+    <div class="row">
+      <button id="runBtn" class="btn btn-primary">Run queue</button>
+      <button id="stopBtn" class="btn hidden">Stop</button>
+    </div>
+
+    <label class="check">
+      <input id="autoSubmit" type="checkbox" checked />
+      <span>Submit automatically after I approve in HirePilot</span>
+    </label>
+    <p class="tiny">
+      Off means HirePilot fills the form and stops, so you click Submit on the
+      employer's page yourself.
+    </p>
+
+    <p id="mainErr" class="err"></p>
+    <button id="disconnectBtn" class="btn btn-link">Disconnect</button>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
