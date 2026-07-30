@@ -253,6 +253,7 @@ export default function Jobs() {
   const [jobTypes, setJobTypes] = useState([]);
   const [workArrangements, setWorkArrangements] = useState([]);
   const [salary, setSalary] = useState([]);
+  const [regions, setRegions] = useState([]);
   const [facets, setFacets] = useState(null);
   const [atsScores, setAtsScores] = useState({});
   const [hasResume, setHasResume] = useState(true);
@@ -314,6 +315,7 @@ export default function Jobs() {
       const jt = params.jobTypes ?? jobTypes;
       const wa = params.workArrangements ?? workArrangements;
       const sal = params.salary ?? salary;
+      const rg = params.regions ?? regions;
       const co = params.company ?? company;
       kws.forEach((k) => k && qs.append('keywords', k));
       excl.forEach((e) => e && qs.append('exclude', e));
@@ -325,6 +327,7 @@ export default function Jobs() {
       jt.forEach((v) => v && qs.append('jobType', v));
       wa.forEach((v) => v && qs.append('workArrangement', v));
       sal.forEach((v) => v && qs.append('salary', v));
+      rg.forEach((v) => v && qs.append('region', v));
       if (co) qs.set('company', co);
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
@@ -407,25 +410,154 @@ export default function Jobs() {
     setUser(JSON.parse(storedUser));
     setToken(authToken);
 
-    // Deep-link support for the header search (⌘K) which navigates to
-    // /jobs?search=X - seed the keyword chips from it on first load.
-    const initialSearch = router.query.search;
-    const initialKeywords = initialSearch ? [String(initialSearch)] : keywords;
-    if (initialSearch) setKeywords(initialKeywords);
-
-    loadJobs(authToken, { page: 1, keywords: initialKeywords });
+    // Restore the full search from the URL. ?search=X is the header ⌘K
+    // shortcut's shape and is folded into keywords.
+    const q = { ...router.query };
+    if (q.search && !q.keywords) q.keywords = [String(q.search)];
+    restoreFromQuery(q, authToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  /*
+   * Search state lives in the URL, not only in React state.
+   *
+   * Previously keywords/page/filters existed solely in component state, so
+   * paging forward and pressing Back - or refreshing, or opening a job and
+   * returning - dropped the search and silently reset to page 1 of everything.
+   * Writing it to the query string makes Back/Forward restore the exact result
+   * set and makes a search shareable.
+   */
+  const buildQuery = (o = {}) => {
+    const q = {};
+    const kws = o.keywords ?? keywords;
+    const excl = o.excludeTerms ?? excludeTerms;
+    const jt = o.jobTypes ?? jobTypes;
+    const wa = o.workArrangements ?? workArrangements;
+    const sal = o.salary ?? salary;
+    const rg = o.regions ?? regions;
+    const pg = o.page ?? page_;
+    const scp = o.scope ?? scope;
+    const exp = o.experience ?? experience;
+    const loc = o.location ?? location;
+    const dp = o.datePosted ?? datePosted;
+    const co = o.company ?? company;
+    const rel = o.includeRelated ?? includeRelated;
+    const saved = o.showSavedOnly ?? showSavedOnly;
+
+    if (kws.length) q.keywords = kws;
+    if (excl.length) q.exclude = excl;
+    if (jt.length) q.jobType = jt;
+    if (wa.length) q.workArrangement = wa;
+    if (sal.length) q.salary = sal;
+    if (rg.length) q.region = rg;
+    if (pg > 1) q.page = String(pg);
+    if (scp && scp !== 'title_description') q.scope = scp;
+    if (exp) q.experience = exp;
+    if (loc) q.location = loc;
+    if (dp) q.datePosted = dp;
+    if (co) q.company = co;
+    if (rel) q.includeRelated = 'true';
+    if (saved) q.saved = 'true';
+    return q;
+  };
+
+  // shallow: true - the URL changes without re-running getServerSideProps or
+  // remounting; loadJobs is driven explicitly by the caller instead.
+  //
+  // selfPush guards against the routeChangeComplete handler above reacting to
+  // our own push and redundantly re-restoring (and re-fetching) what we just
+  // applied. Only genuine history navigation should trigger a restore.
+  const selfPush = useRef(false);
+  const syncUrl = (o = {}) => {
+    selfPush.current = true;
+    router.push({ pathname: '/jobs', query: buildQuery(o) }, undefined, { shallow: true })
+      .finally(() => { selfPush.current = false; });
+  };
+
+  const asArray = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
+
+  // Reads the query string back into state. Used on first load and whenever
+  // the user navigates history.
+  const restoreFromQuery = useCallback((q, authToken) => {
+    const kws = asArray(q.keywords);
+    const excl = asArray(q.exclude);
+    const jt = asArray(q.jobType);
+    const wa = asArray(q.workArrangement);
+    const sal = asArray(q.salary);
+    const rg = asArray(q.region);
+    const pg = Math.max(1, parseInt(q.page, 10) || 1);
+    const scp = q.scope || 'title_description';
+    const exp = q.experience || '';
+    const loc = q.location || '';
+    const dp = q.datePosted || '';
+    const co = q.company || '';
+    const rel = q.includeRelated === 'true';
+    const saved = q.saved === 'true';
+
+    setKeywords(kws); setExcludeTerms(excl); setJobTypes(jt);
+    setWorkArrangements(wa); setSalary(sal); setRegions(rg);
+    setPage(pg); setScope(scp); setExperience(exp); setLocation(loc);
+    setDatePosted(dp); setCompany(co); setIncludeRelated(rel); setShowSavedOnly(saved);
+
+    loadJobs(authToken, {
+      page: pg, keywords: kws, excludeTerms: excl, jobTypes: jt,
+      workArrangements: wa, salary: sal, regions: rg, scope: scp,
+      experience: exp, location: loc, datePosted: dp, company: co,
+      includeRelated: rel,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadJobs]);
+
+  const MULTI_KEYS = ['keywords', 'exclude', 'jobType', 'workArrangement', 'salary', 'region'];
+
+  const queryFromSearch = (search) => {
+    const sp = new URLSearchParams(search);
+    const q = {};
+    for (const [k, v] of sp.entries()) q[k] = v;
+    // URLSearchParams entries() collapses repeated keys to the last value, so
+    // the multi-select facets have to be read with getAll.
+    MULTI_KEYS.forEach((k) => {
+      const all = sp.getAll(k);
+      if (all.length) q[k] = all;
+    });
+    return q;
+  };
+
+  /*
+   * Back / Forward restore.
+   *
+   * Driven off router.events rather than a raw popstate listener. The listener
+   * version read window.location at fire time, which meant a popstate arriving
+   * while the URL was mid-transition (or already on another page) restored an
+   * empty query and silently wiped the user's search - the chips vanished while
+   * the results stayed filtered. routeChangeComplete hands us the destination
+   * URL directly, and the /jobs guard stops us reacting to navigations away.
+   */
+  useEffect(() => {
+    if (!token) return undefined;
+    const onRouteChange = (url) => {
+      const [path, search = ''] = String(url).split('?');
+      if (path !== '/jobs') return;
+      if (selfPush.current) return;
+      restoreFromQuery(queryFromSearch(search), token);
+    };
+    router.events.on('routeChangeComplete', onRouteChange);
+    return () => router.events.off('routeChangeComplete', onRouteChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, restoreFromQuery]);
 
   const handleSearch = (e) => {
     e.preventDefault();
     setPage(1);
+    syncUrl({ page: 1 });
     loadJobs(token, { page: 1 });
   };
 
   const goToPage = (p) => {
     setPage(p);
+    syncUrl({ page: p });
     loadJobs(token, { page: p });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleShowRelated = () => {
@@ -654,7 +786,28 @@ export default function Jobs() {
               label: o.value.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
               count: o.count,
             }))}
-            onApply={(vals) => { setJobTypes(vals); loadJobs(token, { page: 1, jobTypes: vals }); }}
+            onApply={(vals) => { setJobTypes(vals); setPage(1); syncUrl({ page: 1, jobTypes: vals }); loadJobs(token, { page: 1, jobTypes: vals }); }}
+          />
+
+          {/* Region groups the free-text location into continents. Derived on
+              the server from the location string, because jobs.country is
+              populated on under a quarter of rows. India is its own bucket
+              rather than being buried inside Asia-Pacific. */}
+          <FilterPanel
+            label="Location"
+            hint="Grouped by region. Postings that only say Remote or Hybrid fall under Not specified."
+            selected={regions}
+            options={(facets?.region || []).map((o) => ({
+              value: o.value,
+              label: o.label || o.value,
+              count: o.count,
+            }))}
+            onApply={(vals) => {
+              setRegions(vals);
+              setPage(1);
+              syncUrl({ page: 1, regions: vals });
+              loadJobs(token, { page: 1, regions: vals });
+            }}
           />
 
           <FilterPanel
@@ -665,7 +818,7 @@ export default function Jobs() {
               label: o.value.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
               count: o.count,
             }))}
-            onApply={(vals) => { setWorkArrangements(vals); loadJobs(token, { page: 1, workArrangements: vals }); }}
+            onApply={(vals) => { setWorkArrangements(vals); setPage(1); syncUrl({ page: 1, workArrangements: vals }); loadJobs(token, { page: 1, workArrangements: vals }); }}
           />
 
           {/* USD-equivalent bands. Source salaries are in mixed currencies and
@@ -680,7 +833,7 @@ export default function Jobs() {
               label: o.label || o.value,
               count: o.count,
             }))}
-            onApply={(vals) => { setSalary(vals); loadJobs(token, { page: 1, salary: vals }); }}
+            onApply={(vals) => { setSalary(vals); setPage(1); syncUrl({ page: 1, salary: vals }); loadJobs(token, { page: 1, salary: vals }); }}
           />
           <input
             type="text"
@@ -689,18 +842,23 @@ export default function Jobs() {
             placeholder="Company"
             className={page.locInput}
           />
-          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary.length || company) && (
+          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary.length || regions.length || company) && (
             <button
               type="button"
               className={page.clearFiltersButton}
               onClick={() => {
                 setExperience(''); setLocation(''); setDatePosted('');
-                setJobTypes([]); setWorkArrangements([]); setSalary([]); setCompany('');
+                setJobTypes([]); setWorkArrangements([]); setSalary([]);
+                setRegions([]); setCompany('');
                 setPage(1);
-                loadJobs(token, {
+                const cleared = {
                   page: 1, experience: '', location: '', datePosted: '',
-                  jobTypes: [], workArrangements: [], salary: [], company: '',
-                });
+                  jobTypes: [], workArrangements: [], salary: [], regions: [], company: '',
+                };
+                // Keywords survive a filter clear - clearing filters is not the
+                // same action as clearing the search.
+                syncUrl(cleared);
+                loadJobs(token, cleared);
               }}
             >
               Clear filters

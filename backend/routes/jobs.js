@@ -113,6 +113,39 @@ const USD_CASE = `CASE COALESCE(NULLIF(currency,''),'USD') ${
 // comfortably above any sane threshold, so ~2,400 Polish jobs were read as
 // $5k-a-year and swept into the lowest band.
 const MONTHLY_SOURCES = ['nofluffjobs'];
+/*
+ * Region grouping for the Location filter.
+ *
+ * Derived from the free-text location, not from jobs.country: only 4,216 of
+ * 18,290 active rows have country populated, so a country-based facet would
+ * hide three quarters of the jobs. India is its own bucket rather than being
+ * folded into Asia-Pacific because it is the most common case for this user
+ * base and gets lost inside a region that large.
+ *
+ * Ordered most-specific-first: US state abbreviations are checked before the
+ * bare-city patterns, and "Remote - US" must classify as North America rather
+ * than falling through to the unknown bucket.
+ */
+const REGION_SQL = `CASE
+  WHEN location ~* '(bengaluru|bangalore|mumbai|new delhi|delhi|hyderabad|pune|chennai|gurgaon|gurugram|noida|kolkata|ahmedabad|jaipur|india)' THEN 'india'
+  WHEN location ~* '(united states|u\\.s\\.a?\\.?|\\bUSA\\b|remote *- *us|san francisco|new york|seattle|austin|boston|chicago|los angeles|denver|atlanta|portland|san diego|san jose|foster city|palo alto|mountain view|sunnyvale|santa clara|redmond|bellevue|washington|philadelphia|dallas|houston|phoenix|miami|minneapolis|detroit|pittsburgh|nashville|charlotte|raleigh|salt lake|boulder|toronto|vancouver|montreal|ottawa|calgary|canada|, *(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\\b)' THEN 'north_america'
+  WHEN location ~* '(london|manchester|edinburgh|dublin|ireland|united kingdom|\\bUK\\b|england|scotland|wales|warszawa|warsaw|krak(o|ó)w|wroc(l|ł)aw|pozna(n|ń)|gda(n|ń)sk|katowice|(l|ł)(o|ó)d(z|ź)|poland|berlin|munich|m(u|ü)nchen|hamburg|frankfurt|cologne|germany|paris|lyon|france|amsterdam|rotterdam|utrecht|netherlands|madrid|barcelona|spain|lisbon|porto|portugal|milan|rome|italy|zurich|geneva|switzerland|vienna|austria|stockholm|sweden|copenhagen|denmark|oslo|norway|helsinki|finland|brussels|belgium|prague|czech|budapest|hungary|bucharest|romania|sofia|bulgaria|athens|greece|tallinn|estonia|riga|latvia|vilnius|lithuania|europe|\\bEMEA\\b)' THEN 'europe'
+  WHEN location ~* '(singapore|sydney|melbourne|brisbane|perth|australia|auckland|wellington|new zealand|tokyo|osaka|japan|seoul|korea|beijing|shanghai|shenzhen|china|hong kong|taipei|taiwan|manila|philippines|jakarta|indonesia|bangkok|thailand|kuala lumpur|malaysia|ho chi minh|hanoi|vietnam|\\bAPAC\\b|asia)' THEN 'asia_pacific'
+  WHEN location ~* '(s(a|ã)o paulo|rio de janeiro|brazil|brasil|mexico city|mexico|guadalajara|buenos aires|argentina|santiago|chile|bogot(a|á)|colombia|lima|peru|san jos(e|é), *costa rica|costa rica|montevideo|uruguay|panama|\\bLATAM\\b|latin america|south america)' THEN 'latin_america'
+  WHEN location ~* '(dubai|abu dhabi|\\bUAE\\b|united arab emirates|riyadh|jeddah|saudi|doha|qatar|kuwait|manama|bahrain|muscat|oman|tel aviv|jerusalem|israel|cairo|egypt|casablanca|morocco|nairobi|kenya|lagos|abuja|nigeria|cape town|johannesburg|south africa|accra|ghana|africa|middle east)' THEN 'mea'
+  ELSE 'unspecified'
+END`;
+
+const REGION_LABELS = {
+  north_america: 'North America',
+  europe: 'Europe',
+  india: 'India',
+  asia_pacific: 'Asia-Pacific',
+  latin_america: 'Latin America',
+  mea: 'Middle East & Africa',
+  unspecified: 'Not specified / Remote',
+};
+
 const SALARY_USD = `(salary_min * ${USD_CASE} * CASE WHEN source IN (${
   MONTHLY_SOURCES.map((s) => `'${s}'`).join(', ')
 }) THEN 12 ELSE 1 END)`;
@@ -231,7 +264,7 @@ router.get('/:id/ats', verifyToken, async (req, res) => {
 // cannot deliver.
 router.get('/facets', async (req, res) => {
   try {
-    const [workArrangement, jobType, salary, experience] = await Promise.all([
+    const [workArrangement, jobType, salary, experience, region] = await Promise.all([
       query(`SELECT COALESCE(NULLIF(work_arrangement,''),'unknown') AS value, COUNT(*)::int AS count
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
       query(`SELECT ${JOB_TYPE_SQL} AS value, COUNT(*)::int AS count
@@ -245,6 +278,8 @@ router.get('/facets', async (req, res) => {
                COUNT(*) FILTER (WHERE title ~* '(senior|sr\\.?|lead|head of)')::int AS senior,
                COUNT(*) FILTER (WHERE title ~* '(staff|principal|distinguished)')::int AS staff
              FROM jobs WHERE is_active = true`),
+      query(`SELECT ${REGION_SQL} AS value, COUNT(*)::int AS count
+             FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
     ]);
 
     const exp = experience.rows[0];
@@ -262,6 +297,11 @@ router.get('/facets', async (req, res) => {
         { value: 'senior', count: exp.senior },
         { value: 'staff', count: exp.staff },
       ],
+      region: region.rows.map((r) => ({
+        value: r.value,
+        label: REGION_LABELS[r.value] || r.value,
+        count: r.count,
+      })),
     });
   } catch (err) {
     console.error('Get facets error:', err);
@@ -379,6 +419,14 @@ router.get('/', async (req, res) => {
       // raw values are fragmented across several spellings per type.
       const ph = jobTypes.map((t) => { params.push(t); return `$${params.length}`; });
       filterClause += ` AND ${JOB_TYPE_SQL} IN (${ph.join(', ')})`;
+    }
+
+    // Region: matched against the derived expression rather than a column,
+    // because location is free text and jobs.country is mostly empty.
+    const regions = asArray(req.query.region);
+    if (regions.length) {
+      const ph = regions.map((r) => { params.push(r); return `$${params.length}`; });
+      filterClause += ` AND ${REGION_SQL} IN (${ph.join(', ')})`;
     }
 
     const workArrangements = asArray(req.query.workArrangement);
