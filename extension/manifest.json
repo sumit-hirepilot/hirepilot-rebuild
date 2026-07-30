@@ -31,6 +31,7 @@
         "content/adapters/greenhouse.js",
         "content/adapters/lever.js",
         "content/adapters/ashby.js",
+        "content/drawer.js",
         "content/runner.js"
       ],
       "run_at": "document_idle",

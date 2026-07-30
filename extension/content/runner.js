@@ -298,11 +298,26 @@ HP.runner = (() => {
       coverLetterFilled = HP.fields.fillText(clField, payload.coverLetter);
     }
 
+    if (HP.drawer) {
+      HP.drawer.update({
+        status: 'filling',
+        message: 'Filling the form…',
+        job: payload.job,
+        fields: [...(payload.standardFields || []), ...(payload.screeningQuestions || [])],
+      });
+    }
+
     const questionResult = await fillQuestions(adapter, payload.screeningQuestions);
 
     // A required field we could not fill is a hard stop: submitting an
     // incomplete form either fails validation or sends a blank answer.
     if (questionResult.unfilled.length) {
+      if (HP.drawer) {
+        HP.drawer.update({
+          status: 'needs_user',
+          message: `${questionResult.unfilled.length} question${questionResult.unfilled.length === 1 ? '' : 's'} need your answer before this can go out.`,
+        });
+      }
       return {
         ok: false,
         paused: true,
@@ -322,6 +337,12 @@ HP.runner = (() => {
     if (postGate.paused) return { ok: false, paused: true, ...postGate };
 
     if (!payload.autoSubmit) {
+      if (HP.drawer) {
+        HP.drawer.update({
+          status: 'done',
+          message: 'Form filled. Review it and click Submit on this page when you are ready.',
+        });
+      }
       return {
         ok: true,
         submitted: false,
@@ -409,8 +430,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
         return respond({ ok: true, adapter: adapter ? adapter.name : null, url: location.href });
       }
 
+      if (msg.type === 'HP_DRAWER_STATE') {
+        // Background pushes queue context in once it has it.
+        if (HP.drawer) HP.drawer.show(msg.payload || {});
+        return respond({ ok: true });
+      }
+
       if (msg.type === 'HP_DISCOVER') {
         const adapter = HP.discovery.activeAdapter(msg.atsPlatform);
+        if (HP.drawer) {
+          HP.drawer.show({ status: 'reading', message: 'Reading this form…' });
+        }
         if (!adapter) return respond({ ok: false, reason: 'No adapter for this site' });
         const opened = await adapter.openForm();
         if (opened === 'navigating') return respond({ ok: false, navigating: true });

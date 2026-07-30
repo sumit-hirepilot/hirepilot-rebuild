@@ -136,6 +136,7 @@ const CONTENT_FILES = [
   'content/adapters/greenhouse.js',
   'content/adapters/lever.js',
   'content/adapters/ashby.js',
+  'content/drawer.js',
   'content/runner.js',
 ];
 
@@ -320,6 +321,27 @@ async function processOne(item) {
   const resumeFile = await fetchResumeBytes(item.applicationId);
   const settings = await chrome.storage.local.get(['autoSubmit']);
 
+  // Give the drawer everything it needs for its three tabs before filling
+  // starts, so the user can see the context rather than a blank panel.
+  const profile = await api('/api/apply/profile').catch(() => null);
+  sendToTab(tab.id, {
+    type: 'HP_DRAWER_STATE',
+    payload: {
+      job: payload.job,
+      fields: [...(payload.standardFields || []), ...(payload.screeningQuestions || [])],
+      ats: payload.resume ? {
+        score: payload.resume.atsScore,
+        matchedCount: payload.resume.matchedCount,
+        totalKeywords: payload.resume.totalKeywords,
+        missing: payload.resume.missing,
+      } : null,
+      profile: profile && profile.profile
+        ? { ...profile.profile, savedAnswers: Object.keys(profile.profile.custom_answers || {}).length }
+        : null,
+      status: 'filling',
+    },
+  }, 5000);
+
   const exec = await sendToTab(tab.id, {
     type: 'HP_EXECUTE',
     payload: {
@@ -497,6 +519,81 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
   (async () => {
     try {
       switch (msg.type) {
+        /*
+         * From the in-page drawer. "Fill this form" must fill the form the user
+         * is looking at - it previously called runQueue(), which restarts the
+         * whole queue and may well open a different job in a new tab, doing
+         * nothing to the page the button lives on.
+         *
+         * Resolves the application bound to THIS tab and executes it here.
+         */
+        case 'HP_DRAWER_FILL': {
+          const tabId = _sender?.tab?.id;
+          if (!tabId) return respond({ ok: false, reason: 'no tab' });
+
+          let appId = state.currentApplicationId;
+          if (!appId || state.currentTabId !== tabId) {
+            // The tab was opened outside a run (or the worker restarted and lost
+            // its state), so find the queued application whose target matches.
+            const url = _sender.tab.url || '';
+            const q = await api('/api/apply/queue').catch(() => null);
+            const hit = (q?.queue || []).find((it) => {
+              try { return new URL(it.target_form_url).pathname === new URL(url).pathname; }
+              catch { return false; }
+            });
+            appId = hit?.id;
+          }
+          if (!appId) {
+            sendToTab(tabId, { type: 'HP_DRAWER_STATE', payload: {
+              status: 'needs_user',
+              message: 'No queued application matches this page. Prepare it in HirePilot first.',
+            } }, 4000);
+            return respond({ ok: false, reason: 'no matching application' });
+          }
+
+          const fresh = await api(`/api/apply/queue/${appId}`).catch(() => null);
+          const payload = fresh?.item;
+          if (!payload) return respond({ ok: false, reason: 'could not load application' });
+
+          if (payload.status !== 'approved') {
+            sendToTab(tabId, { type: 'HP_DRAWER_STATE', payload: {
+              status: 'needs_user',
+              message: 'Approve this application in HirePilot first - that is where you confirm what gets sent.',
+            } }, 4000);
+            return respond({ ok: false, reason: 'not approved' });
+          }
+
+          const resumeFile = await fetchResumeBytes(appId);
+          const settings = await chrome.storage.local.get(['autoSubmit']);
+          sendToTab(tabId, {
+            type: 'HP_EXECUTE',
+            payload: {
+              atsPlatform: payload.atsPlatform,
+              standardFields: payload.standardFields || [],
+              screeningQuestions: payload.screeningQuestions || [],
+              coverLetter: payload.coverLetter,
+              resumeFile,
+              autoSubmit: settings.autoSubmit !== false,
+            },
+          }, 120000).then((r) => {
+            if (r && r.paused) {
+              pause(appId, normalizePauseReason(r.reason), r.detail);
+            } else if (r && r.submitted && r.evidence) {
+              finalize(appId, r.evidence, tabId);
+            }
+          });
+          return respond({ ok: true, started: true, applicationId: appId });
+        }
+        case 'HP_DRAWER_OPEN_APP': {
+          const { apiBase } = await config();
+          // The app and the API are separate services; derive the app origin
+          // rather than sending the user to the API host.
+          const appUrl = apiBase.includes('hirepilot-production-e70d')
+            ? 'https://hirepilot-rebuild-production.up.railway.app/apply-queue'
+            : `${apiBase.replace(':3001', ':3000')}/apply-queue`;
+          await chrome.tabs.create({ url: appUrl });
+          return respond({ ok: true });
+        }
         case 'HP_GET_STATE': {
           const { apiBase, token } = await config();
           const s = await chrome.storage.local.get(['autoSubmit']);
