@@ -9,17 +9,26 @@
  *
  * Status lifecycle - the important part of this file:
  *
- *   preparing        materials being generated
- *   ready_for_review prepared; waiting for the user to approve
- *   approved         user approved; extension may execute it
- *   submitting       extension is driving the form
- *   needs_user       paused - login / MFA / CAPTCHA / consent / final submit
- *   submitted        VERIFIED reached the employer (evidence required)
- *   failed           did not submit; failure_reason recorded
+ *   preparing   materials being generated
+ *   approved    everything required is answered; the extension may execute it
+ *   submitting  extension is driving the form
+ *   needs_user  paused - an unanswered question, or something only a human can
+ *               do: login, MFA, CAPTCHA, a browser permission, a consent tick
+ *   submitted   VERIFIED reached the employer (evidence required)
+ *   failed      did not submit; failure_reason recorded
+ *
+ * There is no review-and-approve step. `approved` means READY, and readiness is
+ * computed - an application whose answers all resolve from the profile is
+ * executed and submitted without asking. A gap sends it to `needs_user`, the
+ * drawer asks about it on the page, and answering promotes it back to
+ * `approved` automatically. Answers are saved to the profile, so each question
+ * costs the user once, ever.
  *
  * Only `submitted` means "Applied", and the transition into it is gated on
  * evidence in recordEvidence() below. There is no code path that sets it
- * otherwise - that was the whole defect this replaces.
+ * otherwise - that was the whole defect this replaces, and removing the
+ * approval step does not relax it: automatic submission still has to prove it
+ * reached the employer before anything is marked applied.
  */
 
 const express = require('express');
@@ -365,11 +374,26 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
     { location: job.location }
   );
 
+  /*
+   * Readiness, not approval.
+   *
+   * There is no review screen in this flow. An application whose identity set
+   * resolves from the profile goes straight to `approved` and the extension may
+   * execute it; one with a gap goes to `needs_user`, which the drawer asks about
+   * on the page and which becomes `approved` the moment it is answered.
+   *
+   * `approved` is retained as the state name because it is the single status the
+   * extension will execute, and everything - bulk apply, the auto-pilot cap, the
+   * tracker - already keys off it. What changed is who sets it: readiness, not a
+   * click. Nothing here marks anything applied; that still requires evidence.
+   */
+  const ready = summarize(standard).readyWithoutInput;
+
   const app = await query(
     `INSERT INTO applications
        (user_id, job_id, status, submitted_by, tailored_resume_id, cover_letter_id,
         cover_letter, target_form_url, submission_channel, screening_answers)
-     VALUES ($1,$2,'ready_for_review','extension',$3,$4,$5,$6,$7,$8)
+     VALUES ($1,$2,$9,'extension',$3,$4,$5,$6,$7,$8)
      RETURNING id, status, created_at`,
     [
       userId, job.id, tr.rows[0].id, cl.rows[0].id, letter,
@@ -378,6 +402,7 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
       // the job id; the extension injects programmatically now, so it does not
       // need the tab to stay on an ATS origin.
       job.job_url || job.apply_url, atsPlatform, JSON.stringify({ standard }),
+      ready ? 'approved' : 'needs_user',
     ]
   );
 
@@ -392,7 +417,7 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
     atsScore: ats.score,
     addedSkills: tailoring.addedSkills || [],
     targetFormUrl: job.job_url || job.apply_url,
-    status: 'ready_for_review',
+    status: ready ? 'approved' : 'needs_user',
     prefillSummary: summarize(standard),
   };
 }
@@ -591,12 +616,29 @@ router.patch('/queue/:id/questions', verifyToken, async (req, res) => {
     }).catch((e) => console.warn('[kb] recordSeen failed:', e.message));
     const merged = { ...(owns.rows[0].screening_answers || {}), questions: filled };
 
+    const summary = summarize(filled);
+
+    /*
+     * The live form is the real test of readiness, so it decides the status.
+     * Everything resolved means execute - there is nobody to approve it. A gap
+     * parks it for the drawer to ask about, and answering promotes it back.
+     * Never overrides a pause set for a human step (login, MFA, CAPTCHA,
+     * consent): those carry their own failure_reason and are left alone.
+     */
     await query(
-      `UPDATE applications SET screening_answers = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND user_id = $3`,
-      [JSON.stringify(merged), id, req.user.id]
+      `UPDATE applications
+          SET screening_answers = $1,
+              status = CASE
+                WHEN status = 'needs_user' AND $4 AND (failure_reason IS NULL OR failure_reason ~* 'unmapped_required_field|needs your answer') THEN 'approved'
+                WHEN status = 'approved' AND NOT $4 THEN 'needs_user'
+                ELSE status
+              END,
+              failure_reason = CASE WHEN $4 THEN NULL ELSE failure_reason END,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND user_id = $3`,
+      [JSON.stringify(merged), id, req.user.id, summary.readyWithoutInput]
     );
-    res.json({ questions: filled, summary: summarize(filled) });
+    res.json({ questions: filled, summary });
   } catch (err) {
     console.error('PATCH questions failed:', err.message);
     res.status(500).json({ error: 'Could not record form questions' });
@@ -726,16 +768,75 @@ router.post('/profile/answers', verifyToken, async (req, res) => {
       [req.user.id, JSON.stringify(custom)]
     );
 
+    // An answer does not just unblock the form in front of the user - it may
+    // unblock every other application waiting on the same question. Without
+    // this the user answers "notice period" once and still has to trigger each
+    // blocked application by hand, which is the manual step over again.
+    const promoted = await promoteReadyApplications(req.user.id, r.rows[0].custom_answers || {});
+
     res.json({
       ok: true,
       saved: Object.keys(custom).length,
       totalSavedAnswers: Object.keys(r.rows[0].custom_answers || {}).length,
+      promoted,
     });
   } catch (err) {
     console.error('POST profile/answers failed:', err.message);
     res.status(500).json({ error: 'Could not save answers to profile' });
   }
 });
+
+/*
+ * Re-resolve every application parked on an unanswered question and release the
+ * ones the profile can now answer.
+ *
+ * Only touches applications blocked purely on answers. Anything paused for a
+ * login, MFA, CAPTCHA, browser permission or consent tick is left exactly where
+ * it is - a saved answer says nothing about whether the human step happened,
+ * and releasing those would be the one way this could submit a form that was
+ * never actually completed.
+ */
+const ANSWER_BLOCKED = /unmapped_required_field|needs your answer|not in your profile/i;
+
+async function promoteReadyApplications(userId, custom) {
+  const blocked = await query(
+    `SELECT a.id, a.screening_answers, a.failure_reason, j.location
+       FROM applications a
+       LEFT JOIN jobs j ON j.id = a.job_id
+      WHERE a.user_id = $1 AND a.status = 'needs_user'
+      LIMIT 200`,
+    [userId]
+  );
+  if (!blocked.rows.length) return 0;
+
+  const prof = await query('SELECT * FROM application_profiles WHERE user_id = $1', [userId]);
+  const profile = { ...(prof.rows[0] || {}), custom_answers: custom };
+
+  const ids = [];
+  for (const row of blocked.rows) {
+    // A pause with a reason we did not set ourselves means a human step, not a
+    // missing answer. Never released from here.
+    if (row.failure_reason && !ANSWER_BLOCKED.test(row.failure_reason)) continue;
+
+    const stored = row.screening_answers || {};
+    const all = [...(stored.standard || []), ...(stored.questions || [])];
+    if (!all.length) continue;
+
+    const rerun = prefillAnswers(all, profile, { location: row.location });
+    if (!summarize(rerun).readyWithoutInput) continue;
+
+    await query(
+      `UPDATE applications
+          SET screening_answers = $1, status = 'approved', failure_reason = NULL,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND user_id = $3 AND status = 'needs_user'`,
+      [JSON.stringify({ ...stored, standard: rerun.filter((q) => (stored.standard || []).some((s) => s.question === q.question)), questions: rerun.filter((q) => (stored.questions || []).some((s) => s.question === q.question)) }), row.id, userId]
+    );
+    ids.push(row.id);
+  }
+  if (ids.length) console.log(`[apply] released ${ids.length} application(s) after a profile answer: ${ids.join(', ')}`);
+  return ids.length;
+}
 
 // The approval gate. This is the user authorising a specific, reviewed
 // application to be executed - it does not mark anything as applied.

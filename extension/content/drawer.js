@@ -397,8 +397,8 @@ HP.drawer = (() => {
         update({ status: 'filling', message: 'Filling this form…' });
         send('HP_DRAWER_FILL', (reason) => update({
           status: 'needs_user',
-          message: reason === 'not approved'
-            ? 'Approve this application in HirePilot first.'
+          message: reason === 'needs an answer'
+            ? 'A question on this form is not in your profile yet — answer it above.'
             : reason === 'no matching application'
               ? 'No queued application matches this page. Prepare it in HirePilot first.'
               : `Could not fill: ${reason}`,

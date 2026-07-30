@@ -336,10 +336,18 @@ async function processOne(item) {
   const fresh = await api(`/api/apply/queue/${item.applicationId}`);
   const payload = fresh.item;
 
+  /*
+   * Nothing waits on a human here. Discovery has just re-resolved this form
+   * against the profile, and the server promoted it to `approved` if everything
+   * required is answered - so anything still short of that is short of an
+   * ANSWER, not of a signature.
+   *
+   * The tab stays open when that happens, because the drawer is on it asking
+   * the question; closing it was correct when the answer belonged on a review
+   * screen and is exactly wrong now.
+   */
   if (payload.status !== 'approved') {
-    // The user has not approved this one yet - leave it for the review screen.
-    await chrome.tabs.remove(tab.id).catch(() => {});
-    return { paused: true, awaitingApproval: true };
+    return { paused: true, awaitingAnswer: true };
   }
 
   await api(`/api/apply/queue/${item.applicationId}/start`, { method: 'POST' });
@@ -646,16 +654,60 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
             return respond({ ok: false, reason: 'no matching application' });
           }
 
+          /*
+           * Read the form BEFORE filling it.
+           *
+           * This used to execute straight from the prepared payload, which is
+           * built from the posting rather than the page - so it filled the text
+           * inputs, missed every dropdown, and reported seven questions as
+           * unanswerable that the profile could in fact answer, purely because
+           * the live wording differed from the prepared one. Discovery sends the
+           * real questions, with their real options, to be re-resolved.
+           */
+          let discovery = await sendToTab(tabId, { type: 'HP_DISCOVER' }, 30000).catch(() => null);
+          if (discovery && discovery.navigating) {
+            await sleep(2500);
+            await waitForTabLoad(tabId);
+            await waitForRunner(tabId);
+            discovery = await sendToTab(tabId, { type: 'HP_DISCOVER' }, 30000).catch(() => null);
+          }
+          if (discovery && discovery.ok) {
+            // The server re-resolves against the profile and, if nothing is
+            // missing, promotes this to `approved` on its own. No one approves.
+            await api(`/api/apply/queue/${appId}/questions`, {
+              method: 'PATCH',
+              body: JSON.stringify({ questions: discovery.questions || [] }),
+            }).catch(() => null);
+          }
+
           const fresh = await api(`/api/apply/queue/${appId}`).catch(() => null);
           const payload = fresh?.item;
           if (!payload) return respond({ ok: false, reason: 'could not load application' });
 
+          // Not ready means an unanswered question, never a missing signature.
+          // Hand those to the drawer to ask here rather than sending the user off.
           if (payload.status !== 'approved') {
+            const blocking = (payload.screeningQuestions || [])
+              .filter((q) => q.required && !q.optional && (q.answer === null || q.answer === undefined || q.answer === ''));
             sendToTab(tabId, { type: 'HP_DRAWER_STATE', payload: {
-              status: 'needs_user',
-              message: 'Approve this application in HirePilot first - that is where you confirm what gets sent.',
+              job: payload.job,
+              status: 'asking',
+              ask: blocking.map((q) => ({
+                question: q.question,
+                type: q.type || 'text',
+                options: q.options || null,
+                required: true,
+                optional: false,
+                suggestion: q.suggestion || null,
+                confidence: q.confidence || null,
+                matchedQuestion: q.matchedQuestion || null,
+                reason: q.reason || 'Not in your profile yet.',
+              })),
+              message: blocking.length
+                ? `${blocking.length} question${blocking.length === 1 ? '' : 's'} on this form ${blocking.length === 1 ? 'is' : 'are'} not in your profile yet. Answer ${blocking.length === 1 ? 'it' : 'them'} once and HirePilot will reuse ${blocking.length === 1 ? 'it' : 'them'} everywhere.`
+                : 'This application is not ready to run yet.',
             } }, 4000);
-            return respond({ ok: false, reason: 'not approved' });
+            return respond({ ok: false, reason: 'needs an answer' });
           }
 
           const resumeFile = await fetchResumeBytes(appId);
