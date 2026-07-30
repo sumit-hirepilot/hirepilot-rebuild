@@ -266,7 +266,9 @@ export default function DashboardLayout({ children, title, user }) {
                 <path d="m7 11 5 5 5-5" />
                 <path d="M4 19h16" />
               </svg>
-              <span className={styles.extensionCtaLabel}>Download Extension</span>
+              <span className={styles.extensionCtaLabel}>
+                <span className={styles.extensionCtaLabelLong}>Download </span>Extension
+              </span>
             </button>
           )}
           <NotificationBell token={token} base={base} />

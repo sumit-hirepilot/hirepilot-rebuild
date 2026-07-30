@@ -1255,9 +1255,22 @@
   .extensionCta:active { transform: none; }
 }
 
-/* Below this the bar is tight, so the CTA keeps the icon and drops the label -
-   it stays reachable rather than being hidden on mobile. */
-@media (max-width: 720px) {
+/*
+ * Narrow bars shorten the label rather than removing it.
+ *
+ * Dropping the text entirely at 720px left a small violet square with a download
+ * arrow and no words - unrecognisable as "get the extension", and 720px is a
+ * perfectly ordinary desktop window, not just phones. A CTA nobody can identify
+ * is the same as no CTA.
+ */
+@media (max-width: 900px) {
+  .extensionCtaLabelLong { display: none; }
+  .extensionCta { padding: 8px 12px; }
+}
+
+@media (max-width: 560px) {
+  /* Only at genuine phone widths does it become icon-only, and there the title
+     attribute still names it for anyone who long-presses. */
   .extensionCtaLabel { display: none; }
   .extensionCta { padding: 8px; gap: 0; }
 }
