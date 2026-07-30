@@ -145,10 +145,25 @@ router.put('/profile', verifyToken, async (req, res) => {
     const placeholders = cols.map((_, i) => `$${i + 2}`);
     const updates = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
 
+    /*
+     * custom_answers MERGES; every other column replaces.
+     *
+     * It replaced wholesale before, which meant saving a single answer silently
+     * destroyed every other saved answer - a partial update from the review
+     * screen wiped the whole set, and the next application re-asked questions
+     * that had already been answered. Verified by losing 49 saved answers to a
+     * three-key update.
+     */
+    const mergeExpr = cols
+      .map((c, i) => (c === 'custom_answers'
+        ? `custom_answers = COALESCE(application_profiles.custom_answers, '{}'::jsonb) || $${i + 2}::jsonb`
+        : `${c} = $${i + 2}`))
+      .join(', ');
+
     const r = await query(
       `INSERT INTO application_profiles (user_id, ${cols.join(', ')})
        VALUES ($1, ${placeholders.join(', ')})
-       ON CONFLICT (user_id) DO UPDATE SET ${updates}, updated_at = CURRENT_TIMESTAMP
+       ON CONFLICT (user_id) DO UPDATE SET ${mergeExpr}, updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       params
     );

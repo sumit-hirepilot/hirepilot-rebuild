@@ -161,15 +161,14 @@ async function ensureInjected(tabId) {
   let origin;
   try { origin = `${new URL(url).origin}/*`; } catch { return false; }
 
-  const granted = await chrome.permissions.contains({ origins: [origin] }).catch(() => false);
+  // host_permissions declares <all_urls> at install, so there is nothing to
+  // request here. The optional-permission route did not work: request() needs a
+  // user gesture the background worker never has, and its dialog needs a real
+  // click - injection just failed with "could not attach to the employer page".
+  const granted = await chrome.permissions.contains({ origins: [origin] }).catch(() => true);
   if (!granted) {
-    // request() must be user-gesture-initiated, which a background poll is not.
-    // Surface it rather than failing silently with "could not attach".
-    const ok = await chrome.permissions.request({ origins: [origin] }).catch(() => false);
-    if (!ok) {
-      console.warn(`[HirePilot] no host permission for ${origin}`);
-      return false;
-    }
+    console.warn(`[HirePilot] no host permission for ${origin}`);
+    return false;
   }
 
   try {

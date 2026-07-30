@@ -261,6 +261,18 @@ HP.runner = (() => {
 
     const opened = await adapter.openForm();
     if (opened === 'navigating') return { ok: false, navigating: true, reason: 'Navigating to the apply form' };
+
+    /*
+     * An expired posting is not a broken adapter, and saying "could not find the
+     * application form" for one sends you hunting for a bug that is not there.
+     * Greenhouse redirects a removed job to the board root with ?error=true;
+     * Lever and Ashby land on a 404-ish board page. Detected before the generic
+     * failure so the queue records why it actually stopped.
+     */
+    if (/[?&]error=true/.test(location.search) || /job (no longer|has been) (available|removed|filled)/i.test(document.body.innerText)) {
+      return { ok: false, expired: true, reason: 'This posting is no longer available on the employer\u2019s site' };
+    }
+
     if (!adapter.formRoot()) return { ok: false, reason: 'Could not find the application form on this page' };
 
     // Gate check before touching anything - no point filling a form behind a

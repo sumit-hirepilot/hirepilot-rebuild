@@ -10,15 +10,7 @@
     "downloads"
   ],
   "host_permissions": [
-    "https://*.greenhouse.io/*",
-    "https://job-boards.greenhouse.io/*",
-    "https://boards.greenhouse.io/*",
-    "https://jobs.lever.co/*",
-    "https://jobs.ashbyhq.com/*",
-    "http://localhost:3001/*",
-    "http://localhost:3000/*",
-    "https://hirepilot-production-e70d.up.railway.app/*",
-    "https://hirepilot-rebuild-production.up.railway.app/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -55,8 +47,5 @@
       "run_at": "document_start",
       "all_frames": false
     }
-  ],
-  "optional_host_permissions": [
-    "<all_urls>"
   ]
 }
