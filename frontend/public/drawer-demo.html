@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HirePilot drawer — live render</title>
+  <style>
+    /*
+     * Deliberately hostile page styles. The drawer lives in a shadow root, and
+     * this is what proves it: an aggressive global reset plus opinionated
+     * element rules of exactly the kind real employer pages ship. If any of this
+     * reached the drawer, it would be visibly wrecked.
+     */
+    * { box-sizing: content-box !important; margin: 0; padding: 0; }
+    div { line-height: 3 !important; letter-spacing: 2px; }
+    button { all: unset; background: red !important; color: yellow !important; font-size: 28px !important; }
+    span { text-transform: uppercase !important; }
+    body {
+      font-family: Georgia, serif; background: #faf7f2; color: #2b2b2b;
+      padding: 40px; max-width: 780px;
+    }
+    h1 { font-size: 26px; margin-bottom: 4px; letter-spacing: -0.5px; }
+    .sub { color: #6b6b6b; font-size: 15px; margin-bottom: 24px; }
+    .note {
+      background: #fff; border: 1px solid #e3ded5; border-radius: 8px;
+      padding: 14px 16px; font-size: 14px; line-height: 1.6 !important;
+      letter-spacing: normal; margin-bottom: 20px;
+    }
+    label { display: block; font-weight: 700; font-size: 14px; margin: 18px 0 6px; }
+    input, textarea {
+      width: 100%; padding: 9px 11px; font: inherit; font-size: 14px;
+      border: 1px solid #d6cfc2; border-radius: 6px; background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>Platform Designer</h1>
+  <p class="sub">Scale AI &middot; San Francisco, CA; New York, NY</p>
+
+  <div class="note">
+    A stand-in application form. Its CSS is intentionally hostile &mdash; a global
+    <code>content-box</code> reset, <code>line-height: 3</code> on every div, and
+    <code>button { all: unset; background: red }</code>. The drawer on the right is
+    the extension's real <code>content/drawer.js</code>, unmodified, rendering
+    inside a shadow root. None of this page's styling reaches it.
+  </div>
+
+  <label for="fn">First Name</label>
+  <input id="fn" />
+  <label for="ln">Last Name</label>
+  <input id="ln" />
+  <label for="em">Email</label>
+  <input id="em" type="email" />
+  <label for="nc">Are you subject to a non-compete agreement?</label>
+  <input id="nc" />
+  <label for="ds">Describe your approach to design systems</label>
+  <textarea id="ds" rows="4"></textarea>
+
+  <script src="/drawer-demo.js"></script>
+  <script>
+    // chrome.* only exists inside an extension; stub it so the buttons respond
+    // and their failure-reporting path is exercisable here.
+    window.chrome = window.chrome || {
+      runtime: {
+        lastError: null,
+        sendMessage: (msg, cb) => {
+          if (msg.type === 'HP_DRAWER_FILL') {
+            HP.drawer.update({ status: 'filling', message: 'Filling this form…' });
+            setTimeout(() => HP.drawer.update({
+              status: 'done',
+              message: 'Form filled. Review it and click Submit on this page when you are ready.',
+            }), 900);
+          }
+          if (cb) cb({ ok: true });
+        },
+      },
+    };
+
+    HP.drawer.show({
+      job: { title: 'Platform Designer', company: 'Scale AI' },
+      status: 'done',
+      message: 'Form filled. Review it and click Submit on this page when you are ready.',
+      fields: [
+        {
+          question: 'Describe your approach to design systems',
+          answer: null, required: true,
+          reason: 'New question - answer once and it is saved',
+        },
+        {
+          question: 'Are you subject to a non-compete agreement?',
+          answer: 'No', required: true, confidence: 0.83,
+          matchedQuestion: 'Are you currently bound by any agreements with a current or former employer',
+          conceptLabel: 'Restrictive agreements / non-compete',
+        },
+        {
+          question: 'How soon can you join us?',
+          answer: 'Immediate (0 days)', required: true, confidence: 0.82,
+          matchedQuestion: 'notice period', conceptLabel: 'Notice period / start date',
+        },
+        {
+          question: 'Will you require visa sponsorship?',
+          answer: 'Yes', required: true, confidence: 0.85,
+          matchedQuestion: 'Will you now or in the future require company sponsorship?',
+          conceptLabel: 'Visa sponsorship',
+        },
+        {
+          question: 'Are you legally authorized to work in the country where the job is located?',
+          answer: 'No', required: true,
+        },
+        { question: 'Full name', answer: 'Sumit Kumar', required: true },
+        { question: 'Email', answer: 'sumituxai@gmail.com', required: true },
+        { question: 'LinkedIn URL', answer: 'https://www.linkedin.com/in/sumit-uxui', required: false },
+      ],
+      ats: {
+        score: 22, matchedCount: 54, totalKeywords: 247,
+        missing: ['machine learning', 'llm', 'evaluation', 'annotation', 'python', 'rlhf', 'benchmarks'],
+      },
+      profile: {
+        full_name: 'Sumit Kumar', email: 'sumituxai@gmail.com', phone: '+91 7676522867',
+        current_location: 'Bengaluru, Karnataka, India', notice_period: 'Immediate (0 days)',
+        linkedin_url: 'https://www.linkedin.com/in/sumit-uxui',
+        portfolio_url: 'https://www.sumitai.work/',
+        authorized_countries: ['India'], savedAnswers: 54,
+      },
+    });
+  </script>
+</body>
+</html>
