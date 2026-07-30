@@ -693,11 +693,27 @@ router.post('/queue/approve-bulk', verifyToken, async (req, res) => {
 
 router.post('/queue/:id/skip', verifyToken, async (req, res) => {
   try {
-    await query(
-      `UPDATE applications SET status = 'skipped', updated_at = CURRENT_TIMESTAMP
+    const id = Number(req.params.id);
+    // Free the prepared materials too - each holds two full copies of the
+    // resume text, and skipped items would otherwise accrete on the small
+    // Railway volume. Read the material ids before clearing the references.
+    const cur = await query(
+      `SELECT tailored_resume_id, cover_letter_id FROM applications
        WHERE id = $1 AND user_id = $2 AND status NOT IN ('submitted')`,
-      [Number(req.params.id), req.user.id]
+      [id, req.user.id]
     );
+    if (cur.rows.length) {
+      const { tailored_resume_id: trId, cover_letter_id: clId } = cur.rows[0];
+      await query(
+        `UPDATE applications SET status = 'skipped',
+                tailored_resume_id = NULL, cover_letter_id = NULL,
+                screening_answers = '{}'::jsonb, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND user_id = $2`,
+        [id, req.user.id]
+      );
+      if (trId) await query('DELETE FROM tailored_resumes WHERE id = $1 AND user_id = $2', [trId, req.user.id]).catch(() => {});
+      if (clId) await query('DELETE FROM cover_letters WHERE id = $1 AND user_id = $2', [clId, req.user.id]).catch(() => {});
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Could not skip application' });
@@ -828,7 +844,9 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
       [
         when,
         hasId ? String(confirmationId).trim().slice(0, 255) : null,
-        text.slice(0, 20000),
+        // Cap tight: the extension already narrows to the confirmation region,
+        // and this table must not become a disk-growth vector (500MB volume).
+        text.slice(0, 5000),
         finalUrl ? String(finalUrl).slice(0, 1024) : null,
         id, req.user.id,
       ]

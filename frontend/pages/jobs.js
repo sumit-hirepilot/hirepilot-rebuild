@@ -434,23 +434,37 @@ export default function Jobs() {
     loadJobs(token, { page: 1, includeRelated: true });
   };
 
-  const handleApply = async (jobId) => {
+  // Queues jobs for real submission: the backend prepares a tailored resume,
+  // cover letter and pre-filled answers, then the Apply Queue review screen is
+  // the approval gate before the extension submits on the employer's site.
+  const handleQueue = async (jobIds) => {
+    const ids = Array.isArray(jobIds) ? jobIds : [jobIds];
     setMessage('');
     try {
-      const res = await fetch(`${base}/api/applications`, {
+      const res = await fetch(`${base}/api/apply/queue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobIds: ids }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage(data.error || 'Failed to apply');
+        setMessage(data.error || 'Could not prepare the application');
         return;
       }
-      setAppliedIds((prev) => new Set(prev).add(jobId));
-      setMessage('Application submitted.');
+      setAppliedIds((prev) => {
+        const next = new Set(prev);
+        data.items.forEach((i) => next.add(i.jobId));
+        return next;
+      });
+      setSelectedIds(new Set());
+      const skipped = data.skipped?.length
+        ? ` ${data.skipped.length} already in your queue or tracker.`
+        : '';
+      setMessage(
+        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve in your Apply Queue.${skipped}`
+      );
     } catch (err) {
-      setMessage('Failed to apply. Please try again.');
+      setMessage('Could not prepare the application. Please try again.');
     }
   };
 
@@ -552,9 +566,9 @@ export default function Jobs() {
           </button>
           <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
           {appliedIds.has(job.id) ? (
-            <span className={page.appliedBadge}>Tracked</span>
+            <span className={page.appliedBadge}>In queue</span>
           ) : (
-            <button className={page.applyButton} onClick={() => handleApply(job.id)} title="Adds this job to your tracker. HirePilot does not submit to the employer - use Original Posting to apply.">Track job</button>
+            <button className={page.applyButton} onClick={() => handleQueue(job.id)} title="Prepares a tailored resume, cover letter and pre-filled answers, then waits for your approval in the Apply Queue before anything is submitted.">Prepare application</button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
         </div>
@@ -733,6 +747,25 @@ export default function Jobs() {
 
         {message && <div className={page.message}>{message}</div>}
 
+        {selectedIds.size > 0 && (
+          <div className={page.bulkBar}>
+            <span>
+              {selectedIds.size} job{selectedIds.size === 1 ? '' : 's'} selected
+            </span>
+            <div className={page.bulkActions}>
+              <button
+                className={page.bulkPrimary}
+                onClick={() => handleQueue(Array.from(selectedIds))}
+              >
+                Prepare {selectedIds.size} application{selectedIds.size === 1 ? '' : 's'}
+              </button>
+              <button className={page.bulkGhost} onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {!showSavedOnly && totalPages > 1 && (
           <div className={page.pagination}>
             <button disabled={page_ <= 1} onClick={() => goToPage(page_ - 1)}>&lsaquo; Previous</button>
@@ -790,7 +823,7 @@ export default function Jobs() {
           match={matchByJobId[selectedJob.id]}
           applied={appliedIds.has(selectedJob.id)}
           onClose={() => setSelectedJob(null)}
-          onApply={() => { handleApply(selectedJob.id); }}
+          onApply={() => { handleQueue(selectedJob.id); }}
           token={token}
           base={base}
           router={router}
@@ -1102,7 +1135,7 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
           {applied ? (
             <span className={styles.appliedTag}>Tracked</span>
           ) : (
-            <button className={styles.primaryBtn} onClick={onApply}>Track this application</button>
+            <button className={styles.primaryBtn} onClick={onApply}>Prepare application</button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={styles.secondaryBtn}>Original Posting</a>
           <button className={styles.secondaryBtn} onClick={() => router.push(`/network?jobId=${job.id}&company=${encodeURIComponent(job.company_name)}`)}>

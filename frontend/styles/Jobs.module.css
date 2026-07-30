@@ -803,3 +803,56 @@
   font-size: 0.6875rem;
   white-space: nowrap;
 }
+
+/* --- Bulk selection bar (Prepare N applications) --- */
+
+.bulkBar {
+  position: sticky;
+  top: 68px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-primary);
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.10);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  animation: riseIn 180ms var(--ease-spring, ease) both;
+}
+
+.bulkActions { display: flex; gap: 8px; }
+
+.bulkPrimary {
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms var(--ease-spring, ease);
+}
+.bulkPrimary:hover { background: var(--primary-dark, #6d28d9); transform: translateY(-1px); }
+
+.bulkGhost {
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+.bulkGhost:hover { border-color: var(--text-tertiary); }
+

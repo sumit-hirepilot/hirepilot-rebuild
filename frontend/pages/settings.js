@@ -5,7 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Settings.module.css';
 
-const TABS = ['Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Account'];
+const TABS = ['Profile', 'Apply Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Account'];
 
 function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
@@ -52,6 +52,12 @@ export default function Settings() {
     coverLetterMode: 'always', reviewBeforeSubmit: false,
   });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  // Application Profile: the answers employer forms ask on every application.
+  // Kept separate from the display profile above because these values are
+  // submitted to employers, so nothing here is ever guessed or defaulted.
+  const [applyProfile, setApplyProfile] = useState(null);
+  const [applyCompleteness, setApplyCompleteness] = useState(0);
+  const [savingApply, setSavingApply] = useState(false);
   const [runningAutoPilot, setRunningAutoPilot] = useState(false);
 
   const base = process.env.NEXT_PUBLIC_API_URL;
@@ -91,6 +97,17 @@ export default function Settings() {
     }
   }, [base]);
 
+  const loadApplyProfile = useCallback(async (authToken) => {
+    try {
+      const res = await fetch(`${base}/api/apply/profile`, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setApplyProfile(data.profile || {});
+        setApplyCompleteness(data.completeness || 0);
+      }
+    } catch { /* section shows a retry state */ }
+  }, [base]);
+
   useEffect(() => {
     const authToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
@@ -101,7 +118,45 @@ export default function Settings() {
     setUser(JSON.parse(storedUser));
     setToken(authToken);
     loadProfile(authToken);
-  }, [router, loadProfile]);
+    loadApplyProfile(authToken);
+  }, [router, loadProfile, loadApplyProfile]);
+
+  const saveApplyProfile = async (e) => {
+    e.preventDefault();
+    setSavingApply(true);
+    try {
+      const res = await fetch(`${base}/api/apply/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(applyProfile),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setApplyProfile(data.profile);
+        setApplyCompleteness(data.completeness || 0);
+        flash('Application profile saved.');
+      } else {
+        flash(data.error || 'Could not save.');
+      }
+    } finally {
+      setSavingApply(false);
+    }
+  };
+
+  const ap = (field) => applyProfile?.[field] ?? '';
+  const setAp = (field, value) => setApplyProfile((p) => ({ ...(p || {}), [field]: value }));
+  // Tri-state boolean: employer forms distinguish "No" from "not answered",
+  // so these selects round-trip null explicitly.
+  const apBool = (field) => {
+    const v = applyProfile?.[field];
+    return v === true ? 'yes' : v === false ? 'no' : '';
+  };
+  const setApBool = (field, raw) => {
+    setApplyProfile((p) => ({
+      ...(p || {}),
+      [field]: raw === 'yes' ? true : raw === 'no' ? false : null,
+    }));
+  };
 
   const flash = (text) => {
     setMessage(text);
@@ -273,6 +328,112 @@ export default function Settings() {
               <button type="submit" className={page.saveButton}>Save changes</button>
             </form>
           </div>
+        ) : tab === 'Apply Profile' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>Job Application Profile</p>
+            <p className={page.masterSubtitle}>
+              These answers pre-fill employer application forms. Only questions you
+              have answered here are filled automatically - anything else is asked
+              on the review screen instead of being guessed. {applyCompleteness}% complete.
+            </p>
+            {applyProfile === null ? (
+              <p className={styles.emptyState}>Loading&hellip;</p>
+            ) : (
+              <form onSubmit={saveApplyProfile} className={page.form}>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Full name</label>
+                    <input className={page.input} value={ap('full_name')} onChange={(e) => setAp('full_name', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Email on applications</label>
+                    <input className={page.input} type="email" value={ap('email')} onChange={(e) => setAp('email', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Phone</label>
+                    <input className={page.input} value={ap('phone')} onChange={(e) => setAp('phone', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Current location</label>
+                    <input className={page.input} value={ap('current_location')} onChange={(e) => setAp('current_location', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>LinkedIn URL</label>
+                    <input className={page.input} value={ap('linkedin_url')} onChange={(e) => setAp('linkedin_url', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Portfolio URL</label>
+                    <input className={page.input} value={ap('portfolio_url')} onChange={(e) => setAp('portfolio_url', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Current company</label>
+                    <input className={page.input} value={ap('current_company')} onChange={(e) => setAp('current_company', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Current title</label>
+                    <input className={page.input} value={ap('current_title')} onChange={(e) => setAp('current_title', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Years of experience</label>
+                    <input className={page.input} type="number" step="0.5" min="0" value={ap('years_experience')} onChange={(e) => setAp('years_experience', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Notice period</label>
+                    <input className={page.input} placeholder="e.g. 30 days" value={ap('notice_period')} onChange={(e) => setAp('notice_period', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Salary expectation</label>
+                    <input className={page.input} placeholder="e.g. 180000" value={ap('salary_expectation')} onChange={(e) => setAp('salary_expectation', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Salary currency</label>
+                    <input className={page.input} placeholder="e.g. USD" value={ap('salary_currency')} onChange={(e) => setAp('salary_currency', e.target.value)} />
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Authorized to work (in the countries you apply to)</label>
+                    <input className={page.input} placeholder='Answer used for "are you authorized to work" questions, e.g. Yes' value={ap('work_authorization')} onChange={(e) => setAp('work_authorization', e.target.value)} />
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Need visa sponsorship?</label>
+                    <select className={page.input} value={apBool('requires_sponsorship')} onChange={(e) => setApBool('requires_sponsorship', e.target.value)}>
+                      <option value="">Not answered</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+                </div>
+                <div className={page.formRow}>
+                  <div className={page.formGroup}>
+                    <label>Willing to relocate?</label>
+                    <select className={page.input} value={apBool('willing_to_relocate')} onChange={(e) => setApBool('willing_to_relocate', e.target.value)}>
+                      <option value="">Not answered</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+                  <div className={page.formGroup}>
+                    <label>Pronouns (optional)</label>
+                    <input className={page.input} value={ap('pronouns')} onChange={(e) => setAp('pronouns', e.target.value)} />
+                  </div>
+                </div>
+                <button type="submit" className={page.saveButton} disabled={savingApply}>
+                  {savingApply ? 'Saving\u2026' : 'Save application profile'}
+                </button>
+              </form>
+            )}
+          </div>
         ) : tab === 'Preferences' ? (
           <div className={styles.card}>
             <div className={page.formGroup}>
@@ -423,6 +584,28 @@ export default function Settings() {
           </div>
         ) : tab === 'Integrations' ? (
           <div className={styles.card}>
+            <div className={page.integrationRow}>
+              <div style={{ minWidth: 0 }}>
+                <p className={page.integrationName}>HirePilot Apply browser extension</p>
+                <p className={page.integrationStatus}>
+                  Submits your approved applications on employer sites, in your own
+                  browser session. Load the extension, then paste this access token
+                  into its Connect screen. The token is your login session
+                  (valid 7 days) - treat it like your password.
+                </p>
+              </div>
+              <button
+                className={page.connectButton}
+                onClick={() => {
+                  navigator.clipboard.writeText(token).then(
+                    () => flash('Access token copied - paste it in the extension popup.'),
+                    () => flash('Could not copy. Copy it from your browser storage instead.')
+                  );
+                }}
+              >
+                Copy access token
+              </button>
+            </div>
             <div className={page.integrationRow}>
               <div>
                 <p className={page.integrationName}>LinkedIn</p>
