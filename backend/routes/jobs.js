@@ -210,8 +210,12 @@ router.get('/:id/ats', verifyToken, async (req, res) => {
     res.json({
       hasResume: true,
       ...result,
-      // Trimmed: the full matched list can run to hundreds of words and the UI
-      // only needs enough to show the check is real.
+      // The word lists are trimmed for payload size, so the true totals are
+      // sent separately. Without these the client counts the trimmed array and
+      // reports e.g. "matched 30 of 269" against a 16% score - 30/269 is 11%,
+      // so the figures visibly contradict each other.
+      matchedCount: result.matched.length,
+      missingCount: result.missing.length,
       matched: result.matched.slice(0, 30),
       missing: result.missing.slice(0, 30),
       guide: buildAtsGuide(result, resumeText),

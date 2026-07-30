@@ -1011,8 +1011,11 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
             <div className={page.atsHeadRow}>
               <div className={atsRingClass(ats.score)}>{ats.score}%</div>
               <p className={page.atsHeadText}>
-                {ats.matched?.length ?? 0} of {ats.totalKeywords} meaningful terms in this
-                posting also appear in your resume.
+                {/* matchedCount, not matched.length - the word list is trimmed
+                    for payload size, so counting it would under-report and
+                    contradict the score shown alongside. */}
+                {ats.matchedCount ?? ats.matched?.length ?? 0} of {ats.totalKeywords} meaningful
+                terms in this posting also appear in your resume.
               </p>
             </div>
 
@@ -1031,7 +1034,13 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
 
             {ats.missing?.length > 0 && (
               <>
-                <p className={page.atsSubhead}>Missing terms</p>
+                {/* State the truncation. A bare "Missing terms" above 18 chips
+                    reads as the complete list when there may be hundreds. */}
+                <p className={page.atsSubhead}>
+                  Missing terms
+                  {(ats.missingCount ?? ats.missing.length) > 18
+                    && ` — showing 18 of ${ats.missingCount ?? ats.missing.length}`}
+                </p>
                 <div className={page.skillChips}>
                   {ats.missing.slice(0, 18).map((m) => (
                     <span key={m} className={page.atsMissingChip}>{m}</span>
