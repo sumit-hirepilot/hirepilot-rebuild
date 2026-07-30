@@ -108,23 +108,34 @@ const NEVER_PREFILL = /certif|attest|i agree|i consent|i acknowledge|terms|priva
 // Demographic / EEO questions. Legal to decline, and pre-filling them from a
 // stored value the user set once is fine, but they must never be *guessed*,
 // and they are surfaced separately in review so the user sees them.
-const DEMOGRAPHIC = /gender|race|ethnic|veteran|disability|sexual orientation|lgbt/i;
+// hispanic/latino and "self-identify" phrasings come from the standard US EEO
+// block and appear verbatim on Greenhouse forms; without them those questions
+// fell through to "unmapped", which reads as a gap in your profile rather than
+// as a question you are free to decline.
+const DEMOGRAPHIC = /gender|race|ethnic|veteran|disability|sexual orientation|lgbt|hispanic|latino|self.?identif/i;
 
 /**
  * @param {Array<{question: string, type?: string, options?: string[], required?: boolean}>} questions
  * @param {object} profile - row from application_profiles (may be {} )
  * @returns {Array} one entry per question with the resolved answer or a gap flag
  */
+// A country dropdown reports 250+ options. The extension re-reads the live
+// option list at fill time, so the stored copy only backs the review screen -
+// cap it rather than persisting kilobytes per question on a 500MB volume.
+const MAX_STORED_OPTIONS = 120;
+
 function prefillAnswers(questions, profile) {
   const p = profile || {};
   const custom = p.custom_answers || {};
 
   return (questions || []).map((q) => {
     const text = q.question || '';
+    const allOptions = q.options || null;
     const base = {
       question: text,
       type: q.type || 'text',
-      options: q.options || null,
+      options: allOptions ? allOptions.slice(0, MAX_STORED_OPTIONS) : null,
+      optionsTruncated: Boolean(allOptions && allOptions.length > MAX_STORED_OPTIONS),
       required: q.required !== false,
     };
 
@@ -176,8 +187,8 @@ function prefillAnswers(questions, profile) {
       // For a select/radio, only accept the value if it actually matches one of
       // the offered options - otherwise submitting it would either fail or pick
       // the wrong entry.
-      if (q.options && q.options.length) {
-        const hit = q.options.find(
+      if (allOptions && allOptions.length) {
+        const hit = allOptions.find(
           (o) => String(o).trim().toLowerCase() === String(rendered).trim().toLowerCase()
         );
         if (!hit) {

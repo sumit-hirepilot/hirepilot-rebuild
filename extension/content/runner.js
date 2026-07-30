@@ -27,7 +27,11 @@ HP.discovery = (() => {
 
   // Every visible, meaningful control that is not identity or a document
   // upload - i.e. what the employer added themselves.
-  function genericQuestions(adapter) {
+  //
+  // Async because react-select options only exist once the menu is opened, and
+  // reporting a dropdown as free-text would disable the option-match guard on
+  // exactly the questions where guessing is most damaging.
+  async function genericQuestions(adapter) {
     const root = adapter.formRoot() || document;
     const out = [];
     const seen = new Set();
@@ -37,6 +41,12 @@ HP.discovery = (() => {
     ).filter((el) => {
       if (!HP.fields.visible(el)) return false;
       if (['hidden', 'submit', 'button', 'file'].includes(el.type)) return false;
+      // react-select renders a second, value-holding input alongside the
+      // combobox, sharing its label. Without this the same question is
+      // discovered twice - once correctly as a select with options, once as
+      // free text - which duplicates it on the review screen and sends the
+      // fill down the wrong path. Verified on a live Greenhouse form.
+      if (HP.combobox.isHiddenValueInput(el)) return false;
       return true;
     });
 
@@ -53,7 +63,10 @@ HP.discovery = (() => {
       let type = el.tagName === 'TEXTAREA' ? 'textarea' : el.type || 'text';
       let options = null;
 
-      if (el.tagName === 'SELECT') {
+      if (HP.combobox.is(el)) {
+        type = 'select';
+        options = await HP.combobox.readOptions(el);
+      } else if (el.tagName === 'SELECT') {
         type = 'select';
         options = Array.from(el.options)
           .map((o) => HP.fields.clean(o.textContent))
@@ -123,13 +136,18 @@ HP.runner = (() => {
     const portfolio = get('portfolio', 'website');
 
     const filled = [];
+    const pendingCombos = [];
     const sel = adapter.identityFields ? adapter.identityFields() : {};
 
     const tryFill = (selector, labelRe, value, tag) => {
       if (value === null || value === undefined || value === '') return;
       let el = selector ? root.querySelector(selector) : null;
       if (!el || !HP.fields.visible(el)) el = findByLabel(root, labelRe);
-      if (el && HP.fields.fillText(el, value)) filled.push(tag);
+      if (!el) return;
+      // A combobox here (Country, for instance) needs the react-select path;
+      // fillText would type into its search box without committing a choice.
+      if (HP.combobox.is(el)) { pendingCombos.push({ el, value, tag }); return; }
+      if (HP.fields.fillText(el, value)) filled.push(tag);
     };
 
     // Greenhouse splits the name; everything else takes it whole.
@@ -153,12 +171,12 @@ HP.runner = (() => {
     tryFill(sel.github_url, /github/i, get('github'), 'github');
     tryFill(null, /location|city|based/i, location, 'location');
 
-    return filled;
+    return { filled, pendingCombos };
   }
 
   // Screening questions, from answers the server resolved against the profile.
   // An answer the server left null is never invented here.
-  function fillQuestions(adapter, questions) {
+  async function fillQuestions(adapter, questions) {
     const root = adapter.formRoot() || document;
     const filled = [];
     const unfilled = [];
@@ -176,7 +194,8 @@ HP.runner = (() => {
       }
 
       let ok = false;
-      if (el.tagName === 'SELECT') ok = HP.fields.fillSelect(el, q.answer);
+      if (HP.combobox.is(el)) ok = await HP.combobox.choose(el, q.answer);
+      else if (el.tagName === 'SELECT') ok = HP.fields.fillSelect(el, q.answer);
       else if (el.type === 'radio') {
         const group = el.closest('fieldset, [class*="field"], [class*="question"]') || root;
         ok = HP.fields.fillRadio(group, q.answer);
@@ -240,7 +259,10 @@ HP.runner = (() => {
     const preGate = HP.gates.check();
     if (preGate.paused) return { ok: false, paused: true, ...preGate };
 
-    const identity = fillIdentity(adapter, payload.standardFields);
+    const { filled: identity, pendingCombos } = fillIdentity(adapter, payload.standardFields);
+    for (const { el, value, tag } of pendingCombos) {
+      if (await HP.combobox.choose(el, value)) identity.push(tag);
+    }
 
     let resumeAttached = false;
     const fileInput = adapter.resumeInput();
@@ -255,7 +277,7 @@ HP.runner = (() => {
       coverLetterFilled = HP.fields.fillText(clField, payload.coverLetter);
     }
 
-    const questionResult = fillQuestions(adapter, payload.screeningQuestions);
+    const questionResult = await fillQuestions(adapter, payload.screeningQuestions);
 
     // A required field we could not fill is a hard stop: submitting an
     // incomplete form either fails validation or sends a blank answer.
@@ -377,7 +399,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           adapter: adapter.name,
           formFound: Boolean(adapter.formRoot()),
           gate,
-          questions: adapter.customQuestions(),
+          questions: await adapter.customQuestions(),
           hasResumeInput: Boolean(adapter.resumeInput()),
           hasCoverLetterField: Boolean(adapter.coverLetterField()),
         });

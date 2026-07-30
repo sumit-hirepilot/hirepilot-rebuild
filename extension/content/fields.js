@@ -157,11 +157,166 @@ HP.fields = (() => {
 })();
 
 /*
+ * react-select comboboxes.
+ *
+ * Greenhouse's current board renders every dropdown as react-select, not a
+ * native <select> - a live Scale AI posting had twelve questions and zero
+ * <select> elements. Two consequences this module exists to handle:
+ *
+ *   1. The options do not exist in the DOM until the menu is opened, so
+ *      discovery reported these as free-text with no options. That silently
+ *      disabled the option-match guard, which is the thing stopping a
+ *      work-authorisation answer from being filled with a value the form
+ *      never offered.
+ *   2. react-select commits on a pointer sequence, not on .value assignment
+ *      and not on a bare click. Verified live: pointerdown -> mousedown ->
+ *      mouseup -> click opens the menu and selects an option; focus+ArrowDown
+ *      does not.
+ */
+HP.combobox = (() => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function is(el) {
+    return Boolean(
+      el
+      && el.getAttribute
+      && el.getAttribute('role') === 'combobox'
+      && (el.getAttribute('aria-haspopup') === 'true' || el.getAttribute('aria-autocomplete') === 'list')
+    );
+  }
+
+  function containerFor(el) {
+    return el.closest('[class*="select__container"], [class*="select-shell"]')
+      || el.closest('[class*="select"]')
+      || el.parentElement;
+  }
+
+  // react-select keeps the committed value in a separate input next to the
+  // combobox. It carries the same label, so discovery would emit the question
+  // twice and the fill would target the wrong node. Anything inside a select
+  // container that is not the combobox itself is that shadow input.
+  function isHiddenValueInput(el) {
+    if (!el || el.tagName !== 'INPUT') return false;
+    if (is(el)) return false;
+    const c = el.closest('[class*="select__container"], [class*="select-shell"]');
+    if (!c) return false;
+    return Boolean(c.querySelector('[role="combobox"]'));
+  }
+
+  function pointerSeq(el) {
+    const specs = [['pointerdown', window.PointerEvent], ['mousedown', MouseEvent],
+      ['mouseup', MouseEvent], ['click', MouseEvent]];
+    for (const [type, Ctor] of specs) {
+      if (!Ctor) continue;
+      try {
+        el.dispatchEvent(new Ctor(type, {
+          bubbles: true, cancelable: true, button: 0, buttons: 1, composed: true,
+        }));
+      } catch { /* PointerEvent unsupported - the mouse events still land */ }
+    }
+  }
+
+  function menuFor(el) {
+    const id = el.getAttribute('aria-controls');
+    if (id) {
+      const byId = document.getElementById(id);
+      if (byId) return byId;
+    }
+    const c = containerFor(el);
+    return c ? c.querySelector('[class*="menu"], [role="listbox"]') : null;
+  }
+
+  async function open(el) {
+    const c = containerFor(el);
+    const control = (c && c.querySelector('[class*="select__control"], [class*="control"]')) || el;
+    // Retried: react-select can need a beat after a previous close before it
+    // will reopen.
+    for (let i = 0; i < 4; i += 1) {
+      pointerSeq(control);
+      await sleep(350);
+      const m = menuFor(el);
+      if (m) return m;
+    }
+    return null;
+  }
+
+  function close(el) {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
+
+  function optionsIn(menu) {
+    return Array.from(menu.querySelectorAll('[role="option"], [class*="option"]'))
+      .map((o) => HP.fields.clean(o.textContent))
+      .filter(Boolean);
+  }
+
+  // Opens, reads the real option list, closes again. Used by discovery so the
+  // review screen shows the choices the employer actually offers.
+  async function readOptions(el) {
+    const menu = await open(el);
+    if (!menu) return null;
+    const opts = optionsIn(menu);
+    close(el);
+    await sleep(150);
+    return opts;
+  }
+
+  function selectedText(el) {
+    const c = containerFor(el);
+    const sv = c && c.querySelector('[class*="singleValue"], [class*="single-value"]');
+    return sv ? HP.fields.clean(sv.textContent) : null;
+  }
+
+  // Exact match only, same rule as fillSelect: choosing the "closest" option on
+  // a sponsorship or salary dropdown is the kind of guess that becomes a
+  // misrepresentation.
+  async function choose(el, value) {
+    if (!value) return false;
+    const menu = await open(el);
+    if (!menu) return false;
+    const want = String(value).trim().toLowerCase();
+    const target = Array.from(menu.querySelectorAll('[role="option"], [class*="option"]'))
+      .find((o) => HP.fields.clean(o.textContent).toLowerCase() === want);
+    if (!target) {
+      close(el);
+      return false;
+    }
+    pointerSeq(target);
+    await sleep(400);
+    return selectedText(el)?.toLowerCase() === want;
+  }
+
+  return { is, open, close, readOptions, choose, optionsIn, selectedText, containerFor, isHiddenValueInput };
+})();
+
+/*
  * Conditions that must hand control back to the user. Detected generically
  * because every one of these can appear on any of the platforms.
  */
 HP.gates = (() => {
+  // Only an *interactive* challenge is a gate. Greenhouse (and many others)
+  // embed reCAPTCHA Enterprise in invisible/score mode: the anchor iframe is
+  // present and technically visible as a badge, but there is nothing for the
+  // user to solve. Treating that as a gate paused every single Greenhouse
+  // application on a CAPTCHA that did not exist - confirmed live on a Scale AI
+  // posting whose anchor carried size=invisible alongside a .grecaptcha-badge.
+  function invisibleRecaptchaOnly() {
+    const anchors = Array.from(document.querySelectorAll('iframe[src*="recaptcha"]'));
+    if (!anchors.length) return false;
+    const everyAnchorInvisible = anchors.every((f) => /[?&]size=invisible/i.test(f.getAttribute('src') || ''));
+    // The solve-me popup lives in a separate "bframe" iframe and only appears
+    // when the score check actually fails.
+    const challengeOpen = Array.from(document.querySelectorAll('iframe[src*="recaptcha"][src*="bframe"]'))
+      .some((f) => {
+        const r = f.getBoundingClientRect();
+        return r.width > 100 && r.height > 100 && getComputedStyle(f).visibility !== 'hidden';
+      });
+    return everyAnchorInvisible && !challengeOpen;
+  }
+
   function captcha() {
+    if (invisibleRecaptchaOnly()) return false;
+
     const sel = [
       'iframe[src*="recaptcha"]', 'iframe[src*="hcaptcha"]',
       '.g-recaptcha', '#g-recaptcha', '[data-sitekey]',
@@ -170,7 +325,11 @@ HP.gates = (() => {
     ];
     for (const s of sel) {
       const el = document.querySelector(s);
-      if (el && HP.fields.visible(el)) return true;
+      if (!el || !HP.fields.visible(el)) continue;
+      // A score-mode badge is not something the user can action.
+      if (el.classList?.contains('grecaptcha-badge')) continue;
+      if (el.closest?.('.grecaptcha-badge')) continue;
+      return true;
     }
     return false;
   }
