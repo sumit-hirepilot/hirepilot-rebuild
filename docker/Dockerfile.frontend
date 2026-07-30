@@ -3,9 +3,20 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# node:18-alpine ships without `zip`, which the prebuild step uses to package the
+# extension. ~200KB, and the alternative is implementing the ZIP format in JS.
+RUN apk add --no-cache zip
+
 COPY frontend/package*.json ./
 
 RUN npm install
+
+# The extension source, needed by the frontend's prebuild step which packages it
+# into public/hirepilot-extension.zip for the in-app download. Without this the
+# build context is frontend/ only, the prebuild finds no manifest and skips, and
+# the download 404s in production. Lands at /extension, which is what
+# scripts/build-extension-zip.js resolves to from /app/scripts.
+COPY extension/ /extension/
 
 COPY frontend/ .
 
