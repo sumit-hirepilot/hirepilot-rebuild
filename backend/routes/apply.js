@@ -349,9 +349,11 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
      RETURNING id, status, created_at`,
     [
       userId, job.id, tr.rows[0].id, cl.rows[0].id, letter,
-      // The canonical ATS form URL where we have one - the extension's content
-      // script does not run on company careers domains.
-      job.apply_url || job.job_url, atsPlatform, JSON.stringify({ standard }),
+      // The source's own posting URL. Preferring the reconstructed board URL
+      // broke Okta-style boards, which redirect it to a careers index and lose
+      // the job id; the extension injects programmatically now, so it does not
+      // need the tab to stay on an ATS origin.
+      job.job_url || job.apply_url, atsPlatform, JSON.stringify({ standard }),
     ]
   );
 
@@ -365,7 +367,7 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
     automationSupported,
     atsScore: ats.score,
     addedSkills: tailoring.addedSkills || [],
-    targetFormUrl: job.apply_url || job.job_url,
+    targetFormUrl: job.job_url || job.apply_url,
     status: 'ready_for_review',
     prefillSummary: summarize(standard),
   };

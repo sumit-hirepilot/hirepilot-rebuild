@@ -125,11 +125,65 @@ function waitForTabLoad(tabId, timeoutMs = 30000) {
   });
 }
 
-// The content script needs a moment after document_idle before it answers.
+// The files the declarative content_scripts entry lists, in the same order -
+// fields.js defines HP.fields/HP.gates/HP.combobox that the adapters use, and
+// runner.js registers the message bridge, so order matters.
+const CONTENT_FILES = [
+  'content/fields.js',
+  'content/adapters/greenhouse.js',
+  'content/adapters/lever.js',
+  'content/adapters/ashby.js',
+  'content/runner.js',
+];
+
+/*
+ * Injects the content script into a tab the extension itself opened.
+ *
+ * Needed because the declarative content_scripts entry only covers the three
+ * ATS origins, and roughly a third of Greenhouse boards redirect to the
+ * company's own careers domain - verified live: job-boards.greenhouse.io/okta/...
+ * lands on www.okta.com/company/careers/, where the form is embedded and the
+ * declarative script never runs. Programmatic injection follows the tab
+ * wherever it ends up.
+ *
+ * Idempotent: HP_PING short-circuits when the declarative script already ran, so
+ * this does not double-register the message bridge on ATS origins.
+ */
+async function ensureInjected(tabId) {
+  const ping = await sendToTab(tabId, { type: 'HP_PING' }, 2500);
+  if (ping && ping.ok) return true;
+
+  let url;
+  try { url = (await chrome.tabs.get(tabId)).url; } catch { return false; }
+  let origin;
+  try { origin = `${new URL(url).origin}/*`; } catch { return false; }
+
+  const granted = await chrome.permissions.contains({ origins: [origin] }).catch(() => false);
+  if (!granted) {
+    // request() must be user-gesture-initiated, which a background poll is not.
+    // Surface it rather than failing silently with "could not attach".
+    const ok = await chrome.permissions.request({ origins: [origin] }).catch(() => false);
+    if (!ok) {
+      console.warn(`[HirePilot] no host permission for ${origin}`);
+      return false;
+    }
+  }
+
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
+  } catch (err) {
+    console.warn('[HirePilot] injection failed:', err.message);
+    return false;
+  }
+  const after = await sendToTab(tabId, { type: 'HP_PING' }, 3000);
+  return Boolean(after && after.ok);
+}
+
+// The content script needs a moment after document_idle before it answers, and
+// on a non-ATS origin it has to be injected first.
 async function waitForRunner(tabId, attempts = 12) {
   for (let i = 0; i < attempts; i += 1) {
-    const r = await sendToTab(tabId, { type: 'HP_PING' }, 3000);
-    if (r && r.ok) return true;
+    if (await ensureInjected(tabId)) return true;
     await sleep(700);
   }
   return false;
@@ -208,14 +262,15 @@ async function processOne(item) {
   }
 
   // --- Discovery: read the real form -----------------------------------
-  let discovery = await sendToTab(tab.id, { type: 'HP_DISCOVER' });
+  let discovery = await sendToTab(tab.id, { type: 'HP_DISCOVER', atsPlatform: item.atsPlatform });
 
   // Lever navigates from posting -> /apply; re-attach after that load.
   if (discovery && discovery.navigating) {
     await sleep(2500);
     await waitForTabLoad(tab.id);
+    // A navigation tears down the injected script, so re-inject before retrying.
     await waitForRunner(tab.id);
-    discovery = await sendToTab(tab.id, { type: 'HP_DISCOVER' });
+    discovery = await sendToTab(tab.id, { type: 'HP_DISCOVER', atsPlatform: item.atsPlatform });
   }
 
   if (!discovery || !discovery.ok) {
@@ -266,6 +321,7 @@ async function processOne(item) {
   const exec = await sendToTab(tab.id, {
     type: 'HP_EXECUTE',
     payload: {
+      atsPlatform: payload.atsPlatform,
       standardFields: payload.standardFields || [],
       screeningQuestions: payload.screeningQuestions || [],
       coverLetter: payload.coverLetter,

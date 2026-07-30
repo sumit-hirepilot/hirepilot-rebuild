@@ -15,17 +15,58 @@ HP.adapters = HP.adapters || {};
 HP.adapters.greenhouse = {
   name: 'greenhouse',
 
+  /*
+   * Hostname is not sufficient. Roughly a third of Greenhouse boards redirect to
+   * the company's own careers domain and embed the form there - verified live
+   * that job-boards.greenhouse.io/okta/... lands on www.okta.com, which still
+   * serves a genuine Greenhouse application form. Matching only on hostname
+   * meant no adapter claimed those pages at all.
+   */
   matches() {
-    return /greenhouse\.io/i.test(location.hostname);
+    if (/greenhouse\.io/i.test(location.hostname)) return true;
+    // Greenhouse's own job id, carried through the redirect.
+    if (/[?&]gh_jid=/i.test(location.search)) return true;
+    // Embedded board: its markup and asset host are distinctive.
+    if (document.querySelector('#application_form, #application-form, #grnhse_app')) return true;
+    if (document.querySelector('[src*="greenhouse.io"], [href*="greenhouse.io"], [action*="greenhouse.io"]')) return true;
+    // The legacy embed names its fields job_application[...].
+    return Boolean(document.querySelector('input[name^="job_application"]'));
   },
 
   // Greenhouse serves the form on the posting page itself (React board) or at
   // a /application path (legacy). Returns the form root, or null if we are on
   // a posting page that still needs the "Apply" click.
+  /*
+   * Known ids first, then a markup-agnostic fallback.
+   *
+   * On a company careers domain the embed is rendered into the host page's own
+   * markup, which uses none of Greenhouse's ids and may not even be a <form>
+   * element - verified on www.okta.com, where the form is present (it appears in
+   * a rendered screenshot) but every fixed selector missed it. Anchoring on the
+   * resume file input instead works regardless of the surrounding markup: if
+   * there is a resume upload, that is the application form.
+   */
   formRoot() {
-    return document.querySelector('#application_form, form#application-form, [data-testid="application-form"], form[action*="application"]')
-      || document.querySelector('main form')
-      || null;
+    const known = document.querySelector(
+      '#application_form, form#application-form, [data-testid="application-form"], form[action*="application"], #grnhse_app'
+    );
+    if (known) return known;
+
+    const fileInput = Array.from(document.querySelectorAll('input[type="file"]'))
+      .find((i) => /resume|cv/i.test(`${i.id} ${i.name} ${HP.fields.labelTextFor(i)}`))
+      || document.querySelector('input[type="file"]');
+    if (fileInput) {
+      // Walk up to a container that also holds the identity fields, so the root
+      // spans the whole form rather than just the upload widget.
+      let node = fileInput.parentElement;
+      for (let i = 0; i < 8 && node; i += 1) {
+        if (node.querySelector('input[type="email"], input[type="tel"]')) return node;
+        node = node.parentElement;
+      }
+      return fileInput.closest('form') || document.body;
+    }
+
+    return document.querySelector('main form') || document.querySelector('form') || null;
   },
 
   // Some boards gate the form behind an Apply button.

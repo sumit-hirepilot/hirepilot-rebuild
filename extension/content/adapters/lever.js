@@ -13,7 +13,10 @@ HP.adapters.lever = {
   name: 'lever',
 
   matches() {
-    return /jobs\.lever\.co/i.test(location.hostname);
+    if (/lever\.co/i.test(location.hostname)) return true;
+    // Lever's hosted-form embed keeps its own field names and asset host.
+    if (document.querySelector('[src*="lever.co"], [action*="lever.co"], form.application-form')) return true;
+    return Boolean(document.querySelector('input[name="urls[LinkedIn]"], input[name="resume"][data-qa]'));
   },
 
   formRoot() {

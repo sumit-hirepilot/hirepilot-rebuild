@@ -91,8 +91,17 @@ HP.discovery = (() => {
     return out;
   }
 
-  function activeAdapter() {
-    return Object.values(HP.adapters || {}).find((a) => a.matches()) || null;
+  /*
+   * The queue item already carries the platform the backend detected from the
+   * job's source, so prefer that over sniffing the page. Sniffing stays as the
+   * fallback for embedded boards on company domains, but an explicit hint is
+   * deterministic - it cannot pick the wrong adapter when a page happens to
+   * carry markers from two vendors.
+   */
+  function activeAdapter(hint) {
+    const all = HP.adapters || {};
+    if (hint && all[hint]) return all[hint];
+    return Object.values(all).find((a) => a.matches()) || null;
   }
 
   return { genericQuestions, activeAdapter };
@@ -247,7 +256,7 @@ HP.runner = (() => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function execute(payload) {
-    const adapter = HP.discovery.activeAdapter();
+    const adapter = HP.discovery.activeAdapter(payload.atsPlatform);
     if (!adapter) return { ok: false, reason: 'No adapter for this site' };
 
     const opened = await adapter.openForm();
@@ -384,12 +393,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
   (async () => {
     try {
       if (msg.type === 'HP_PING') {
-        const adapter = HP.discovery.activeAdapter();
+        const adapter = HP.discovery.activeAdapter(msg.atsPlatform);
         return respond({ ok: true, adapter: adapter ? adapter.name : null, url: location.href });
       }
 
       if (msg.type === 'HP_DISCOVER') {
-        const adapter = HP.discovery.activeAdapter();
+        const adapter = HP.discovery.activeAdapter(msg.atsPlatform);
         if (!adapter) return respond({ ok: false, reason: 'No adapter for this site' });
         const opened = await adapter.openForm();
         if (opened === 'navigating') return respond({ ok: false, navigating: true });

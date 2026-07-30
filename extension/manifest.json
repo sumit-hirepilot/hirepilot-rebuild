@@ -16,7 +16,8 @@
     "https://jobs.lever.co/*",
     "https://jobs.ashbyhq.com/*",
     "https://hirepilot-production.up.railway.app/*",
-    "http://localhost:3001/*"
+    "http://localhost:3001/*",
+    "http://localhost:3000/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -41,6 +42,20 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "http://localhost:3000/*",
+        "https://hirepilot-production.up.railway.app/*"
+      ],
+      "js": [
+        "content/announce.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
     }
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
   ]
 }
