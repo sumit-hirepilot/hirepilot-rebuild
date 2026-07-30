@@ -24,6 +24,13 @@ const DEFAULTS = {
   apiBase: 'https://hirepilot-production-e70d.up.railway.app',
 };
 
+/*
+ * What the employer's own page has to say before anything is marked Applied.
+ * Shared by the post-submit recovery path and the tab watcher so the two cannot
+ * disagree about what counts as proof.
+ */
+const CONFIRMED_RE = /thank you for applying|application (has been )?(received|submitted|sent)|we('| ha)ve received your application|successfully (applied|submitted)/i;
+
 const state = {
   running: false,
   currentTabId: null,
@@ -421,7 +428,28 @@ async function processOne(item) {
     return { paused: true };
   }
 
+  /*
+   * A silent responder is not a failure - it is usually a success.
+   *
+   * Clicking Submit navigates the page, which tears down the content script
+   * before it can answer, so sendToTab resolves with "Content script did not
+   * respond". Treating that as a failure recorded a REAL Scale AI submission -
+   * confirmation page and all - as `failed` with no reason. Ask the page what
+   * happened before concluding anything: if it is showing a confirmation, the
+   * application went out and the evidence is right there.
+   */
   if (!exec || !exec.ok) {
+    await waitForTabLoad(tab.id, 15000);
+    const recovered = await waitForRunner(tab.id, 6)
+      ? await sendToTab(tab.id, { type: 'HP_CAPTURE' }, 8000)
+      : null;
+
+    if (recovered && recovered.ok && recovered.evidence
+        && CONFIRMED_RE.test(recovered.evidence.confirmationText || '')) {
+      console.log(`[HirePilot] application ${item.applicationId} submitted - recovered evidence after the page navigated away`);
+      return finalize(item.applicationId, recovered.evidence, tab.id);
+    }
+
     await reportFailure(item.applicationId, exec?.reason || 'Execution failed', true);
     return { failed: true };
   }
@@ -525,7 +553,7 @@ function watchTabForResume(tabId, applicationId) {
     const cap = await sendToTab(tabId, { type: 'HP_CAPTURE' }, 5000);
     if (cap && cap.ok && cap.evidence) {
       const t = cap.evidence.confirmationText || '';
-      if (/thank you for applying|application (has been )?(received|submitted|sent)|we('| ha)ve received your application|successfully (applied|submitted)/i.test(t)) {
+      if (CONFIRMED_RE.test(t)) {
         clearInterval(timer);
         await finalize(applicationId, cap.evidence, tabId);
         if (state.running === false) runQueue();
