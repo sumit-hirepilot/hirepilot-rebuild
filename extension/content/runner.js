@@ -185,20 +185,74 @@ HP.runner = (() => {
 
   // Screening questions, from answers the server resolved against the profile.
   // An answer the server left null is never invented here.
+  /*
+   * Describe the control a question is asking through, so an unanswered question
+   * can be put back to the user as the same kind of input the employer used.
+   *
+   * A dropdown's options are the important part: asked as free text, the user
+   * types "Yes" where the form wanted "Yes, I am authorized", and the answer we
+   * save is one no future form will accept.
+   */
+  async function describeControl(el) {
+    if (!el) return { type: 'text', options: null };
+    if (HP.combobox.is(el)) {
+      const options = await HP.combobox.readOptions(el).catch(() => null);
+      return { type: 'select', options: options && options.length ? options : null };
+    }
+    if (el.tagName === 'SELECT') {
+      return {
+        type: 'select',
+        options: Array.from(el.options).map((o) => o.text.trim())
+          .filter((t) => t && !/^select\b|^-+$|^choose\b/i.test(t)),
+      };
+    }
+    if (el.type === 'radio') {
+      const group = el.closest('fieldset, [class*="field"], [class*="question"]') || document;
+      const options = Array.from(group.querySelectorAll(`input[type=radio][name="${el.name}"]`))
+        .map((r) => {
+          const l = r.labels && r.labels[0];
+          return HP.fields.clean(l ? l.textContent : r.value);
+        }).filter(Boolean);
+      return { type: 'radio', options: options.length ? options : null };
+    }
+    if (el.type === 'checkbox') return { type: 'checkbox', options: null };
+    if (el.tagName === 'TEXTAREA') return { type: 'textarea', options: null };
+    return { type: 'text', options: null };
+  }
+
   async function fillQuestions(adapter, questions) {
     const root = adapter.formRoot() || document;
     const filled = [];
     const unfilled = [];
 
+    // Every unfilled question carries the live control's shape and options, so
+    // the drawer can ask for exactly what this form will accept.
+    const cannotFill = async (q, el, reason) => {
+      const shape = await describeControl(el);
+      unfilled.push({
+        question: q.question,
+        reason,
+        suggestion: q.suggestion || null,
+        required: q.required !== false,
+        optional: Boolean(q.optional),
+        ...shape,
+        // Fall back to whatever the server knew if the page yielded nothing.
+        options: shape.options || q.options || null,
+      });
+    };
+
     for (const q of questions || []) {
       if (q.answer === null || q.answer === undefined || q.answer === '') {
-        if (q.required && !q.optional) unfilled.push({ question: q.question, reason: q.reason || 'no answer available' });
+        if (q.required && !q.optional) {
+          const el = findByLabel(root, new RegExp(escapeRe(q.question).slice(0, 60), 'i'));
+          await cannotFill(q, el, q.reason || 'not in your profile yet');
+        }
         continue;
       }
 
       const el = findByLabel(root, new RegExp(escapeRe(q.question).slice(0, 60), 'i'));
       if (!el) {
-        unfilled.push({ question: q.question, reason: 'field not found on page' });
+        await cannotFill(q, null, 'field not found on page');
         continue;
       }
 
@@ -211,15 +265,14 @@ HP.runner = (() => {
       } else if (el.type === 'checkbox') {
         // Not auto-ticked - a required checkbox is treated as consent and
         // handed to the user by the gate check.
-        ok = false;
-        unfilled.push({ question: q.question, reason: 'checkbox requires your action' });
+        await cannotFill(q, el, 'checkbox requires your action');
         continue;
       } else {
         ok = HP.fields.fillText(el, q.answer);
       }
 
       if (ok) filled.push(q.question);
-      else unfilled.push({ question: q.question, reason: 'value did not match the field options' });
+      else await cannotFill(q, el, 'your saved answer is not one of this form’s options');
     }
     return { filled, unfilled };
   }
@@ -313,9 +366,13 @@ HP.runner = (() => {
     // incomplete form either fails validation or sends a blank answer.
     if (questionResult.unfilled.length) {
       if (HP.drawer) {
+        const n = questionResult.unfilled.length;
         HP.drawer.update({
-          status: 'needs_user',
-          message: `${questionResult.unfilled.length} question${questionResult.unfilled.length === 1 ? '' : 's'} need your answer before this can go out.`,
+          status: 'asking',
+          // Handed to the drawer as questions to answer, not as an error. Each
+          // one answered here is saved to the profile and never asked again.
+          ask: questionResult.unfilled,
+          message: `${n} question${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} not in your profile yet. Answer ${n === 1 ? 'it' : 'them'} once and HirePilot will reuse ${n === 1 ? 'it' : 'them'} everywhere.`,
         });
       }
       return {
@@ -474,3 +531,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
 });
 
 console.log('[HirePilot] runner ready on', location.hostname);
+
+/* ------------------------------------------------------------------ *
+ * Announce
+ *
+ * Ask the background whether this page has a queued application, and if it
+ * does, put the drawer up straight away. This is what makes the extension feel
+ * present: you open a posting you have already queued and the panel is simply
+ * there, rather than only appearing once a run happens to reach this tab.
+ *
+ * Deliberately quiet when the answer is no - an unqueued job page gets nothing.
+ * ------------------------------------------------------------------ */
+(function announce() {
+  if (!HP.drawer) return;
+  if (!HP.discovery.activeAdapter()) return; // not a form we can act on
+
+  const ask = () => chrome.runtime.sendMessage({ type: 'HP_PAGE_CONTEXT' }, (res) => {
+    if (chrome.runtime.lastError) return; // worker asleep or extension reloading
+    if (res && res.ok && res.payload) HP.drawer.show(res.payload);
+  });
+
+  // Single-page ATS flows swap the form in without a navigation, so the adapter
+  // can report nothing on first paint even though a form arrives moments later.
+  if (document.readyState === 'complete') ask();
+  else window.addEventListener('load', ask, { once: true });
+}());

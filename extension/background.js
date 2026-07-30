@@ -298,11 +298,38 @@ async function processOne(item) {
   // Discovery may have surfaced questions the profile cannot answer. In that
   // case the item goes back for review instead of being executed.
   if (filledQs.summary && !filledQs.summary.readyWithoutInput) {
+    // Ask in the drawer, on the page the user is already looking at, rather than
+    // only parking it on the review screen. Answering here writes to the profile,
+    // so the same question never blocks another application again.
+    const blocking = new Set(filledQs.summary.blockingQuestions);
+    sendToTab(tab.id, {
+      type: 'HP_DRAWER_STATE',
+      payload: {
+        job: item.job || null,
+        status: 'asking',
+        ask: (filledQs.questions || [])
+          .filter((q) => blocking.has(q.question))
+          .map((q) => ({
+            question: q.question,
+            type: q.type || 'text',
+            options: q.options || null,
+            required: q.required !== false,
+            optional: Boolean(q.optional),
+            suggestion: q.suggestion || null,
+            confidence: q.confidence || null,
+            matchedQuestion: q.matchedQuestion || null,
+            reason: q.reason || 'Not in your profile yet.',
+          })),
+        message: `${blocking.size} question${blocking.size === 1 ? '' : 's'} on this form ${blocking.size === 1 ? 'is' : 'are'} not in your profile yet. Answer ${blocking.size === 1 ? 'it' : 'them'} once and HirePilot will reuse ${blocking.size === 1 ? 'it' : 'them'} everywhere.`,
+      },
+    }, 5000);
+
     await pause(
       item.applicationId,
       'unmapped_required_field',
       `Needs your answer: ${filledQs.summary.blockingQuestions.slice(0, 3).join(' | ')}`
     );
+    watchTabForResume(tab.id, item.applicationId);
     return { paused: true };
   }
 
@@ -515,10 +542,87 @@ function notify(title, message) {
   console.log(`[HirePilot] ${title}: ${message}`);
 }
 
+/**
+ * Which queued application, if any, belongs to the page in this tab.
+ *
+ * Matched on pathname rather than the whole URL: boards routinely append
+ * tracking and source parameters, and Greenhouse serves the same posting from
+ * both job-boards.greenhouse.io and the company's own careers host.
+ */
+async function applicationForTab(tabId, url) {
+  if (state.currentApplicationId && state.currentTabId === tabId) {
+    return state.currentApplicationId;
+  }
+  const q = await api('/api/apply/queue').catch(() => null);
+  const hit = (q?.queue || []).find((it) => {
+    try { return new URL(it.target_form_url).pathname === new URL(url || '').pathname; }
+    catch { return false; }
+  });
+  return hit?.id || null;
+}
+
+// What the drawer shows for an application it has not started filling yet.
+function idleDrawerState(status) {
+  if (status === 'approved') {
+    return { status: 'ready', message: 'Approved and ready. Click "Fill this form" to fill it here.' };
+  }
+  if (status === 'ready_for_review') {
+    return { status: 'needs_user', message: 'Review what will be sent in HirePilot, then come back and fill.' };
+  }
+  if (status === 'submitted') {
+    return { status: 'done', message: 'Already submitted. Nothing left to do on this page.' };
+  }
+  if (status === 'needs_user') {
+    return { status: 'needs_user', message: 'Paused - this one needs something from you in HirePilot.' };
+  }
+  return { status: 'needs_user', message: `This application is ${status}.` };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
   (async () => {
     try {
       switch (msg.type) {
+        /*
+         * Sent by every content script the moment it loads on a supported job
+         * page. Without it the drawer only ever appeared part-way through a run,
+         * so landing on a posting directly - which is how people actually browse
+         * jobs - showed nothing at all, and there was no way to reach "Fill this
+         * form" except by starting the whole queue.
+         *
+         * Stays silent when no queued application matches, rather than putting a
+         * panel on every job page the user opens.
+         */
+        case 'HP_PAGE_CONTEXT': {
+          const tabId = _sender?.tab?.id;
+          const { token } = await config();
+          if (!tabId || !token) return respond({ ok: false, reason: 'not connected' });
+
+          const appId = await applicationForTab(tabId, _sender.tab.url);
+          if (!appId) return respond({ ok: false, reason: 'no matching application' });
+
+          const fresh = await api(`/api/apply/queue/${appId}`).catch(() => null);
+          const item = fresh?.item;
+          if (!item) return respond({ ok: false, reason: 'could not load application' });
+
+          const profile = await api('/api/apply/profile').catch(() => null);
+          return respond({
+            ok: true,
+            payload: {
+              job: item.job,
+              fields: [...(item.standardFields || []), ...(item.screeningQuestions || [])],
+              ats: item.resume ? {
+                score: item.resume.atsScore,
+                matchedCount: item.resume.matchedCount,
+                totalKeywords: item.resume.totalKeywords,
+                missing: item.resume.missing,
+              } : null,
+              profile: profile && profile.profile
+                ? { ...profile.profile, savedAnswers: Object.keys(profile.profile.custom_answers || {}).length }
+                : null,
+              ...idleDrawerState(item.status),
+            },
+          });
+        }
         /*
          * From the in-page drawer. "Fill this form" must fill the form the user
          * is looking at - it previously called runQueue(), which restarts the
@@ -531,18 +635,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           const tabId = _sender?.tab?.id;
           if (!tabId) return respond({ ok: false, reason: 'no tab' });
 
-          let appId = state.currentApplicationId;
-          if (!appId || state.currentTabId !== tabId) {
-            // The tab was opened outside a run (or the worker restarted and lost
-            // its state), so find the queued application whose target matches.
-            const url = _sender.tab.url || '';
-            const q = await api('/api/apply/queue').catch(() => null);
-            const hit = (q?.queue || []).find((it) => {
-              try { return new URL(it.target_form_url).pathname === new URL(url).pathname; }
-              catch { return false; }
-            });
-            appId = hit?.id;
-          }
+          // The tab may have been opened outside a run (or the worker restarted
+          // and lost its state), so fall back to matching the queue by URL.
+          const appId = await applicationForTab(tabId, _sender.tab.url);
           if (!appId) {
             sendToTab(tabId, { type: 'HP_DRAWER_STATE', payload: {
               status: 'needs_user',
@@ -583,6 +678,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
             }
           });
           return respond({ ok: true, started: true, applicationId: appId });
+        }
+        /*
+         * The user answered questions in the drawer that their profile could not.
+         *
+         * Writes straight to the Application Profile - the extension keeps no
+         * answers of its own. That is what makes the next form, on any ATS and
+         * on any device, resolve the same question without asking: it is the
+         * profile that learned, not this browser.
+         */
+        case 'HP_SAVE_ANSWERS': {
+          const answers = Array.isArray(msg.answers) ? msg.answers : [];
+          if (!answers.length) return respond({ ok: false, reason: 'no answers supplied' });
+          const r = await api('/api/apply/profile/answers', {
+            method: 'POST',
+            body: JSON.stringify({ answers }),
+          });
+          return respond({ ok: true, saved: r.saved, totalSavedAnswers: r.totalSavedAnswers });
         }
         case 'HP_DRAWER_OPEN_APP': {
           const { apiBase } = await config();

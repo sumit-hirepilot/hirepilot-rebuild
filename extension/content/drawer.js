@@ -28,6 +28,10 @@ HP.drawer = (() => {
     profile: null,
     status: 'idle',
     message: null,
+    // Questions the profile could not answer, put back to the user. Cleared the
+    // moment they are saved - a stale ask list would re-prompt for answers the
+    // profile already has.
+    ask: null,
   };
 
   const CSS = `
@@ -96,6 +100,22 @@ HP.drawer = (() => {
     }
     .banner.warn { background: #fffbeb; border-color: #fde68a; color: #b45309; }
     .banner.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .banner.ask { background: #f5f3ff; border-color: #ddd6fe; color: #5b21b6; }
+
+    /* Questions being asked back to the user. Visually separated from the
+       read-only list below so it is obvious which part wants input. */
+    .askForm { margin: 4px 0 12px; }
+    .row.ask { border-bottom: none; padding: 10px 0 4px; }
+    .req { color: #dc2626; }
+    .askIn {
+      width: 100%; box-sizing: border-box; margin-top: 6px;
+      font: inherit; font-size: 13px; color: #0f172a;
+      padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px;
+      background: #fff; appearance: auto;
+    }
+    .askIn:focus { outline: 2px solid #7c3aed; outline-offset: -1px; border-color: #7c3aed; }
+    textarea.askIn { resize: vertical; min-height: 56px; }
+    .saveBtn { width: 100%; margin-top: 10px; }
 
     .row { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
     .row:last-child { border-bottom: none; }
@@ -163,6 +183,47 @@ HP.drawer = (() => {
     root = host.shadowRoot || host.attachShadow({ mode: 'open' });
   }
 
+  /*
+   * A question the profile cannot answer, rendered as the same kind of control
+   * the employer used.
+   *
+   * Rendering a dropdown as a dropdown is not cosmetic. Asked as free text, the
+   * user types "Yes" where this form's list says "Yes, I am authorized to work
+   * in the US" - and that is the answer we would save and reuse forever. The
+   * options come from the live page, so what gets saved is always a real value.
+   */
+  function askRow(a, i) {
+    const name = `ask_${i}`;
+    const opts = Array.isArray(a.options) ? a.options : null;
+    const suggested = (v) => (a.suggestion && String(a.suggestion).trim().toLowerCase() === String(v).trim().toLowerCase());
+
+    let control;
+    if (opts && opts.length && (a.type === 'select' || a.type === 'radio')) {
+      control = `<select class="askIn" name="${name}" ${a.required && !a.optional ? 'required' : ''}>
+        <option value="">Choose…</option>
+        ${opts.map((o) => `<option value="${esc(o)}" ${suggested(o) ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+      </select>`;
+    } else if (a.type === 'checkbox') {
+      // Consent and attestations are never pre-ticked, and never saved as an
+      // answer to reuse - the user ticks these on the page itself.
+      control = '<div class="meta">Tick this yourself on the form — HirePilot does not agree to anything on your behalf.</div>';
+    } else if (a.type === 'textarea') {
+      control = `<textarea class="askIn" name="${name}" rows="3" ${a.required && !a.optional ? 'required' : ''}>${esc(a.suggestion || '')}</textarea>`;
+    } else {
+      control = `<input class="askIn" name="${name}" value="${esc(a.suggestion || '')}" ${a.required && !a.optional ? 'required' : ''} />`;
+    }
+
+    const why = a.suggestion && a.matchedQuestion
+      ? `<div class="meta">Suggested from “${esc(String(a.matchedQuestion).slice(0, 60))}”${a.confidence ? ` · only ${Math.round(a.confidence * 100)}% sure, so confirm it` : ''}</div>`
+      : `<div class="meta">${esc(String(a.reason || 'Not in your profile yet.').slice(0, 120))}</div>`;
+
+    return `<div class="row ask">
+      <div class="q">${esc(a.question)}${a.required && !a.optional ? '<span class="req"> *</span>' : ''}</div>
+      ${why}
+      ${control}
+    </div>`;
+  }
+
   function fieldRow(f) {
     const answered = f.answer !== null && f.answer !== undefined && f.answer !== '';
     const conf = typeof f.confidence === 'number'
@@ -194,16 +255,21 @@ HP.drawer = (() => {
     let body = '';
     if (state.tab === 'autofill') {
       const banner = state.message
-        ? `<div class="banner ${state.status === 'done' ? 'ok' : state.status === 'needs_user' ? 'warn' : ''}">${esc(state.message)}</div>`
+        ? `<div class="banner ${state.status === 'done' ? 'ok' : state.status === 'needs_user' ? 'warn' : state.status === 'asking' ? 'ask' : ''}">${esc(state.message)}</div>`
         : '';
+      const ask = state.ask || [];
       body = `
         <div class="job">${esc(state.job?.title || 'This application')}</div>
         <div class="co">${esc(state.job?.company || location.hostname)}</div>
         ${banner}
-        ${needing.length ? `<div class="banner warn">${needing.length} question${needing.length === 1 ? '' : 's'} need${needing.length === 1 ? 's' : ''} your answer before this can be submitted.</div>` : ''}
+        ${ask.length ? `<form class="askForm">${ask.map(askRow).join('')}
+          <button type="submit" class="btn saveBtn">Save ${ask.length === 1 ? 'answer' : `${ask.length} answers`} to my profile</button>
+          <div class="note" style="padding:6px 0 2px">Saved to your HirePilot profile, not to this site. Asked once, reused on every future application.</div>
+        </form>` : ''}
+        ${!ask.length && needing.length ? `<div class="banner warn">${needing.length} question${needing.length === 1 ? '' : 's'} need${needing.length === 1 ? 's' : ''} your answer before this can be submitted.</div>` : ''}
         ${state.fields.length
     ? `${needing.map(fieldRow).join('')}${filled.map(fieldRow).join('')}`
-    : '<div class="empty">No form data yet. Run the queue from HirePilot.</div>'}`;
+    : (ask.length ? '' : '<div class="empty">No form data yet. Run the queue from HirePilot.</div>')}`;
     } else if (state.tab === 'ats') {
       if (!state.ats) {
         body = '<div class="empty">No ATS score for this posting yet.</div>';
@@ -268,19 +334,62 @@ HP.drawer = (() => {
      * was indistinguishable from a dead button. Anything that can fail silently
      * on a click has to say so.
      */
-    const send = (type, onFail) => {
+    const send = (type, onFail, extra) => {
       try {
-        chrome.runtime.sendMessage({ type }, (res) => {
+        chrome.runtime.sendMessage({ type, ...(extra || {}) }, (res) => {
           if (chrome.runtime.lastError) {
             update({ status: 'needs_user', message: `HirePilot is not responding — reload the page. (${chrome.runtime.lastError.message})` });
             return;
           }
           if (res && res.ok === false) onFail(res.reason);
+          else if (typeof onFail === 'function' && res && res.ok) onFail(null, res);
         });
       } catch (err) {
         update({ status: 'needs_user', message: `Could not reach HirePilot: ${err.message}` });
       }
     };
+
+    /*
+     * Answering the questions the profile could not.
+     *
+     * Saves to HirePilot first and only then refills, because the profile is
+     * the source of truth: if the save fails the answer must not silently end
+     * up on this one form and nowhere else, which is exactly how a user ends up
+     * retyping the same answer on every application.
+     */
+    const askForm = root.querySelector('.askForm');
+    if (askForm) {
+      askForm.onsubmit = (ev) => {
+        ev.preventDefault();
+        const answers = (state.ask || []).map((a, i) => {
+          const el = askForm.querySelector(`[name="ask_${i}"]`);
+          return el ? { question: a.question, answer: el.value, options: a.options, type: a.type } : null;
+        }).filter((a) => a && String(a.answer).trim() !== '');
+
+        if (!answers.length) {
+          update({ status: 'asking', message: 'Nothing to save yet — answer at least one question.' });
+          return;
+        }
+
+        const btn = askForm.querySelector('.saveBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+        send('HP_SAVE_ANSWERS', (reason, res) => {
+          if (reason) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Save answers to my profile'; }
+            update({ status: 'needs_user', message: `Could not save to your profile: ${reason}` });
+            return;
+          }
+          update({
+            status: 'filling',
+            ask: null,
+            message: `Saved to your profile (${res.totalSavedAnswers} answers now). Filling the form…`,
+          });
+          // Straight back into the fill with the profile now able to answer.
+          send('HP_DRAWER_FILL', (r) => r && update({ status: 'needs_user', message: `Could not fill: ${r}` }));
+        }, { answers });
+      };
+    }
 
     const fill = root.querySelector('[data-act="fill"]');
     if (fill) {

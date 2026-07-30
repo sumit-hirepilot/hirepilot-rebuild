@@ -666,6 +666,77 @@ router.patch('/queue/:id/answers', verifyToken, async (req, res) => {
   }
 });
 
+/*
+ * Teach the profile an answer. This is the single write path for everything the
+ * user answers in the extension drawer, and the profile is the only place it
+ * lives - the extension keeps no answers of its own, it just syncs this.
+ *
+ * Options are stored alongside the answer because the next form will render the
+ * same question as a dropdown, and knowing the choice came from a fixed list is
+ * what lets us refuse to submit an answer that is not on the new form's list.
+ */
+router.post('/profile/answers', verifyToken, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.answers) ? req.body.answers.slice(0, 60) : [];
+    if (!items.length) return res.status(400).json({ error: 'No answers supplied' });
+
+    const custom = {};
+    for (const it of items) {
+      const q = it && it.question;
+      const a = it && it.answer;
+      if (!q || a === null || a === undefined || a === '') continue;
+      custom[normalizeKey(q)] = {
+        answer: String(a).slice(0, 2000),
+        question: String(q).slice(0, 400),
+        // Bounded deliberately. custom_answers is a jsonb column that grows for
+        // the life of the account, and the database volume is small enough that
+        // an unbounded option list per question is a real risk, not a
+        // theoretical one. 40 x 120 chars covers every real ATS dropdown.
+        options: Array.isArray(it.options)
+          ? it.options.slice(0, 40).map((o) => String(o).slice(0, 120))
+          : null,
+        type: it.type || 'text',
+        updated_at: new Date().toISOString(),
+      };
+    }
+    if (!Object.keys(custom).length) return res.status(400).json({ error: 'No usable answers' });
+
+    // The user answering a wording makes it a confirmed variation of its
+    // concept, so the same question from Lever or Ashby resolves without asking.
+    for (const it of items) {
+      if (!it || !it.question) continue;
+      const c = classify(it.question);
+      confirmVariation(it.question, c && c.conceptId).catch(() => {});
+    }
+
+    /*
+     * MERGE, never replace. An earlier version assigned custom_answers wholesale
+     * and a three-key save wiped forty-nine learned answers - the bug behind
+     * answers that kept "forgetting" themselves. `||` is a shallow merge, which
+     * is exactly right here: same key means the user edited that answer, and the
+     * new value should win for every future application.
+     */
+    const r = await query(
+      `INSERT INTO application_profiles (user_id, custom_answers)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (user_id) DO UPDATE
+         SET custom_answers = COALESCE(application_profiles.custom_answers, '{}'::jsonb) || $2::jsonb,
+             updated_at = CURRENT_TIMESTAMP
+       RETURNING custom_answers`,
+      [req.user.id, JSON.stringify(custom)]
+    );
+
+    res.json({
+      ok: true,
+      saved: Object.keys(custom).length,
+      totalSavedAnswers: Object.keys(r.rows[0].custom_answers || {}).length,
+    });
+  } catch (err) {
+    console.error('POST profile/answers failed:', err.message);
+    res.status(500).json({ error: 'Could not save answers to profile' });
+  }
+});
+
 // The approval gate. This is the user authorising a specific, reviewed
 // application to be executed - it does not mark anything as applied.
 //
