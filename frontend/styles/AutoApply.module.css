@@ -1,0 +1,154 @@
+/*
+ * Auto Apply.
+ *
+ * Uses the app's own tokens rather than literal colours - a previous screen
+ * shipped 22 declarations against --bg-primary/--text-primary, names that do
+ * not exist here, and rendered transparent.
+ */
+
+.loading { padding: 40px 0; color: var(--text-secondary); }
+
+.notice {
+  margin: 0 0 16px; padding: 10px 14px; border-radius: 10px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  color: var(--text); font-size: 14px;
+}
+
+/* The on/off control is the whole point of the page, so it reads as a state,
+   not as a button that might or might not have worked. */
+.toggleOn, .toggleOff {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 11px 20px; border-radius: 999px; cursor: pointer;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  transition: background .15s ease, border-color .15s ease;
+}
+.toggleOn {
+  background: var(--primary); color: #fff; border: 1px solid var(--primary);
+}
+.toggleOff {
+  background: var(--bg-secondary); color: var(--text); border: 1px solid var(--border);
+}
+.toggleOn:hover { filter: brightness(1.06); }
+.toggleOff:hover { border-color: var(--primary); }
+.toggleOn:disabled, .toggleOff:disabled { opacity: .6; cursor: not-allowed; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.toggleOn .dot {
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, .7);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 255, 255, .6); }
+  70%  { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggleOn .dot { animation: none; }
+}
+
+.strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 20px;
+}
+.stat {
+  padding: 16px 18px; border-radius: 12px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.statNum { display: block; font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.statLabel { display: block; margin-top: 3px; font-size: 12px; color: var(--text-secondary); }
+.statWarn { border-color: var(--warning); background: var(--warning-bg); }
+.statWarn .statNum, .statWarn .statLabel { color: var(--warning); }
+.statGood { border-color: var(--success); background: var(--success-bg); }
+.statGood .statNum, .statGood .statLabel { color: var(--success); }
+
+.blockedPanel {
+  margin-bottom: 20px; padding: 16px 18px; border-radius: 12px;
+  background: var(--warning-bg); border: 1px solid var(--warning); color: var(--warning);
+}
+.blockedPanel strong { display: block; font-size: 14px; margin-bottom: 3px; }
+.blockedPanel p { margin: 0 0 10px; font-size: 13px; opacity: .85; }
+.blockedPanel ul { list-style: none; margin: 0; padding: 0; }
+.blockedPanel li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-top: 1px solid rgba(180, 83, 9, .22); font-size: 13px;
+}
+.blockedCo { font-weight: 600; }
+.blockedWhy { opacity: .8; text-align: right; }
+
+.grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+.main { display: flex; flex-direction: column; gap: 16px; }
+.side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 20px; }
+
+.card {
+  padding: 20px; border-radius: 14px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.cardTitle { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); }
+.cardHint { margin: 0 0 14px; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.empty { font-size: 13px; color: var(--text-secondary); margin: 0; }
+
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill, .pillOn {
+  padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+.pill:hover { border-color: var(--primary); }
+.pillOn { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pill:disabled, .pillOn:disabled { opacity: .6; cursor: not-allowed; }
+.pillHint { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+
+.capRow { display: flex; align-items: center; gap: 16px; }
+.range { flex: 1; accent-color: var(--primary); }
+.capNum { font-size: 24px; font-weight: 700; color: var(--text); white-space: nowrap; }
+.capNum small { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+
+.coverage { list-style: none; margin: 0; padding: 0; }
+.coverage li {
+  display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
+  gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.coverage li:last-child { border-bottom: none; }
+.covName { font-weight: 600; color: var(--text); }
+.covNote { font-size: 12px; color: var(--text-secondary); text-align: right; }
+.state_full, .state_partial, .state_none {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.state_full { background: #10b981; }
+.state_partial { background: #f59e0b; }
+.state_none { background: var(--text-secondary); opacity: .45; }
+
+.learnRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.learnStat {
+  padding: 14px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+}
+.learnNum { display: block; font-size: 22px; font-weight: 700; color: var(--primary); line-height: 1.1; }
+.learnLabel { display: block; margin-top: 4px; font-size: 11.5px; line-height: 1.4; color: var(--text-secondary); }
+
+.match, .proof { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.match:last-child, .proof:last-child { border-bottom: none; }
+.matchTitle, .proofTitle { font-size: 13px; font-weight: 600; color: var(--text); }
+.matchCo { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.proofQuote {
+  margin-top: 6px; padding-left: 9px; border-left: 2px solid var(--success);
+  font-size: 11.5px; line-height: 1.5; color: var(--text-secondary); font-style: italic;
+}
+.proofRef { margin-top: 4px; font-size: 11px; color: var(--success); font-weight: 600; }
+
+@media (max-width: 1080px) {
+  .grid { grid-template-columns: 1fr; }
+  .side { position: static; }
+}
+@media (max-width: 720px) {
+  .strip { grid-template-columns: repeat(2, 1fr); }
+  .learnRow { grid-template-columns: 1fr; }
+  .coverage li { grid-template-columns: 10px 1fr; }
+  .covNote { grid-column: 2; text-align: left; }
+}
+
+.matchRow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.matchScore {
+  flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--success);
+  background: var(--success-bg); padding: 1px 7px; border-radius: 999px;
+}

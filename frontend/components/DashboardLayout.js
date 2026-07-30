@@ -29,6 +29,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/auto-apply',
+    label: 'Auto Apply',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" />
+      </svg>
+    ),
+  },
+  {
     href: '/apply-queue',
     label: 'Apply Queue',
     icon: (

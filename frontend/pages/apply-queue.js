@@ -10,13 +10,13 @@ import page from '../styles/ApplyQueue.module.css';
  *
  * Everything the extension will put into the employer's form is shown here
  * first, and approval is the one human decision in the pipeline. The backend
- * refuses to approve while a required answer is missing, so this screen surfaces
+ * will not run an application while a required answer is missing, so this screen surfaces
  * those gaps rather than letting the user click past them.
  */
 
 const STATUS_LABEL = {
   ready_for_review: 'Needs review',
-  approved: 'Approved - waiting for the extension',
+  approved: 'Ready - the extension will submit it',
   submitting: 'Submitting',
   needs_user: 'Needs you',
   submitted: 'Submitted',
@@ -116,34 +116,6 @@ export default function ApplyQueue() {
     return res.ok;
   };
 
-  const approve = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      if (!(await saveEdits())) throw new Error('Could not save your answers.');
-      const res = await fetch(`${base}/api/apply/queue/${selected}/approve`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const d = await res.json();
-      if (!res.ok) {
-        setError(
-          d.blockingQuestions?.length
-            ? `Still missing an answer for: ${d.blockingQuestions.join(', ')}`
-            : d.error || 'Could not approve.'
-        );
-        return;
-      }
-      setNotice('Approved. The extension will submit it on its next run.');
-      await loadQueue(token);
-      await openDetail(selected);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const skip = async () => {
     setBusy(true);
     await fetch(`${base}/api/apply/queue/${selected}/skip`, {
@@ -155,32 +127,7 @@ export default function ApplyQueue() {
     setBusy(false);
   };
 
-  const approveAllReady = async () => {
-    const ids = queue.filter((q) => q.status === 'ready_for_review').map((q) => q.id);
-    if (!ids.length) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`${base}/api/apply/queue/approve-bulk`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-      const d = await res.json();
-      if (d.blockedCount) {
-        setNotice(
-          `Approved ${d.count}. ${d.blockedCount} still need an answer - open each one to fill it in.`
-        );
-      } else {
-        setNotice(`Approved ${d.count} application${d.count === 1 ? '' : 's'}.`);
-      }
-      await loadQueue(token);
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  const readyCount = queue.filter((q) => q.status === 'ready_for_review').length;
 
   return (
     <DashboardLayout user={user}>
@@ -190,23 +137,20 @@ export default function ApplyQueue() {
         <div>
           <h1 className={styles.pageTitle}>Apply Queue</h1>
           <p className={styles.pageSubtitle}>
-            Review exactly what will be sent, then approve. The browser extension
-            submits approved applications on the employer&apos;s own site and records
-            their confirmation.
+            Everything queued here is submitted automatically by the browser
+            extension, on the employer&apos;s own site, and recorded against their
+            confirmation. Nothing waits on you unless a question is missing from
+            your profile, or the employer demands a login, CAPTCHA or consent.
           </p>
         </div>
-        {readyCount > 1 && (
-          <button className={page.bulkBtn} onClick={approveAllReady} disabled={busy}>
-            Approve all {readyCount} ready
-          </button>
-        )}
+
       </div>
 
       {notice && <div className={page.notice}>{notice}</div>}
       {error && <div className={page.error}>{error}</div>}
 
       <div className={page.summary}>
-        {['ready_for_review', 'approved', 'needs_user', 'submitting'].map((k) => (
+        {['approved', 'submitting', 'needs_user', 'submitted'].map((k) => (
           <div key={k} className={page.summaryCard}>
             <span className={page.summaryNum}>{counts[k] || 0}</span>
             <span className={page.summaryLabel}>{STATUS_LABEL[k]}</span>
@@ -301,7 +245,7 @@ export default function ApplyQueue() {
 
               {blocking.length > 0 && (
                 <div className={page.warnBox}>
-                  <strong>{blocking.length} answer{blocking.length === 1 ? '' : 's'} needed before this can be approved</strong>
+                  <strong>{blocking.length} answer{blocking.length === 1 ? '' : 's'} needed before this can be submitted</strong>
                   <p>Fill these in below. Approval is blocked until they are answered.</p>
                 </div>
               )}
@@ -422,25 +366,27 @@ export default function ApplyQueue() {
               <div className={page.actions}>
                 {detail.status !== 'submitted' && (
                   <>
-                    <button
-                      className={page.primaryBtn}
-                      onClick={approve}
-                      disabled={busy || blocking.length > 0}
-                      title={blocking.length ? 'Answer the required questions first' : ''}
-                    >
-                      {detail.status === 'approved' ? 'Re-approve' : 'Approve for submission'}
-                    </button>
+                    {/* No approve button. An application with every answer
+                        resolved is already queued to run; one with a gap is
+                        released by answering it, here or in the extension
+                        drawer, not by a separate click. */}
+                    {blocking.length > 0 && (
+                      <span className={page.finePrint}>
+                        Answer the {blocking.length} question{blocking.length === 1 ? '' : 's'} above and this
+                        goes out on the extension&apos;s next run.
+                      </span>
+                    )}
                     <button className={page.ghostBtn} onClick={skip} disabled={busy}>
-                      Skip
+                      Skip this one
                     </button>
                   </>
                 )}
               </div>
               {detail.status !== 'submitted' && (
                 <p className={page.finePrint}>
-                  Approving authorises the extension to submit this application, as
-                  shown above, to {detail.job.company}. Nothing is marked as applied
-                  until the employer&apos;s confirmation is captured.
+                  This is submitted to {detail.job.company} automatically, exactly as
+                  shown above. Nothing is marked as applied until the
+                  employer&apos;s own confirmation is captured.
                 </p>
               )}
             </>
