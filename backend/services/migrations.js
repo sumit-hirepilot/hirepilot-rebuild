@@ -218,6 +218,37 @@ const STATEMENTS = [
   `UPDATE jobs SET apply_url = job_url
    WHERE source IN ('lever','ashby') AND apply_url IS NULL`,
 
+  /*
+   * Growing knowledge base of ATS question wordings.
+   *
+   * Every question the extension meets is recorded against the canonical concept
+   * it classified to, with the ATS and company it came from. Two purposes:
+   * answers given once get reused for a wording never seen before, and the
+   * concept patterns can be reviewed against what employers actually ask rather
+   * than what I guessed they would ask.
+   *
+   * Shared across users on purpose - the wording of "do you need sponsorship" is
+   * not personal data. ANSWERS stay per-user in application_profiles; this table
+   * holds only the question text.
+   */
+  `CREATE TABLE IF NOT EXISTS question_variations (
+    id SERIAL PRIMARY KEY,
+    concept_id VARCHAR(60),
+    question_text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL,
+    ats VARCHAR(50),
+    company VARCHAR(255),
+    field_type VARCHAR(30),
+    options_count INTEGER,
+    times_seen INTEGER DEFAULT 1,
+    confirmed_by_user BOOLEAN DEFAULT FALSE,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(normalized_text)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_question_variations_concept ON question_variations(concept_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_question_variations_seen ON question_variations(times_seen DESC)`,
+
   // Work authorisation is per-country, not a single yes/no. Storing one value
   // meant "Are you legally authorized to work in the country where the job is
   // located?" got the same answer on a Bengaluru posting and a San Francisco

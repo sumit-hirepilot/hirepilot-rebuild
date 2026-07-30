@@ -29,6 +29,8 @@ const { buildTailoredText } = require('../services/resumeTailorEngine');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
 const { checkAts } = require('../services/atsChecker');
 const { prefillAnswers, summarize, normalizeKey } = require('../services/screeningPrefill');
+const { recordSeen, confirmVariation, stats: knowledgeStats } = require('../services/questionKnowledge');
+const { classify } = require('../services/questionConcepts');
 
 const router = express.Router();
 
@@ -572,7 +574,7 @@ router.patch('/queue/:id/questions', verifyToken, async (req, res) => {
     const id = Number(req.params.id);
     const questions = Array.isArray(req.body.questions) ? req.body.questions : [];
     const owns = await query(
-      `SELECT a.screening_answers, j.location
+      `SELECT a.screening_answers, a.submission_channel, j.location, j.company_name
        FROM applications a JOIN jobs j ON j.id = a.job_id
        WHERE a.id = $1 AND a.user_id = $2`, [id, req.user.id]
     );
@@ -580,6 +582,13 @@ router.patch('/queue/:id/questions', verifyToken, async (req, res) => {
 
     const p = await query('SELECT * FROM application_profiles WHERE user_id = $1', [req.user.id]);
     const filled = prefillAnswers(questions, p.rows[0] || {}, { location: owns.rows[0].location });
+
+    // Grow the knowledge base with every form seen. Awaited but never allowed to
+    // fail the request - a learning write must not cost someone an application.
+    recordSeen(questions, {
+      ats: owns.rows[0].submission_channel,
+      company: owns.rows[0].company_name,
+    }).catch((e) => console.warn('[kb] recordSeen failed:', e.message));
     const merged = { ...(owns.rows[0].screening_answers || {}), questions: filled };
 
     await query(
@@ -632,6 +641,12 @@ router.patch('/queue/:id/answers', verifyToken, async (req, res) => {
         if (v !== null && v !== '') {
           custom[normalizeKey(q)] = { answer: String(v), question: String(q).slice(0, 400) };
         }
+      }
+      // A user-answered wording becomes a confirmed variation of its concept, so
+      // the same question from any other ATS resolves without asking again.
+      for (const q of Object.keys(edits)) {
+        const c = classify(q);
+        confirmVariation(q, c && c.conceptId).catch(() => {});
       }
       if (Object.keys(custom).length) {
         await query(
@@ -950,6 +965,22 @@ router.post('/queue/:id/failure', verifyToken, async (req, res) => {
 /* ------------------------------------------------------------------ *
  * Proof surface for the dashboard
  * ------------------------------------------------------------------ */
+
+// What the knowledge base has learned - surfaced so the profile screen can show
+// the thing actually improving, rather than asserting that it does.
+router.get('/knowledge', verifyToken, async (req, res) => {
+  try {
+    const s = await knowledgeStats();
+    const top = await query(
+      `SELECT concept_id, COUNT(*)::int AS variations, SUM(times_seen)::int AS seen
+       FROM question_variations WHERE concept_id IS NOT NULL
+       GROUP BY concept_id ORDER BY variations DESC LIMIT 15`
+    );
+    res.json({ ...s, byConcept: top.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load knowledge stats' });
+  }
+});
 
 router.get('/submitted', verifyToken, async (req, res) => {
   try {

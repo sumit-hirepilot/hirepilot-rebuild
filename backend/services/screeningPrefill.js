@@ -13,7 +13,7 @@
  * require sponsorship" both contain "work" and "require").
  */
 
-const { findSimilar } = require('./questionMatcher');
+const { resolve: resolveFromKnowledge, ASK_THRESHOLD } = require('./questionKnowledge');
 
 // Maps a job's location string onto a country so work-authorisation and
 // sponsorship questions can be answered per posting rather than globally.
@@ -216,13 +216,24 @@ function prefillAnswers(questions, profile, jobContext = {}) {
     }
 
     /*
-     * Then a saved answer to the SAME question worded differently. Every ATS
-     * phrases these its own way, so without this the profile accumulates a
-     * near-duplicate per employer and keeps asking what it already knows.
-     * matchedQuestion is surfaced so the review screen can show which saved
-     * answer was reused rather than presenting it as if freshly known.
+     * Then a saved answer to the SAME question worded differently - resolved by
+     * canonical concept first, token similarity second, each with a confidence.
+     * Anything under ASK_THRESHOLD is handed to the user rather than filled:
+     * asking one more time is cheap, a confidently wrong answer on a real
+     * application is not.
      */
-    const similar = findSimilar(text, custom);
+    const similar = resolveFromKnowledge(text, custom);
+    if (similar && similar.confidence < ASK_THRESHOLD) {
+      return {
+        ...base,
+        answer: null,
+        source: 'low_confidence',
+        suggestion: similar.answer,
+        confidence: similar.confidence,
+        matchedQuestion: similar.matchedQuestion,
+        reason: `Closest saved answer is only ${Math.round(similar.confidence * 100)}% confident - confirm it rather than guess.`,
+      };
+    }
     if (similar) {
       // Still honour the form's own options - a reused answer that is not on
       // the list must not be silently submitted.
@@ -239,14 +250,17 @@ function prefillAnswers(questions, profile, jobContext = {}) {
             reason: `Your saved answer to "${similar.matchedQuestion.slice(0, 70)}" is not one of this form's options.`,
           };
         }
-        return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion, matchScore: similar.score };
+        return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion,
+          confidence: similar.confidence, via: similar.via, conceptLabel: similar.conceptLabel };
       }
       return {
         ...base,
         answer: similar.answer,
         source: 'profile_similar',
         matchedQuestion: similar.matchedQuestion,
-        matchScore: similar.score,
+        confidence: similar.confidence,
+        via: similar.via,
+        conceptLabel: similar.conceptLabel,
       };
     }
 
