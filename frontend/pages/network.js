@@ -62,26 +62,6 @@ export default function Network() {
     }
   };
 
-  const handleTrack = async (suggestion) => {
-    try {
-      const res = await fetch(`${base}/api/network`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          jobId: router.query.jobId || null,
-          companyName: company,
-          firstName: suggestion.firstName,
-          lastName: suggestion.lastName,
-          jobTitle: suggestion.title,
-          relationshipType: suggestion.relationshipType,
-          notes: suggestion.message,
-        }),
-      });
-      if (res.ok) loadContacts(token);
-    } catch (err) {
-      console.error('Failed to track contact', err);
-    }
-  };
 
   const handleStatusChange = async (contactId, status) => {
     try {
@@ -103,7 +83,6 @@ export default function Network() {
 
   if (!user) return null;
 
-  const relBadge = { hiring_manager: 'Hiring Manager', alumni: 'Alumni', employee: 'Employee' };
 
   return (
     <>
@@ -128,27 +107,27 @@ export default function Network() {
 
         {suggestions.length > 0 && (
           <>
-            <p className={page.suggestedLabel}>Suggested contacts at {company}</p>
+            <p className={page.suggestedLabel}>Ways to find real contacts at {company}</p>
+            <p className={page.searchNote}>
+              These are searches to run against LinkedIn&apos;s own index — not people
+              HirePilot has identified. Earlier this panel displayed generated names
+              and mutual-connection counts; those were not real, so they are gone.
+            </p>
             <div className={page.suggestGrid}>
-              {suggestions.map((s, i) => (
-                <div key={i} className={styles.card} style={{ marginBottom: 0 }}>
-                  <div className={page.suggestHeader}>
-                    <div className={page.avatar}>{s.firstName[0]}{s.lastName[0]}</div>
-                    <div style={{ flex: 1 }}>
-                      <p className={page.suggestName}>{s.firstName} {s.lastName}</p>
-                      <p className={page.suggestTitle}>{s.title}</p>
-                    </div>
-                    <span className={page.relBadge}>{relBadge[s.relationshipType]}</span>
-                  </div>
-                  <p className={page.mutualText}>{s.mutualConnections} mutual connections</p>
-                  <p className={page.messageText}>&ldquo;{s.message}&rdquo;</p>
+              {suggestions.map((s) => (
+                <div key={s.key} className={styles.card} style={{ marginBottom: 0 }}>
+                  <p className={page.suggestName}>{s.label}</p>
                   <div className={page.suggestActions}>
-                    <a href={s.linkedinSearchUrl} target="_blank" rel="noreferrer" className={page.linkedinLink}>Connect on LinkedIn</a>
-                    <button className={page.trackButton} onClick={() => handleTrack(s)}>Track</button>
+                    <a href={s.url} target="_blank" rel="noreferrer" className={page.linkedinLink}>
+                      Search on LinkedIn →
+                    </a>
                   </div>
                 </div>
               ))}
             </div>
+            <p className={page.searchNote}>
+              Found someone real? Add them under &ldquo;Your connections&rdquo; to track outreach.
+            </p>
           </>
         )}
 

@@ -489,9 +489,9 @@ export default function Jobs() {
           </button>
           <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
           {appliedIds.has(job.id) ? (
-            <span className={page.appliedBadge}>Applied</span>
+            <span className={page.appliedBadge}>Tracked</span>
           ) : (
-            <button className={page.applyButton} onClick={() => handleApply(job.id)}>Apply Now</button>
+            <button className={page.applyButton} onClick={() => handleApply(job.id)} title="Adds this job to your tracker. HirePilot does not submit to the employer - use Original Posting to apply.">Track job</button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
         </div>
@@ -971,9 +971,9 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
             {tailoring ? 'Tailoring...' : 'Tailor Resume'}
           </button>
           {applied ? (
-            <span className={styles.appliedTag}>Applied</span>
+            <span className={styles.appliedTag}>Tracked</span>
           ) : (
-            <button className={styles.primaryBtn} onClick={onApply}>Apply with Autofill</button>
+            <button className={styles.primaryBtn} onClick={onApply}>Track this application</button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={styles.secondaryBtn}>Original Posting</a>
           <button className={styles.secondaryBtn} onClick={() => router.push(`/network?jobId=${job.id}&company=${encodeURIComponent(job.company_name)}`)}>

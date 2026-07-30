@@ -6,80 +6,53 @@ const router = express.Router();
 
 router.use(verifyToken);
 
-const FIRST_NAMES = ['Sofia', 'Elena', 'Grace', 'Amir', 'Jordan', 'Maya', 'Liam', 'Priya', 'Noah', 'Isabella', 'Ethan', 'Zoe'];
-const LAST_NAMES = ['Larsen', 'Patel', 'Novak', 'Rivera', 'Okafor', 'Chen', 'Bennett', 'Kapoor', 'Silva', 'Nguyen', 'Rossi', 'Kim'];
-const TITLES = ['Director of Engineering', 'Product Manager', 'Design Lead', 'Staff Engineer', 'Engineering Manager', 'Talent Partner', 'Senior Recruiter', 'Head of Design'];
-const RELATIONSHIPS = ['hiring_manager', 'alumni', 'employee'];
+// Search entry points for finding real people at a company.
+//
+// This previously returned invented contacts: a first name, surname and job
+// title each picked at random from hardcoded lists, plus a fabricated
+// "N mutual connections" count, all seeded by company name so the same
+// fiction reappeared consistently. It rendered as an identified hiring
+// manager - "Grace Chen · Engineering Manager · 6 mutual connections" - when
+// no person had been identified at all. Acting on it meant contacting nobody,
+// or worse, contacting a real namesake about a role they have no part in.
+//
+// It now returns searches the user runs themselves against LinkedIn's real
+// index. No names, no titles, no counts are asserted by HirePilot.
+const SEARCH_ROLES = [
+  { key: 'recruiter', label: 'Recruiters & talent partners', terms: 'recruiter OR "talent acquisition" OR "talent partner"' },
+  { key: 'hiring_manager', label: 'Engineering & design leadership', terms: '"engineering manager" OR "design lead" OR "head of design" OR director' },
+  { key: 'peer', label: 'People already in this kind of role', terms: null },
+];
 
-// Deterministic pseudo-random generator seeded by a string, so repeated
-// searches for the same company return the same suggestions.
-function seededRandom(seed) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
-  }
-  return function next() {
-    h = (Math.imul(48271, h) + 1) % 2147483647;
-    return (h < 0 ? h + 2147483647 : h) / 2147483647;
-  };
-}
+const linkedInPeopleUrl = (company, terms) =>
+  `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${company} ${terms || ''}`.trim())}`;
 
-function pick(arr, rand) {
-  return arr[Math.floor(rand() * arr.length)];
-}
-
-function buildOutreachMessage(firstName, relationship, company) {
-  if (relationship === 'alumni') {
-    return `Hi ${firstName}, I noticed we're both connected to ${company} and share a school. Would you be open to a quick chat about your experience there?`;
-  }
-  if (relationship === 'hiring_manager') {
-    return `Hi ${firstName}, I'm applying for a role on your team at ${company} and would love to learn more about what you're looking for.`;
-  }
-  return `Hi ${firstName}, I noticed we're both connected to ${company}. Would you be open to a quick chat about your experience there?`;
-}
-
-// Generate plausible contact suggestions for a company. These are templated,
-// deterministically generated placeholders (no real people-search API is
-// available), not real personal data - clearly framed as suggestions to track
-// and reach out to via LinkedIn yourself.
 router.post('/suggest', async (req, res) => {
   try {
-    const { company } = req.body;
+    const { company, roleTitle } = req.body;
     if (!company || !company.trim()) {
       return res.status(400).json({ error: 'company is required' });
     }
+    const name = company.trim();
 
-    const rand = seededRandom(company.trim().toLowerCase());
-    const count = 3 + Math.floor(rand() * 3); // 3-5 suggestions
-    const usedNames = new Set();
-    const suggestions = [];
+    const searches = SEARCH_ROLES.map((r) => ({
+      key: r.key,
+      label: r.label,
+      // The peer search uses the target job title when one was passed, which
+      // is the user's own real context rather than an assumption.
+      url: linkedInPeopleUrl(name, r.key === 'peer' ? (roleTitle || '') : r.terms),
+    }));
 
-    while (suggestions.length < count) {
-      const firstName = pick(FIRST_NAMES, rand);
-      const lastName = pick(LAST_NAMES, rand);
-      const fullName = `${firstName} ${lastName}`;
-      if (usedNames.has(fullName)) continue;
-      usedNames.add(fullName);
-
-      const relationship = pick(RELATIONSHIPS, rand);
-      const title = pick(TITLES, rand);
-      const mutualConnections = 2 + Math.floor(rand() * 8);
-
-      suggestions.push({
-        firstName,
-        lastName,
-        title,
-        relationshipType: relationship,
-        mutualConnections,
-        message: buildOutreachMessage(firstName, relationship, company.trim()),
-        linkedinSearchUrl: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${fullName} ${company.trim()}`)}`,
-      });
-    }
-
-    res.json({ company: company.trim(), suggestions });
+    res.json({
+      company: name,
+      // Explicit so the client cannot mistake these for identified people.
+      areIdentifiedPeople: false,
+      searches,
+      note: 'These are searches to run, not people HirePilot has identified. Add a contact below once you find a real one.',
+    });
   } catch (err) {
-    console.error('Suggest contacts error:', err);
-    res.status(500).json({ error: 'Failed to generate contact suggestions' });
+    console.error('Build contact searches error:', err);
+    res.status(500).json({ error: 'Failed to build contact searches' });
   }
 });
 

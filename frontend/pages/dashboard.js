@@ -133,7 +133,7 @@ export default function Dashboard() {
               <div>
                 <p className={styles.autopilotTitle}>{autoApplyEnabled ? 'Auto-Pilot Active' : 'Auto-Pilot Paused'}</p>
                 <p className={styles.autopilotSubtitle}>
-                  {scannedToday} jobs scanned &middot; {applicationsSent} applications sent &middot; {todaysMatches} matches found
+                  {scannedToday} jobs scanned &middot; {applicationsSent} tracked &middot; {todaysMatches} matches found
                 </p>
               </div>
             </div>
@@ -158,16 +158,20 @@ export default function Dashboard() {
             <p className={styles.statValue}>{todaysMatches}</p>
           </div>
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Applications Sent</p>
+            <p className={styles.statLabel}>Applications Tracked</p>
             <p className={styles.statValue}>{applicationsSent}</p>
           </div>
           <div className={styles.statCard}>
             <p className={styles.statLabel}>Interview Pipeline</p>
             <p className={styles.statValue}>{interviews}<span className={styles.statValueUnit}>active</span></p>
           </div>
+          {/* Was "Time Saved", hardcoded to 0 - it was never computed, and any
+              figure would have required inventing a "minutes saved per
+              application" multiplier. Replaced with a count that comes
+              straight from the indexed job pool. */}
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Time Saved</p>
-            <p className={styles.statValue}>0<span className={styles.statValueUnit}>hrs</span></p>
+            <p className={styles.statLabel}>Jobs Indexed</p>
+            <p className={styles.statValue}>{scannedToday.toLocaleString()}</p>
           </div>
         </div>
 
