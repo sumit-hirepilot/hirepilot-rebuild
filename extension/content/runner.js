@@ -114,11 +114,52 @@ HP.discovery = (() => {
 HP.runner = (() => {
   const log = (...a) => console.log('[HirePilot]', ...a);
 
-  function findByLabel(root, re) {
+  /*
+   * Find the control a question is asking through.
+   *
+   * "First control whose label matches" is not good enough, because a label
+   * often belongs to a whole field group rather than to one input. A question
+   * and its "if yes, explain" follow-up share a group, so both answer to the
+   * same label text and the loose match took whichever came first. That put a
+   * dropdown's "No" into a free-text explanation box on a live application.
+   *
+   * So candidates are scored rather than taken in document order: an exact
+   * label match beats a prefix, which beats a loose regex hit, and a question
+   * that offers options prefers a control that can hold one. Ties keep document
+   * order. An unlabelled control never matches at all.
+   */
+  function findByLabel(root, re, opts = {}) {
     const controls = Array.from(root.querySelectorAll('input, textarea, select'))
       .filter(HP.fields.visible)
-      .filter((el) => !['hidden', 'submit', 'button', 'file'].includes(el.type));
-    return controls.find((el) => re.test(HP.fields.labelTextFor(el))) || null;
+      .filter((el) => !['hidden', 'submit', 'button', 'file'].includes(el.type))
+      // react-select keeps a second input holding the committed value. It
+      // carries the same label, and writing to it silently does nothing while
+      // reporting success.
+      .filter((el) => !HP.combobox.isHiddenValueInput(el));
+
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const wanted = norm(opts.question);
+    const expectChoice = Boolean(opts.expectChoice);
+
+    let best = null;
+    let bestScore = 0;
+    for (const el of controls) {
+      const label = HP.fields.labelTextFor(el);
+      if (!label || !re.test(label)) continue;
+
+      const l = norm(label);
+      let score = 1;
+      if (wanted && l === wanted) score = 4;
+      else if (wanted && (l.startsWith(wanted) || wanted.startsWith(l))) score = 3;
+      else score = 2;
+
+      // A question with a fixed option list belongs in a control that has one.
+      const isChoice = HP.combobox.is(el) || el.tagName === 'SELECT' || el.type === 'radio';
+      if (expectChoice) score += isChoice ? 2 : -1;
+
+      if (score > bestScore) { bestScore = score; best = el; }
+    }
+    return best;
   }
 
   // Identity/contact. Known selectors first, label matching second.
@@ -244,13 +285,13 @@ HP.runner = (() => {
     for (const q of questions || []) {
       if (q.answer === null || q.answer === undefined || q.answer === '') {
         if (q.required && !q.optional) {
-          const el = findByLabel(root, new RegExp(escapeRe(q.question).slice(0, 60), 'i'));
+          const el = findByLabel(root, questionRe(q.question), { question: q.question, expectChoice: Boolean(q.options && q.options.length) });
           await cannotFill(q, el, q.reason || 'not in your profile yet');
         }
         continue;
       }
 
-      const el = findByLabel(root, new RegExp(escapeRe(q.question).slice(0, 60), 'i'));
+      const el = findByLabel(root, questionRe(q.question), { question: q.question, expectChoice: Boolean(q.options && q.options.length) });
       if (!el) {
         await cannotFill(q, null, 'field not found on page');
         continue;
@@ -275,6 +316,15 @@ HP.runner = (() => {
       else await cannotFill(q, el, 'your saved answer is not one of this form’s options');
     }
     return { filled, unfilled };
+  }
+
+  /*
+   * Question text as a matcher. Sliced BEFORE escaping - slicing the escaped
+   * string can cut a backslash in half and produce a regex that matches nothing,
+   * silently turning an answerable question into an unfilled one.
+   */
+  function questionRe(question) {
+    return new RegExp(escapeRe(String(question).slice(0, 60)), 'i');
   }
 
   function escapeRe(s) {

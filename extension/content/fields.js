@@ -115,8 +115,21 @@ HP.fields = (() => {
       const target = document.getElementById(labelledBy);
       if (target) return clean(target.textContent);
     }
+    /*
+     * react-select's input is generated with an id nothing points at, no
+     * aria-label and no wrapping label, so every lookup above misses and this
+     * used to fall through to ''. The consequence was not a missing answer but a
+     * WRONG one: with the dropdown unlabelled, the next control sharing its
+     * field group - on Scale AI's form, the box labelled "If yes, please provide
+     * further explanation below." - became the best match for the non-compete
+     * question, and "No" was typed into a free-text explanation on a real
+     * application. Resolve the label from the select container's group instead.
+     */
+    const selectContainer = el.closest('[class*="select__container"], [class*="select-shell"]');
+    const scope = selectContainer || el;
+
     // Field-group wrapper: the nearest preceding label-ish node.
-    const group = el.closest('[class*="field"], [class*="question"], fieldset, .form-group');
+    const group = scope.closest('[class*="field"], [class*="question"], fieldset, .form-group');
     if (group) {
       const l = group.querySelector('label, legend, [class*="label"]');
       if (l) return clean(l.textContent);
