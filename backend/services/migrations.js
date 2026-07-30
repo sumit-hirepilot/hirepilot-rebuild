@@ -200,6 +200,13 @@ const STATEMENTS = [
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`,
 
+  // Work authorisation is per-country, not a single yes/no. Storing one value
+  // meant "Are you legally authorized to work in the country where the job is
+  // located?" got the same answer on a Bengaluru posting and a San Francisco
+  // one - and for a candidate authorised only in India, answering Yes on a US
+  // form is a false statement on a legally binding document.
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS authorized_countries TEXT[] DEFAULT '{}'`,
+
   // Verified-submission tracking. Previously a row was inserted with
   // status='applied' the moment the user clicked, which asserted an employer
   // had received something when nothing had been sent. These columns make the

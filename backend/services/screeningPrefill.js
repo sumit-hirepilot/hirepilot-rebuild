@@ -13,6 +13,47 @@
  * require sponsorship" both contain "work" and "require").
  */
 
+// Maps a job's location string onto a country so work-authorisation and
+// sponsorship questions can be answered per posting rather than globally.
+// Deliberately conservative: an unrecognised location yields null, which makes
+// those questions fall through to the user instead of being answered wrongly.
+const COUNTRY_HINTS = [
+  ['india', 'India'], ['bengaluru', 'India'], ['bangalore', 'India'], ['mumbai', 'India'],
+  ['delhi', 'India'], ['hyderabad', 'India'], ['pune', 'India'], ['chennai', 'India'],
+  ['gurgaon', 'India'], ['gurugram', 'India'], ['noida', 'India'], ['kolkata', 'India'],
+  ['united states', 'United States'], ['usa', 'United States'], ['u.s.', 'United States'],
+  ['san francisco', 'United States'], ['new york', 'United States'], ['seattle', 'United States'],
+  ['austin', 'United States'], ['boston', 'United States'], ['chicago', 'United States'],
+  ['los angeles', 'United States'], ['denver', 'United States'], ['atlanta', 'United States'],
+  ['united kingdom', 'United Kingdom'], ['london', 'United Kingdom'], [' uk', 'United Kingdom'],
+  ['canada', 'Canada'], ['toronto', 'Canada'], ['vancouver', 'Canada'],
+  ['germany', 'Germany'], ['berlin', 'Germany'], ['munich', 'Germany'],
+  ['ireland', 'Ireland'], ['dublin', 'Ireland'],
+  ['netherlands', 'Netherlands'], ['amsterdam', 'Netherlands'],
+  ['australia', 'Australia'], ['sydney', 'Australia'], ['melbourne', 'Australia'],
+  ['singapore', 'Singapore'], ['poland', 'Poland'], ['spain', 'Spain'], ['france', 'France'],
+  ['brazil', 'Brazil'], ['mexico', 'Mexico'], ['japan', 'Japan'], ['uae', 'United Arab Emirates'],
+  ['dubai', 'United Arab Emirates'],
+];
+
+function countryForLocation(location) {
+  const t = ` ${String(location || '').toLowerCase()} `;
+  if (!t.trim()) return null;
+  // "Remote" with no country attached tells us nothing about where the legal
+  // entity is, so it stays unresolved.
+  for (const [hint, country] of COUNTRY_HINTS) {
+    if (t.includes(hint)) return country;
+  }
+  return null;
+}
+
+function isAuthorizedIn(profile, country) {
+  if (!country) return null;
+  const list = (profile.authorized_countries || []).map((c) => String(c).trim().toLowerCase());
+  if (!list.length) return null;
+  return list.includes(country.toLowerCase());
+}
+
 // Each rule: which profile field answers it, and how to render that value for
 // the field type the form is using.
 const RULES = [
@@ -21,12 +62,27 @@ const RULES = [
     // Checked before work_authorization: this phrasing contains "work" and
     // would otherwise be captured by the authorisation rule below.
     test: /sponsor|visa\s*sponsor|require.*sponsorship|need.*sponsorship|h-?1b/i,
-    render: (v) => (v === true ? 'Yes' : v === false ? 'No' : null),
+    // If we know the posting's country and the user is already authorised
+    // there, no sponsorship is needed regardless of the stored default.
+    render: (v, p, ctx) => {
+      const auth = isAuthorizedIn(p, ctx && ctx.country);
+      if (auth === true) return 'No';
+      if (auth === false) return 'Yes';
+      return v === true ? 'Yes' : v === false ? 'No' : null;
+    },
   },
   {
     field: 'work_authorization',
     test: /authoriz|authoris|legally.*(work|entitled)|right to work|work permit|eligible to work/i,
-    render: (v) => v || null,
+    // Answered against the posting's own country. Falls through to the user
+    // when the location cannot be resolved - guessing here would put a false
+    // statement on a legally binding form.
+    render: (v, p, ctx) => {
+      const auth = isAuthorizedIn(p, ctx && ctx.country);
+      if (auth === true) return 'Yes';
+      if (auth === false) return 'No';
+      return null;
+    },
   },
   {
     field: 'willing_to_relocate',
@@ -124,8 +180,9 @@ const DEMOGRAPHIC = /gender|race|ethnic|veteran|disability|sexual orientation|lg
 // cap it rather than persisting kilobytes per question on a 500MB volume.
 const MAX_STORED_OPTIONS = 120;
 
-function prefillAnswers(questions, profile) {
+function prefillAnswers(questions, profile, jobContext = {}) {
   const p = profile || {};
+  const ctx = { ...jobContext, country: jobContext.country || countryForLocation(jobContext.location) };
   const custom = p.custom_answers || {};
 
   return (questions || []).map((q) => {
@@ -168,7 +225,10 @@ function prefillAnswers(questions, profile) {
     for (const rule of RULES) {
       if (!rule.test.test(text)) continue;
       const raw = p[rule.field];
-      if (raw === null || raw === undefined || raw === '') {
+      // These two are derived from authorized_countries + the posting's
+      // location, so an empty stored field is not itself a gap.
+      const derivesFromCountry = rule.field === 'work_authorization' || rule.field === 'requires_sponsorship';
+      if (!derivesFromCountry && (raw === null || raw === undefined || raw === '')) {
         return {
           ...base,
           answer: null,
@@ -177,8 +237,18 @@ function prefillAnswers(questions, profile) {
           reason: `Your Application Profile has no value for "${labelFor(rule.field)}".`,
         };
       }
-      const rendered = rule.render(raw, p);
+      const rendered = rule.render(raw, p, ctx);
       if (rendered === null) {
+        if (derivesFromCountry) {
+          return {
+            ...base,
+            answer: null,
+            source: 'requires_user',
+            reason: ctx.country
+              ? `Your profile does not say whether you are authorised to work in ${ctx.country}.`
+              : "This posting's country could not be determined, so work authorisation cannot be answered automatically.",
+          };
+        }
         return {
           ...base, answer: null, source: 'profile_gap', missingField: rule.field,
           reason: `Your Application Profile has no value for "${labelFor(rule.field)}".`,
@@ -248,4 +318,7 @@ function summarize(prefilled) {
   };
 }
 
-module.exports = { prefillAnswers, summarize, normalizeKey, labelFor, LABELS };
+module.exports = {
+  prefillAnswers, summarize, normalizeKey, labelFor, LABELS,
+  countryForLocation, isAuthorizedIn,
+};

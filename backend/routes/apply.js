@@ -74,8 +74,9 @@ const PROFILE_FIELDS = [
   'portfolio_url', 'github_url', 'years_experience', 'current_company',
   'current_title', 'work_authorization', 'requires_sponsorship',
   'willing_to_relocate', 'notice_period', 'salary_expectation',
-  'salary_currency', 'pronouns',
+  'salary_currency', 'pronouns', 'authorized_countries',
 ];
+const ARRAY_FIELDS = new Set(['authorized_countries']);
 const BOOLEAN_FIELDS = new Set(['requires_sponsorship', 'willing_to_relocate']);
 
 router.get('/profile', verifyToken, async (req, res) => {
@@ -113,6 +114,11 @@ router.put('/profile', verifyToken, async (req, res) => {
       let v = req.body[f];
       if (v === '' ) v = null;
       if (BOOLEAN_FIELDS.has(f) && v !== null) v = v === true || v === 'true' || v === 'yes';
+      if (ARRAY_FIELDS.has(f)) {
+        // Accept either an array or a comma-separated string from the form.
+        if (v === null) v = [];
+        else if (!Array.isArray(v)) v = String(v).split(',').map((x) => x.trim()).filter(Boolean);
+      }
       if (f === 'years_experience' && v !== null) {
         const n = Number(v);
         v = Number.isFinite(n) ? n : null;
@@ -158,11 +164,15 @@ router.put('/profile', verifyToken, async (req, res) => {
 // user before a bulk run that N applications will stall on a missing answer.
 function completeness(p) {
   const weighted = [
-    'full_name', 'email', 'phone', 'current_location', 'work_authorization',
+    'full_name', 'email', 'phone', 'current_location', 'authorized_countries',
     'requires_sponsorship', 'linkedin_url', 'years_experience', 'notice_period',
     'salary_expectation',
   ];
-  const filled = weighted.filter((f) => p[f] !== null && p[f] !== undefined && p[f] !== '').length;
+  const filled = weighted.filter((f) => {
+    const v = p[f];
+    if (Array.isArray(v)) return v.length > 0;
+    return v !== null && v !== undefined && v !== '';
+  }).length;
   return Math.round((filled / weighted.length) * 100);
 }
 
@@ -327,7 +337,8 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
       { question: 'LinkedIn URL', required: false },
       { question: 'Portfolio website', required: false },
     ],
-    profile
+    profile,
+    { location: job.location }
   );
 
   const app = await query(
@@ -535,12 +546,14 @@ router.patch('/queue/:id/questions', verifyToken, async (req, res) => {
     const id = Number(req.params.id);
     const questions = Array.isArray(req.body.questions) ? req.body.questions : [];
     const owns = await query(
-      'SELECT screening_answers FROM applications WHERE id = $1 AND user_id = $2', [id, req.user.id]
+      `SELECT a.screening_answers, j.location
+       FROM applications a JOIN jobs j ON j.id = a.job_id
+       WHERE a.id = $1 AND a.user_id = $2`, [id, req.user.id]
     );
     if (!owns.rows.length) return res.status(404).json({ error: 'Not found' });
 
     const p = await query('SELECT * FROM application_profiles WHERE user_id = $1', [req.user.id]);
-    const filled = prefillAnswers(questions, p.rows[0] || {});
+    const filled = prefillAnswers(questions, p.rows[0] || {}, { location: owns.rows[0].location });
     const merged = { ...(owns.rows[0].screening_answers || {}), questions: filled };
 
     await query(
