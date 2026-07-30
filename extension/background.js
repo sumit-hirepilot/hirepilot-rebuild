@@ -360,7 +360,9 @@ async function processOne(item) {
       `Needs your answer: ${filledQs.summary.blockingQuestions.slice(0, 3).join(' | ')}`
     );
     watchTabForResume(tab.id, item.applicationId);
-    return { paused: true };
+    // Same rule as the mid-fill pause: the drawer is asking on this tab, so the
+    // rest of the batch carries on rather than queueing behind one question.
+    return { paused: true, awaitingAnswer: true };
   }
 
   const fresh = await api(`/api/apply/queue/${item.applicationId}`);
