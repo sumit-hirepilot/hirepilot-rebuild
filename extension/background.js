@@ -32,6 +32,9 @@ const state = {
   processed: 0,
   submitted: 0,
   failed: 0,
+  // Applications parked on a question the profile could not answer. Counted
+  // separately from failures: nothing went wrong, the drawer is asking.
+  awaitingAnswers: 0,
   pausedFor: null,
 };
 
@@ -204,14 +207,20 @@ async function runQueue() {
   state.lastError = null;
   await broadcast();
 
+  const attempted = [];
   try {
     // Bounded rather than while(true): a server bug that keeps handing back the
     // same item should stop, not spin forever opening tabs.
     for (let guard = 0; guard < 100; guard += 1) {
       if (!state.running) break;
 
-      const { item } = await api('/api/apply/queue/next');
+      // Ids already attempted this run. Without it, an item the server still
+      // reports as runnable but which parks again immediately would be handed
+      // back on every iteration until the guard trips.
+      const skip = attempted.length ? `?exclude=${attempted.join(',')}` : '';
+      const { item } = await api(`/api/apply/queue/next${skip}`);
       if (!item) break;
+      attempted.push(item.applicationId);
 
       state.currentApplicationId = item.applicationId;
       state.pausedFor = null;
@@ -222,10 +231,24 @@ async function runQueue() {
       if (result.submitted) state.submitted += 1;
       else if (result.failed) state.failed += 1;
 
-      // A paused item stays at the front of the queue; stop the loop and let
-      // the tab watcher resume it once the user has done their part. Carrying
-      // on would bury the tab that needs their attention.
-      if (result.paused) break;
+      /*
+       * A pause does not necessarily stop the run.
+       *
+       * Something only a human can do - login, MFA, CAPTCHA, a permission
+       * prompt, a consent tick - owns the screen, so carrying on would bury the
+       * tab that needs attention. That still stops the loop, and the tab watcher
+       * resumes it and the rest of the queue once the user is done.
+       *
+       * An unanswered question does not own the screen. The drawer is asking on
+       * that tab and will keep asking; stopping the whole run for it means one
+       * unknown question on job three blocks the seven behind it, which for a
+       * ten-job batch is the difference between one click and ten.
+       */
+      if (result.paused && !result.awaitingAnswer) break;
+      if (result.awaitingAnswer) {
+        state.awaitingAnswers += 1;
+        console.log(`[HirePilot] application ${item.applicationId} is waiting on an answer - continuing with the rest of the queue`);
+      }
 
       await sleep(1200);
     }
@@ -531,6 +554,7 @@ function counters() {
     processed: state.processed,
     submitted: state.submitted,
     failed: state.failed,
+    awaitingAnswers: state.awaitingAnswers,
     running: state.running,
     pausedFor: state.pausedFor,
     lastError: state.lastError,

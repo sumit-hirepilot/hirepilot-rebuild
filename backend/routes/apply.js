@@ -485,12 +485,29 @@ router.get('/queue', verifyToken, async (req, res) => {
 // approved is never handed to the automation.
 router.get('/queue/next', verifyToken, async (req, res) => {
   try {
+    /*
+     * Only `approved` - i.e. only what is actually runnable.
+     *
+     * This used to return `needs_user` items first, which made sense when a
+     * pause meant "the user is about to approve this". It does not any more: a
+     * needs_user item is parked on a question, the drawer is asking about it on
+     * its own tab, and handing it back to the loop returns the same id forever -
+     * one unknown question on the third job would starve the other seven in a
+     * ten-job batch.
+     *
+     * `exclude` lets the caller skip ids it has already tried this run, so a
+     * server-side state it disagrees with cannot spin the loop either.
+     */
+    const exclude = String(req.query.exclude || '')
+      .split(',').map((n) => Number(n)).filter(Number.isInteger);
+
     const r = await query(
       `SELECT a.id FROM applications a
-       WHERE a.user_id = $1 AND a.status IN ('approved', 'needs_user')
-       ORDER BY CASE a.status WHEN 'needs_user' THEN 0 ELSE 1 END, a.created_at ASC
+       WHERE a.user_id = $1 AND a.status = 'approved'
+         AND NOT (a.id = ANY($2::int[]))
+       ORDER BY a.created_at ASC
        LIMIT 1`,
-      [req.user.id]
+      [req.user.id, exclude]
     );
     if (!r.rows.length) return res.json({ item: null });
     return res.json({ item: await buildReviewPayload(req.user.id, r.rows[0].id) });
