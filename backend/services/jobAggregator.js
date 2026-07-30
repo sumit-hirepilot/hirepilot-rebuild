@@ -43,6 +43,23 @@ const SOURCES = [
 // the actual volume, not optimistically.
 const MAX_DESCRIPTION_CHARS = parseInt(process.env.MAX_DESCRIPTION_CHARS || '4000', 10);
 
+// Zero is treated as absent: a published salary of 0 means undisclosed, and
+// storing it would render as "$0" and fall into the "Under $50K" band.
+// Trims to a column's width instead of letting the insert fail. Used for the
+// narrow VARCHAR columns where a source can legitimately send something longer.
+const capLen = (v, n) => {
+  if (v === null || v === undefined) return null;
+  const t = String(v);
+  return t.length > n ? t.slice(0, n) : t;
+};
+
+const toIntOrNull = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+};
+
 const capText = (text) => {
   if (typeof text !== 'string') return text;
   if (text.length <= MAX_DESCRIPTION_CHARS) return text;
@@ -60,9 +77,9 @@ const normalizeJob = (job, source) => {
 
   return {
     source,
-    external_id: job.external_id || job.id || job.jobId,
-    title: job.title || job.jobTitle,
-    company_name: job.company || job.companyName,
+    external_id: capLen(job.external_id || job.id || job.jobId, 255),
+    title: capLen(job.title || job.jobTitle, 255),
+    company_name: capLen(job.company || job.companyName, 255),
     company_url: job.company_url || job.companyUrl,
     job_url: job.url || job.job_url || job.jobUrl,
     // Canonical ATS form URL where the source provides one; the extension's
@@ -70,13 +87,23 @@ const normalizeJob = (job, source) => {
     apply_url: job.apply_url || null,
     description: capText(job.description || job.jobDescription),
     requirements: capText(job.requirements || ''),
-    salary_min: job.salary_min || job.salaryMin || null,
-    salary_max: job.salary_max || job.salaryMax || null,
-    currency: job.currency || 'USD',
-    job_type: job.job_type || job.jobType || 'full-time',
-    work_arrangement: job.work_arrangement || job.workArrangement || 'remote',
-    location: job.location || job.city || '',
-    country: job.country || '',
+    // salary_min/max are INTEGER columns, but some sources publish decimals
+    // (an hourly "22.5"), which Postgres rejects outright - those jobs were
+    // being dropped with "invalid input syntax for type integer". Rounded here
+    // rather than widening the column, since sub-unit precision on a salary
+    // band is noise.
+    salary_min: toIntOrNull(job.salary_min ?? job.salaryMin),
+    salary_max: toIntOrNull(job.salary_max ?? job.salaryMax),
+    // Every narrow VARCHAR is capped to its column width. Sources legitimately
+    // send longer values - a location listing ten countries, a verbose
+    // job_type - and Postgres rejects the entire row rather than truncating,
+    // so the posting was being dropped with "value too long for type character
+    // varying". Widths mirror schema.sql.
+    currency: capLen(job.currency || 'USD', 10),
+    job_type: capLen(job.job_type || job.jobType || 'full-time', 50),
+    work_arrangement: capLen(job.work_arrangement || job.workArrangement || 'remote', 50),
+    location: capLen(job.location || job.city || '', 255),
+    country: capLen(job.country || '', 100),
     posted_at: postedAt,
   };
 };
@@ -101,10 +128,22 @@ const findCrossSourceDuplicate = async (title, companyName, postedAt) => {
   return result.rows[0]?.id || null;
 };
 
+/*
+ * Field list for the update paths. $15 is apply_url, so callers must bind their
+ * own predicate at $16 or later.
+ *
+ * This bit me: apply_url was added as $15 while the caller still used
+ * `WHERE id = $15`, so the same placeholder was an integer in one position and a
+ * varchar in the other. Postgres rejected it with "COALESCE types integer and
+ * character varying cannot be matched" and EVERY job store failed - silently,
+ * because storeJob's errors are logged per job rather than thrown. The explicit
+ * cast below also pins the type when the value is null.
+ */
+const UPDATE_FIELDS_PARAM_COUNT = 15;
 const UPDATE_FIELDS_SQL = `title = $1, company_name = $2, company_url = $3, job_url = $4,
    description = $5, requirements = $6, salary_min = $7, salary_max = $8, currency = $9,
    job_type = $10, work_arrangement = $11, location = $12, country = $13, posted_at = $14,
-   apply_url = COALESCE($15, jobs.apply_url),
+   apply_url = COALESCE($15::varchar, jobs.apply_url),
    fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP`;
 const updateFieldsParams = (jobData) => [
   jobData.title, jobData.company_name, jobData.company_url, jobData.job_url,
@@ -129,7 +168,7 @@ const storeJob = async (jobData) => {
   );
   if (existing.rows.length > 0) {
     await query(
-      `UPDATE jobs SET ${UPDATE_FIELDS_SQL} WHERE id = $15`,
+      `UPDATE jobs SET ${UPDATE_FIELDS_SQL} WHERE id = $${UPDATE_FIELDS_PARAM_COUNT + 1}`,
       [...updateFieldsParams(jobData), existing.rows[0].id]
     );
     return { id: existing.rows[0].id, isNew: false, isDuplicateMerge: false };
