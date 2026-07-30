@@ -77,6 +77,11 @@ const fetchGreenhouseCompany = async (slug) => {
     company: slug.charAt(0).toUpperCase() + slug.slice(1),
     url: j.absolute_url,
     job_url: j.absolute_url,
+    // absolute_url points at the company's own careers domain for ~56% of
+    // boards (e.g. careers.upstart.com/jobs?gh_jid=...), where the extension's
+    // content script does not run. The canonical board URL always does, and
+    // serves the same application form.
+    apply_url: `https://job-boards.greenhouse.io/${slug}/jobs/${j.id}`,
     description: stripHtml(j.content),
     location: j.location?.name || 'Not specified',
     country: '',

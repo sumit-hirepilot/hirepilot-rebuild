@@ -58,7 +58,7 @@ const SUPPORTED_ATS = new Set(['greenhouse', 'lever', 'ashby']);
 function detectAts(job) {
   const bySource = ATS_BY_SOURCE[(job.source || '').toLowerCase()];
   if (bySource) return bySource;
-  const url = job.job_url || '';
+  const url = job.apply_url || job.job_url || '';
   for (const [re, name] of ATS_BY_URL) {
     if (re.test(url)) return name;
   }
@@ -218,7 +218,7 @@ router.post('/queue', verifyToken, async (req, res) => {
     const fresh = jobIds.filter((id) => !skip.has(id));
 
     const jobsRes = await query(
-      `SELECT id, title, company_name, description, job_url, source, location
+      `SELECT id, title, company_name, description, job_url, apply_url, source, location
        FROM jobs WHERE id = ANY($1::int[])`,
       [fresh]
     );
@@ -349,7 +349,9 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
      RETURNING id, status, created_at`,
     [
       userId, job.id, tr.rows[0].id, cl.rows[0].id, letter,
-      job.job_url, atsPlatform, JSON.stringify({ standard }),
+      // The canonical ATS form URL where we have one - the extension's content
+      // script does not run on company careers domains.
+      job.apply_url || job.job_url, atsPlatform, JSON.stringify({ standard }),
     ]
   );
 
@@ -363,7 +365,7 @@ async function prepareOne({ userId, job, profile, resume, user, tailorMode, user
     automationSupported,
     atsScore: ats.score,
     addedSkills: tailoring.addedSkills || [],
-    targetFormUrl: job.job_url,
+    targetFormUrl: job.apply_url || job.job_url,
     status: 'ready_for_review',
     prefillSummary: summarize(standard),
   };

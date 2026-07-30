@@ -200,6 +200,24 @@ const STATEMENTS = [
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`,
 
+  // The extension's content script only runs on the ATS domains. Greenhouse's
+  // absolute_url points at the company's own careers site for roughly 56% of
+  // boards, so those postings could never be automated. external_id already
+  // encodes gh-{slug}-{jobid}, so the canonical board URL - which serves the
+  // same form and does match the content script - can be rebuilt for every
+  // existing row as well as at ingestion.
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS apply_url VARCHAR(1024)`,
+  `UPDATE jobs
+     SET apply_url = 'https://job-boards.greenhouse.io/'
+       || substring(external_id from '^gh-(.+)-[0-9]+$') || '/jobs/'
+       || substring(external_id from '^gh-.+-([0-9]+)$')
+   WHERE source = 'greenhouse'
+     AND apply_url IS NULL
+     AND external_id ~ '^gh-.+-[0-9]+$'`,
+  // Lever and Ashby already publish URLs on their own domains.
+  `UPDATE jobs SET apply_url = job_url
+   WHERE source IN ('lever','ashby') AND apply_url IS NULL`,
+
   // Work authorisation is per-country, not a single yes/no. Storing one value
   // meant "Are you legally authorized to work in the country where the job is
   // located?" got the same answer on a Bengaluru posting and a San Francisco

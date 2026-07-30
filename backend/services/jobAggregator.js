@@ -65,6 +65,9 @@ const normalizeJob = (job, source) => {
     company_name: job.company || job.companyName,
     company_url: job.company_url || job.companyUrl,
     job_url: job.url || job.job_url || job.jobUrl,
+    // Canonical ATS form URL where the source provides one; the extension's
+    // content script only runs on the ATS domains, not company careers sites.
+    apply_url: job.apply_url || null,
     description: capText(job.description || job.jobDescription),
     requirements: capText(job.requirements || ''),
     salary_min: job.salary_min || job.salaryMin || null,
@@ -101,12 +104,13 @@ const findCrossSourceDuplicate = async (title, companyName, postedAt) => {
 const UPDATE_FIELDS_SQL = `title = $1, company_name = $2, company_url = $3, job_url = $4,
    description = $5, requirements = $6, salary_min = $7, salary_max = $8, currency = $9,
    job_type = $10, work_arrangement = $11, location = $12, country = $13, posted_at = $14,
+   apply_url = COALESCE($15, jobs.apply_url),
    fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP`;
 const updateFieldsParams = (jobData) => [
   jobData.title, jobData.company_name, jobData.company_url, jobData.job_url,
   jobData.description, jobData.requirements, jobData.salary_min, jobData.salary_max,
   jobData.currency, jobData.job_type, jobData.work_arrangement, jobData.location,
-  jobData.country, jobData.posted_at,
+  jobData.country, jobData.posted_at, jobData.apply_url,
 ];
 
 const storeJob = async (jobData) => {
@@ -144,8 +148,8 @@ const storeJob = async (jobData) => {
     `INSERT INTO jobs (
       source, external_id, title, company_name, company_url, job_url,
       description, requirements, salary_min, salary_max, currency,
-      job_type, work_arrangement, location, country, posted_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      job_type, work_arrangement, location, country, posted_at, apply_url
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     ON CONFLICT (source, external_id) DO UPDATE
     SET title = EXCLUDED.title, company_name = EXCLUDED.company_name,
         company_url = EXCLUDED.company_url, job_url = EXCLUDED.job_url,
@@ -154,6 +158,7 @@ const storeJob = async (jobData) => {
         currency = EXCLUDED.currency, job_type = EXCLUDED.job_type,
         work_arrangement = EXCLUDED.work_arrangement, location = EXCLUDED.location,
         country = EXCLUDED.country, posted_at = EXCLUDED.posted_at,
+        apply_url = COALESCE(EXCLUDED.apply_url, jobs.apply_url),
         fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP
     RETURNING id`,
     [
@@ -161,7 +166,7 @@ const storeJob = async (jobData) => {
       jobData.company_url, jobData.job_url, jobData.description, jobData.requirements,
       jobData.salary_min, jobData.salary_max, jobData.currency,
       jobData.job_type, jobData.work_arrangement, jobData.location, jobData.country,
-      jobData.posted_at,
+      jobData.posted_at, jobData.apply_url,
     ]
   );
 
