@@ -34,9 +34,17 @@ const splitTitleCompany = (raw) => {
 
 const fetchJobs = async () => {
   try {
+    // Serves 200 from a home IP but 503 from Railway on almost every cycle. A
+    // feed that is up for everyone else is not down - it is refusing the
+    // default axios user-agent from a datacentre range. Identifying the client
+    // and allowing longer than 10s stops the retries from failing too.
     const response = await axios.get(BASE_URL, {
-      timeout: 10000,
-      headers: { Accept: 'application/rss+xml' },
+      timeout: 20000,
+      headers: {
+        Accept: 'application/rss+xml, application/xml, text/xml',
+        'Accept-Language': 'en,da;q=0.8',
+        'User-Agent': 'HirePilot/1.0 (job aggregator; +https://hirepilot-rebuild-production.up.railway.app)',
+      },
     });
 
     const parsed = parser.parse(response.data);

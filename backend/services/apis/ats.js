@@ -30,7 +30,7 @@ const GREENHOUSE_COMPANIES = [
 
 const LEVER_COMPANIES = [
   'alloy', 'angellist', 'articulate', 'clari', 'imbue', 'kapwing', 'kraken',
-  'labelbox', 'mistral', 'neon', 'netflix', 'outreach', 'palantir', 'plaid',
+  'labelbox', 'mistral', 'neon', 'outreach', 'palantir', 'plaid',
   'secureframe', 'whoop', 'zoox',
 ];
 
