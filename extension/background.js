@@ -18,7 +18,10 @@
  */
 
 const DEFAULTS = {
-  apiBase: 'https://hirepilot-production.up.railway.app',
+  // The API and the frontend are separate Railway services on separate domains.
+  // This must be the API one - hirepilot-production.up.railway.app was an
+  // assumed hostname that does not exist and returns 502.
+  apiBase: 'https://hirepilot-production-e70d.up.railway.app',
 };
 
 const state = {

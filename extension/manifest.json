@@ -15,9 +15,10 @@
     "https://boards.greenhouse.io/*",
     "https://jobs.lever.co/*",
     "https://jobs.ashbyhq.com/*",
-    "https://hirepilot-production.up.railway.app/*",
     "http://localhost:3001/*",
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://hirepilot-production-e70d.up.railway.app/*",
+    "https://hirepilot-rebuild-production.up.railway.app/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -46,7 +47,7 @@
     {
       "matches": [
         "http://localhost:3000/*",
-        "https://hirepilot-production.up.railway.app/*"
+        "https://hirepilot-rebuild-production.up.railway.app/*"
       ],
       "js": [
         "content/announce.js"
