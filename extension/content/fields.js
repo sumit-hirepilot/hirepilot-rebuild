@@ -280,26 +280,81 @@ HP.combobox = (() => {
     return sv ? HP.fields.clean(sv.textContent) : null;
   }
 
+  const optionNodes = (menu) => Array.from(menu.querySelectorAll('[role="option"], [class*="option"]'));
+
+  /*
+   * Type into the combobox and wait for its options to arrive.
+   *
+   * Greenhouse's location field is an async typeahead: its list is empty until
+   * you type, and then fetched. Opening it and reading nothing looked identical
+   * to "this dropdown has no matching option", so a profile that had the answer
+   * still parked the application - it blocked both Checkr applications on
+   * "Location (City) - your saved answer is not one of this form's options".
+   *
+   * React-controlled, so the value goes in through the native setter; assigning
+   * .value directly leaves React's state untouched and no fetch fires.
+   */
+  async function typeAhead(el, text) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(el, text); else el.value = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Poll rather than a fixed wait: the request time varies and a fixed sleep
+    // is either slow on every field or too short on a slow one.
+    for (let i = 0; i < 12; i += 1) {
+      await sleep(250);
+      const menu = menuFor(el);
+      if (menu && optionNodes(menu).length) return menu;
+    }
+    return menuFor(el);
+  }
+
   // Exact match only, same rule as fillSelect: choosing the "closest" option on
   // a sponsorship or salary dropdown is the kind of guess that becomes a
   // misrepresentation.
   async function choose(el, value) {
     if (!value) return false;
-    const menu = await open(el);
-    if (!menu) return false;
     const want = String(value).trim().toLowerCase();
-    const target = Array.from(menu.querySelectorAll('[role="option"], [class*="option"]'))
-      .find((o) => HP.fields.clean(o.textContent).toLowerCase() === want);
+
+    let menu = await open(el);
+    let target = menu && optionNodes(menu).find((o) => HP.fields.clean(o.textContent).toLowerCase() === want);
+
+    /*
+     * Nothing matched from the static list - try it as a typeahead before
+     * giving up. Also covers long lists that virtualise: a 200-country dropdown
+     * renders a window of options, and the one wanted may simply not be in the
+     * DOM until it is searched for.
+     */
+    if (!target) {
+      menu = await typeAhead(el, String(value).trim());
+      target = menu && optionNodes(menu).find((o) => HP.fields.clean(o.textContent).toLowerCase() === want);
+
+      // Fall back to a prefix match ONLY on the typed text, where the widget
+      // itself did the filtering - "Bengaluru" offering "Bengaluru, Karnataka,
+      // India" is the same place, not a different answer. Still never a fuzzy
+      // pick from an unfiltered list.
+      if (!target && menu) {
+        const opts = optionNodes(menu);
+        const prefixed = opts.filter((o) => HP.fields.clean(o.textContent).toLowerCase().startsWith(want));
+        if (prefixed.length === 1) target = prefixed[0];
+      }
+    }
+
     if (!target) {
       close(el);
       return false;
     }
     pointerSeq(target);
     await sleep(400);
-    return selectedText(el)?.toLowerCase() === want;
+
+    const chosen = selectedText(el);
+    if (!chosen) return false;
+    const got = chosen.toLowerCase();
+    // Accept the widget's own expansion of what was asked for, not anything else.
+    return got === want || got.startsWith(want);
   }
 
-  return { is, open, close, readOptions, choose, optionsIn, selectedText, containerFor, isHiddenValueInput };
+  return { is, open, close, readOptions, choose, typeAhead, optionsIn, selectedText, containerFor, isHiddenValueInput };
 })();
 
 /*
