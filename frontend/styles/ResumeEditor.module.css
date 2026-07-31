@@ -1,0 +1,147 @@
+/* Resume editor. Tokens only - see AutoApply.module.css for why. */
+
+.loading { padding: 40px 0; color: var(--text-secondary); }
+
+/* Full-height two-pane. 30/70 per the spec; the document is the point of the
+   screen, so it gets the room. */
+.shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 30%) 1fr;
+  gap: 16px;
+  height: calc(100vh - 130px);
+  min-height: 520px;
+}
+
+.left {
+  display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto; padding-right: 4px;
+}
+.right { display: flex; flex-direction: column; min-width: 0; }
+
+.leftHead { display: flex; gap: 8px; }
+.versionSel {
+  flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-secondary); color: var(--text);
+}
+
+.tailorBox, .askBox, .chat, .rules {
+  padding: 14px; border-radius: 12px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.askBox { background: var(--warning-bg); border-color: var(--warning); }
+.boxTitle { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 9px; }
+
+.input {
+  width: 100%; padding: 8px 11px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text);
+}
+.input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+.primaryBtn, .ghostBtn, .smallPrimary, .smallGhost {
+  border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; white-space: nowrap;
+}
+.primaryBtn { padding: 8px 15px; font-size: 12.5px; background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+.ghostBtn { padding: 8px 13px; font-size: 12.5px; background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.smallPrimary { padding: 5px 11px; font-size: 11.5px; background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+.smallGhost { padding: 5px 11px; font-size: 11.5px; background: var(--bg-secondary); color: var(--text); border: 1px solid var(--border); }
+.primaryBtn:hover, .smallPrimary:hover { filter: brightness(1.06); }
+.ghostBtn:hover, .smallGhost:hover { border-color: var(--primary); }
+.primaryBtn:disabled, .ghostBtn:disabled, .smallPrimary:disabled, .smallGhost:disabled { opacity: .55; cursor: not-allowed; }
+.linkBtn { background: none; border: none; padding: 0; cursor: pointer; font: inherit; font-size: 11.5px; color: var(--primary); }
+
+.tailorBox .input { margin-bottom: 8px; }
+.tailorBox .primaryBtn { width: 100%; }
+.note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-secondary); }
+
+.askRow { padding: 9px 0; border-bottom: 1px solid rgba(180, 83, 9, .2); }
+.askRow:last-of-type { border-bottom: none; }
+.askQ { font-size: 12.5px; color: var(--warning); }
+.askWhy { font-size: 11px; color: var(--warning); opacity: .8; margin-top: 2px; }
+.askBtns { display: flex; gap: 6px; margin-top: 7px; }
+
+.chat { display: flex; flex-direction: column; min-height: 190px; }
+.chatLog { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; margin-bottom: 9px; max-height: 240px; }
+.msgYou, .msgSys { padding: 7px 10px; border-radius: 9px; font-size: 12.5px; line-height: 1.5; }
+.msgYou { background: var(--primary); color: #fff; align-self: flex-end; max-width: 88%; }
+.msgSys { background: var(--bg-subtle); color: var(--text); align-self: flex-start; max-width: 92%; }
+.chatInput { display: flex; gap: 7px; }
+
+.ruleRow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 0; font-size: 12.5px; color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.ruleRow:last-of-type { border-bottom: none; }
+.rules .chatInput { margin-top: 9px; }
+
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  padding: 9px 11px; border-radius: 11px 11px 0 0;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-bottom: none;
+}
+.tabs { display: flex; gap: 3px; margin-right: 4px; }
+.tab, .tabOn {
+  padding: 6px 13px; border-radius: 7px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; border: 1px solid transparent;
+  background: transparent; color: var(--text-secondary);
+}
+.tab:hover { color: var(--text); }
+.tabOn { background: var(--bg-subtle); color: var(--text); border-color: var(--border); }
+
+.tool {
+  padding: 6px 9px; font: inherit; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg); color: var(--text);
+}
+.stepper { display: flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.stepper button {
+  width: 24px; height: 26px; border: none; background: none; cursor: pointer;
+  font: inherit; font-size: 14px; color: var(--text);
+}
+.stepper span { font-size: 11.5px; color: var(--text-secondary); min-width: 34px; text-align: center; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+.check input { accent-color: var(--primary); cursor: pointer; }
+.spacer { flex: 1; }
+
+.sectionBar {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 11px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-bottom: none;
+}
+.sectionChip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 999px; font-size: 11.5px;
+  background: var(--bg-subtle); color: var(--text);
+}
+.sectionChip button {
+  border: none; background: none; cursor: pointer; font: inherit; font-size: 11px;
+  color: var(--text-secondary); padding: 0 2px;
+}
+.sectionChip button:disabled { opacity: .3; cursor: not-allowed; }
+
+.pendingBar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 10px 13px; font-size: 12.5px; line-height: 1.5;
+  background: #f5f3ff; border: 1px solid #ddd6fe; border-bottom: none; color: #5b21b6;
+}
+.pendingBtns { display: flex; gap: 6px; }
+
+.previewWrap {
+  flex: 1; min-height: 0; overflow: auto;
+  border: 1px solid var(--border); border-radius: 0 0 11px 11px;
+  background: var(--bg-subtle);
+}
+/* The iframe carries the real template markup, so it needs no styling of its
+   own beyond filling the pane - anything applied here would be a second opinion
+   about how the document looks. */
+.preview { display: block; width: 100%; height: 100%; min-height: 900px; border: none; background: transparent; }
+
+.coverPlaceholder { padding: 28px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.coverPlaceholder a { color: var(--primary); font-weight: 600; }
+
+@media (max-width: 1024px) {
+  .shell { grid-template-columns: 1fr; height: auto; }
+  .left { overflow: visible; }
+  .preview { min-height: 780px; }
+}

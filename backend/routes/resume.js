@@ -10,7 +10,6 @@ const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../services/resumeTailorEngine');
 const docModel = require('../services/resumeDocument');
 const { renderHtml, templateList, FONTS, DEFAULT_STYLE } = require('../services/resumeTemplate');
-const { renderPdf, available: pdfAvailable } = require('../services/resumePdf');
 const { buildCorpus, verify, verifyAdditions } = require('../services/resumeGuard');
 
 const router = express.Router();
@@ -343,40 +342,6 @@ router.post('/tailored/:id/confirm', async (req, res) => {
 // while changing its text isn't something open PDF tooling can do safely,
 // so a clean readable format is used instead. The original file is always
 // available unmodified via GET /:id/original.
-/*
- * PDF export.
- *
- * Prints the preview's exact markup. The previous implementation rebuilt the
- * document with pdfkit from flat text and its own heading heuristics, so the
- * download never quite matched what the user had been looking at.
- */
-router.get('/tailored/:id/pdf', async (req, res) => {
-  try {
-    const result = await query(
-      `SELECT tr.final_text, tr.tailored_summary, tr.doc, r.style, j.title as job_title, j.company_name
-       FROM tailored_resumes tr
-       JOIN jobs j ON tr.job_id = j.id
-       LEFT JOIN resumes r ON r.id = tr.resume_id
-       WHERE tr.id = $1 AND tr.user_id = $2`,
-      [req.params.id, req.user.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Tailored resume not found' });
-    const row = result.rows[0];
-
-    // Prefer the structured doc; fall back to parsing the stored text for rows
-    // written before the model existed.
-    const doc = row.doc || docModel.parseText(row.final_text || row.tailored_summary || '');
-    const pdf = await renderPdf(doc, row.style || {});
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="resume-${req.params.id}.pdf"`);
-    res.send(pdf);
-  } catch (err) {
-    console.error('Generate tailored PDF error:', err.message);
-    res.status(503).json({ error: `PDF export is unavailable: ${err.message}` });
-  }
-});
-
 // --- Cover Letters ---
 // Templated generation from the user's profile/skills/experience - no LLM
 // is configured for this app, so this is honest mail-merge style text
@@ -636,7 +601,6 @@ router.get('/:id/document', async (req, res) => {
       pendingCount: docModel.countPending(row.doc),
       templates: templateList(),
       fonts: FONTS,
-      pdf: await pdfAvailable(),
     });
   } catch (err) {
     console.error('GET /resume/:id/document failed:', err.message);
@@ -1018,21 +982,6 @@ router.post('/:id/duplicate', async (req, res) => {
   } catch (err) {
     console.error('POST duplicate failed:', err.message);
     res.status(500).json({ error: 'Could not duplicate that resume' });
-  }
-});
-
-// Export the CURRENT document, which is what the editor is showing.
-router.get('/:id/pdf', async (req, res) => {
-  try {
-    const row = await loadDoc(req.user.id, Number(req.params.id));
-    if (!row) return res.status(404).json({ error: 'Resume not found' });
-    const pdf = await renderPdf(row.doc, row.style || {});
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${(row.version_name || 'resume').replace(/[^\w-]/g, '_')}.pdf"`);
-    res.send(pdf);
-  } catch (err) {
-    console.error('GET /resume/:id/pdf failed:', err.message);
-    res.status(503).json({ error: `PDF export is unavailable: ${err.message}` });
   }
 });
 
