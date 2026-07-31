@@ -24,26 +24,6 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Chromium for PDF export, from Debian's own repository - the resume preview is
-# printed through it so that the download is the same markup the editor shows.
-#
-# Costs roughly 200MB of IMAGE size. That is not the Postgres volume, which is
-# the disk that has run out before; nothing here touches it.
-#
-# Export stays optional at runtime: resumePdf.js requires puppeteer-core lazily
-# and reports "unavailable" if the binary is missing, so a future base-image
-# change that drops Chromium degrades the download rather than the API.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      chromium \
-      ca-certificates \
-      fonts-liberation \
-      fonts-dejavu-core \
- && rm -rf /var/lib/apt/lists/*
-
-ENV CHROME_PATH=/usr/bin/chromium \
-    PUPPETEER_SKIP_DOWNLOAD=true
-
 ENV NODE_ENV=production
 # Only a default for local `docker run`; Railway overrides PORT at runtime.
 ENV PORT=3000
