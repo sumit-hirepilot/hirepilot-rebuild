@@ -1,14 +1,9 @@
 # Build stage
 #
-# Debian slim rather than Alpine, on both stages. Two reasons, and the second is
-# what broke production:
-#
-#  1. Puppeteer's Chromium does not run on musl, and Alpine's own chromium
-#     package failed to install in the runtime stage - the image never built,
-#     Railway had no healthy container, and the API went down.
-#  2. The stages must match. node_modules built against musl and copied into a
-#     glibc image is a working setup right up until a dependency has a native
-#     binding, and then it fails at require time in production rather than here.
+# Debian slim on BOTH stages, and they must stay matched: node_modules built
+# against musl and copied into a glibc image works right up until a dependency
+# has a native binding, and then it fails at require time in production rather
+# than in the build.
 FROM node:18-slim AS builder
 
 WORKDIR /build
