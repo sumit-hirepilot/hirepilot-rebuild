@@ -1,5 +1,15 @@
 # Build stage
-FROM node:18-alpine AS builder
+#
+# Debian slim rather than Alpine, on both stages. Two reasons, and the second is
+# what broke production:
+#
+#  1. Puppeteer's Chromium does not run on musl, and Alpine's own chromium
+#     package failed to install in the runtime stage - the image never built,
+#     Railway had no healthy container, and the API went down.
+#  2. The stages must match. node_modules built against musl and copied into a
+#     glibc image is a working setup right up until a dependency has a native
+#     binding, and then it fails at require time in production rather than here.
+FROM node:18-slim AS builder
 
 WORKDIR /build
 
@@ -10,9 +20,29 @@ COPY backend/package*.json ./
 RUN npm install --omit=dev
 
 # Runtime stage
-FROM node:18-alpine
+FROM node:18-slim
 
 WORKDIR /app
+
+# Chromium for PDF export, from Debian's own repository - the resume preview is
+# printed through it so that the download is the same markup the editor shows.
+#
+# Costs roughly 200MB of IMAGE size. That is not the Postgres volume, which is
+# the disk that has run out before; nothing here touches it.
+#
+# Export stays optional at runtime: resumePdf.js requires puppeteer-core lazily
+# and reports "unavailable" if the binary is missing, so a future base-image
+# change that drops Chromium degrades the download rather than the API.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      chromium \
+      ca-certificates \
+      fonts-liberation \
+      fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_DOWNLOAD=true
 
 ENV NODE_ENV=production
 # Only a default for local `docker run`; Railway overrides PORT at runtime.
