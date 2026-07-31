@@ -86,7 +86,15 @@ async function renderPdf(doc, style) {
     // long resume reaches, and this keeps relative behaviour predictable.
     await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
 
-    return await page.pdf({
+    /*
+     * Buffer.from, not the raw return value.
+     *
+     * Puppeteer v23 returns a Uint8Array rather than a Node Buffer, and
+     * res.send() treats a Uint8Array as a plain object - so the endpoint
+     * answered 200 with `{"0":37,"1":80,...}`, a JSON-serialised byte array,
+     * and every download was a corrupt file. Status codes said it worked.
+     */
+    const bytes = await page.pdf({
       format: 'Letter',
       printBackground: true,
       // Margins live in the template's .page padding, so the same spacing
@@ -95,6 +103,7 @@ async function renderPdf(doc, style) {
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
       preferCSSPageSize: true,
     });
+    return Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   } finally {
     await page.close().catch(() => {});
   }
