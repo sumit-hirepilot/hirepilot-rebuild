@@ -1,0 +1,68 @@
+/* Profile. Tokens only - see AutoApply.module.css for why. */
+
+.loading { padding: 40px 0; color: var(--text-secondary); }
+
+.notice {
+  margin-bottom: 16px; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+  background: var(--success-bg); border: 1px solid var(--success);
+  color: var(--success); font-size: 13px;
+}
+
+.saveBtn {
+  padding: 10px 20px; border-radius: 10px; cursor: pointer;
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  background: var(--primary); color: #fff; border: 1px solid var(--primary);
+  white-space: nowrap;
+}
+.saveBtn:hover { filter: brightness(1.06); }
+.saveBtn:disabled { opacity: .55; cursor: not-allowed; }
+
+.meterCard {
+  margin-bottom: 18px; padding: 16px 18px; border-radius: 12px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.meterTop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.meterPct { font-size: 19px; font-weight: 700; color: var(--text); }
+.meterSub { font-size: 12.5px; color: var(--text-secondary); }
+.meterTrack {
+  height: 7px; margin: 10px 0 9px; border-radius: 999px;
+  background: var(--bg-subtle); overflow: hidden;
+}
+.meterFill { height: 100%; background: var(--primary); border-radius: 999px; transition: width .25s ease; }
+.meterHint { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); }
+
+/* Two columns on wide screens; the cards are independent so they reflow cleanly
+   rather than needing a fixed row rhythm. */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+
+.card {
+  padding: 20px; border-radius: 14px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.cardTitle { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); }
+.cardHint { margin: 0 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.label { font-size: 12px; font-weight: 600; color: var(--text); }
+.input {
+  width: 100%; padding: 8px 11px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text);
+}
+.input:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: var(--primary); }
+.hint { font-size: 11.5px; line-height: 1.5; color: var(--text-secondary); }
+
+.learnRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
+.learnStat { padding: 13px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.learnNum { display: block; font-size: 21px; font-weight: 700; color: var(--primary); line-height: 1.1; }
+.learnLabel { display: block; margin-top: 4px; font-size: 11px; line-height: 1.35; color: var(--text-secondary); }
+
+/* A second save at the bottom: this page is long enough that scrolling back to
+   the header to save is a real annoyance. */
+.footBar { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+@media (max-width: 720px) {
+  .grid { grid-template-columns: 1fr; }
+  .learnRow { grid-template-columns: 1fr; }
+}

@@ -123,6 +123,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/profile',
+    label: 'Profile',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="3.6" />
+        <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+      </svg>
+    ),
+  },
+  {
     href: '/settings',
     label: 'Settings',
     icon: (

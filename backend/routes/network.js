@@ -163,4 +163,166 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ *
+ * Outreach bundles (PRD 3.6)
+ *
+ * The PRD asks for "contacts + drafted outreach messages" per company. The
+ * drafts are real; the contacts are not invented. This module will happily
+ * write the message, and will not tell you who to send it to - the searches
+ * above hand that to LinkedIn's own index, where the people actually are.
+ *
+ * The distinction matters because a fabricated name is not a smaller version of
+ * a real one. Sending a warm note to a person who does not work there, or to a
+ * real namesake with no part in the role, is worse than sending nothing.
+ * ------------------------------------------------------------------ */
+
+const DAILY_LOOKUP_CAP = Number(process.env.OUTREACH_DAILY_CAP || 15);
+
+async function lookupsToday(userId) {
+  const r = await query(
+    `SELECT COUNT(*)::int AS n FROM outreach_lookups
+      WHERE user_id = $1 AND looked_up_on = CURRENT_DATE`,
+    [userId]
+  );
+  return r.rows[0]?.n || 0;
+}
+
+/*
+ * Draft an outreach message.
+ *
+ * Templated from the user's own profile rather than generated free-form, for
+ * the same reason the cover-letter generator is: an LLM asked to sell someone
+ * invents the specifics it is missing, and a claim about your experience that
+ * you did not make is one you then have to defend in an interview.
+ *
+ * Placeholders stay visible as [First name] so an unedited send is obviously
+ * unedited, rather than quietly going out addressed to nobody.
+ */
+function draftOutreach({ company, roleTitle, tone = 'direct', profile = {} }) {
+  const me = profile.full_name || 'I';
+  const title = profile.current_title ? `a ${profile.current_title}` : 'a designer';
+  const years = profile.years_experience ? `${profile.years_experience} years of ` : '';
+  const portfolio = profile.portfolio_url ? `\n\nMy work: ${profile.portfolio_url}` : '';
+
+  const openers = {
+    direct: `Hi [First name],\n\nI applied for the ${roleTitle || 'open role'} at ${company} and wanted to introduce myself directly.`,
+    warm: `Hi [First name],\n\nI have been following what ${company} is building and just applied for the ${roleTitle || 'open role'}.`,
+    referral: `Hi [First name],\n\nWe have not met - I am applying for the ${roleTitle || 'open role'} at ${company} and hoped you might point me to the right person on the team.`,
+  };
+
+  const body = `I am ${title} with ${years}experience, and the parts of this role around ${roleTitle ? roleTitle.toLowerCase() : 'the team\'s work'} line up closely with what I have been doing.${portfolio}`;
+  const close = `\n\nHappy to share more if it is useful.\n\n${me === 'I' ? '' : me}`;
+
+  return `${openers[tone] || openers.direct}\n\n${body}${close}`.trim();
+}
+
+// One company -> searches to find real people, plus drafts to send them.
+router.post('/outreach', async (req, res) => {
+  try {
+    const company = String(req.body.company || '').trim();
+    if (!company) return res.status(400).json({ error: 'company is required' });
+
+    const used = await lookupsToday(req.user.id);
+    if (used >= DAILY_LOOKUP_CAP) {
+      return res.status(429).json({
+        error: 'Daily lookup limit reached',
+        used,
+        cap: DAILY_LOOKUP_CAP,
+        hint: 'The cap exists because outreach at volume reads as spam to the people receiving it.',
+      });
+    }
+
+    const p = await query('SELECT * FROM application_profiles WHERE user_id = $1', [req.user.id]);
+    const profile = p.rows[0] || {};
+    const roleTitle = String(req.body.roleTitle || '').trim() || null;
+
+    await query(
+      'INSERT INTO outreach_lookups (user_id, company_name) VALUES ($1, $2)',
+      [req.user.id, company.slice(0, 255)]
+    );
+
+    res.json({
+      company,
+      roleTitle,
+      searches: SEARCH_ROLES.map((r) => ({
+        key: r.key,
+        label: r.label,
+        url: linkedInPeopleUrl(company, r.terms || roleTitle || ''),
+      })),
+      drafts: ['direct', 'warm', 'referral'].map((tone) => ({
+        tone,
+        message: draftOutreach({ company, roleTitle, tone, profile }),
+      })),
+      lookups: { used: used + 1, cap: DAILY_LOOKUP_CAP, remaining: DAILY_LOOKUP_CAP - used - 1 },
+      note: 'HirePilot does not name contacts it has not verified. The searches open LinkedIn\'s own index.',
+    });
+  } catch (err) {
+    console.error('POST /network/outreach failed:', err.message);
+    res.status(500).json({ error: 'Could not build an outreach bundle' });
+  }
+});
+
+// Save a draft against a contact the USER identified. Agent tab.
+router.post('/outreach/save', async (req, res) => {
+  try {
+    const { company, contactName, contactTitle, contactUrl, message } = req.body || {};
+    if (!company || !message) return res.status(400).json({ error: 'company and message are required' });
+    const r = await query(
+      `INSERT INTO outreach_contacts
+         (user_id, company_name, contact_name, contact_title, contact_profile_url, draft_message, source, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'user','draft') RETURNING id`,
+      [
+        req.user.id, String(company).slice(0, 255),
+        contactName ? String(contactName).slice(0, 255) : null,
+        contactTitle ? String(contactTitle).slice(0, 255) : null,
+        contactUrl ? String(contactUrl).slice(0, 600) : null,
+        String(message).slice(0, 6000),
+      ]
+    );
+    res.status(201).json({ ok: true, id: r.rows[0].id });
+  } catch (err) {
+    console.error('POST /network/outreach/save failed:', err.message);
+    res.status(500).json({ error: 'Could not save that draft' });
+  }
+});
+
+// Agent / Sent tabs.
+router.get('/outreach', async (req, res) => {
+  try {
+    const status = req.query.status === 'sent' ? 'sent' : 'draft';
+    const r = await query(
+      `SELECT * FROM outreach_contacts WHERE user_id = $1 AND status = $2
+        ORDER BY created_at DESC LIMIT 100`,
+      [req.user.id, status]
+    );
+    res.json({
+      outreach: r.rows,
+      lookups: { used: await lookupsToday(req.user.id), cap: DAILY_LOOKUP_CAP },
+    });
+  } catch (err) {
+    console.error('GET /network/outreach failed:', err.message);
+    res.status(500).json({ error: 'Could not load outreach' });
+  }
+});
+
+/*
+ * Marks a draft as sent. HirePilot does not send it - the user does, from their
+ * own account. Sending on someone's behalf to a person we did not verify exists
+ * is the failure this whole module is shaped around avoiding.
+ */
+router.post('/outreach/:id/sent', async (req, res) => {
+  try {
+    const r = await query(
+      `UPDATE outreach_contacts SET status = 'sent', sent_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND user_id = $2 RETURNING id, status, sent_at`,
+      [Number(req.params.id), req.user.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true, ...r.rows[0] });
+  } catch (err) {
+    console.error('POST /network/outreach/:id/sent failed:', err.message);
+    res.status(500).json({ error: 'Could not update that draft' });
+  }
+});
+
 module.exports = router;

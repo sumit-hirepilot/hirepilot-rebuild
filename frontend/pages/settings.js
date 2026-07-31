@@ -5,7 +5,10 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Settings.module.css';
 
-const TABS = ['Profile', 'Apply Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Account'];
+const TABS = ['Account', 'Apply', 'Memory', 'Portfolio', 'Plans', 'Referrals', 'Email',
+  'Apply Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Profile'];
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
 
 function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
@@ -38,7 +41,11 @@ export default function Settings() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [tab, setTab] = useState('Profile');
+  const [tab, setTab] = useState('Account');
+  // PRD 3.9 specifies deep links of the form /settings?tab=Plans, which the
+  // credit pill and the near-limit banner both point at.
+  const [plans, setPlans] = useState(null);
+  const [prefsForm, setPrefsForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -119,7 +126,52 @@ export default function Settings() {
     setToken(authToken);
     loadProfile(authToken);
     loadApplyProfile(authToken);
+
+    // Plans and the two apply toggles power the new tabs; both fail quietly so
+    // a settings page never blanks because one panel could not load.
+    fetch(`${BASE_URL}/api/plans`, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => d && setPlans(d)).catch(() => {});
+    fetch(`${BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.preferences && setPrefsForm(d.preferences))
+      .catch(() => {});
   }, [router, loadProfile, loadApplyProfile]);
+
+  // Honour ?tab= on load and on back/forward.
+  useEffect(() => {
+    const t = router.query.tab;
+    if (typeof t === 'string' && TABS.includes(t)) setTab(t);
+  }, [router.query.tab]);
+
+  // The two account-level toggles that govern the whole apply flow (PRD 4).
+  const savePref = async (patch) => {
+    setPrefsForm((prev) => ({ ...prev, ...patch }));
+    const body = {};
+    if ('auto_approve' in patch) body.autoApprove = patch.auto_approve;
+    if ('review_before_submit' in patch) body.reviewBeforeSubmit = patch.review_before_submit;
+    if ('portfolio_public' in patch) body.portfolioPublic = patch.portfolio_public;
+    if ('notify_recommendations' in patch) body.notifyRecommendations = patch.notify_recommendations;
+    if ('notify_product' in patch) body.notifyProduct = patch.notify_product;
+    if ('timezone' in patch) body.timezone = patch.timezone;
+    await fetch(`${BASE_URL}/api/profile`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  };
+
+  const choosePlan = async (tier) => {
+    const res = await fetch(`${BASE_URL}/api/plans/select`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier }),
+    }).catch(() => null);
+    if (res && res.ok) {
+      const d = await res.json();
+      setPlans((prev) => (prev ? { ...prev, current: d.current } : prev));
+      setMessage(`Switched to ${d.current.tierName}. No payment was taken — billing is not connected yet.`);
+    }
+  };
 
   const saveApplyProfile = async (e) => {
     e.preventDefault();
@@ -291,7 +343,18 @@ export default function Settings() {
 
         <div className={page.tabs}>
           {TABS.map((t) => (
-            <button key={t} className={tab === t ? page.tabActive : page.tab} onClick={() => setTab(t)}>{t}</button>
+            <button
+              key={t}
+              className={tab === t ? page.tabActive : page.tab}
+              onClick={() => {
+                setTab(t);
+                // shallow: the tab is client state, so this updates the address
+                // bar for sharing and back-button without refetching the page.
+                router.push({ pathname: '/settings', query: { tab: t } }, undefined, { shallow: true });
+              }}
+            >
+              {t}
+            </button>
           ))}
         </div>
 
@@ -299,6 +362,178 @@ export default function Settings() {
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>
+        ) : tab === 'Apply' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>How applying behaves</p>
+            <p className={page.masterSubtitle}>
+              Two switches govern the whole flow. Everything else follows from them.
+            </p>
+
+            <label className={page.toggleRow}>
+              <input
+                type="checkbox"
+                checked={prefsForm?.auto_approve !== false}
+                onChange={(e) => savePref({ auto_approve: e.target.checked })}
+              />
+              <span>
+                <strong>Auto-approve</strong>
+                <em>Skip the tailoring preview and apply straight through.</em>
+              </span>
+            </label>
+
+            <label className={page.toggleRow}>
+              <input
+                type="checkbox"
+                checked={Boolean(prefsForm?.review_before_submit)}
+                onChange={(e) => savePref({ review_before_submit: e.target.checked })}
+              />
+              <span>
+                <strong>Review before submit</strong>
+                <em>
+                  Pause on the review screen before anything is sent, whatever
+                  Auto-approve says. Off by default on this account because you
+                  asked for the approval step to be removed — turning it on puts
+                  it back for every application.
+                </em>
+              </span>
+            </label>
+
+            <p className={page.masterSubtitle} style={{ marginTop: 16 }}>
+              Neither switch changes what &quot;Applied&quot; means. That still
+              requires the employer&apos;s own confirmation.
+            </p>
+          </div>
+        ) : tab === 'Memory' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>What HirePilot remembers</p>
+            <p className={page.masterSubtitle}>
+              Answers picked up from real forms and reused since. Edit or delete
+              any of them — a wrong answer here would be repeated on every future
+              application.
+            </p>
+            {applyProfile && Object.keys(applyProfile.custom_answers || {}).length === 0 && (
+              <p className={styles.emptyState}>Nothing learned yet.</p>
+            )}
+            {applyProfile && Object.entries(applyProfile.custom_answers || {}).slice(0, 200).map(([k, v]) => {
+              const answer = typeof v === 'string' ? v : v?.answer;
+              const question = (typeof v === 'object' && v?.question) || k.replace(/_/g, ' ');
+              return (
+                <div key={k} className={page.memoryRow}>
+                  <div className={page.memoryQ}>{question}</div>
+                  <div className={page.memoryA}>{answer}</div>
+                </div>
+              );
+            })}
+            <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
+              Full editing lives on the <a href="/profile">Profile</a> page.
+            </p>
+          </div>
+        ) : tab === 'Portfolio' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>Public portfolio</p>
+            <p className={page.masterSubtitle}>Private by default. Nothing is shared until you turn this on.</p>
+            <label className={page.toggleRow}>
+              <input
+                type="checkbox"
+                checked={Boolean(prefsForm?.portfolio_public)}
+                onChange={(e) => savePref({ portfolio_public: e.target.checked })}
+              />
+              <span>
+                <strong>Make my portfolio public</strong>
+                <em>Publishes a page with your work history and links.</em>
+              </span>
+            </label>
+          </div>
+        ) : tab === 'Plans' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>Plan</p>
+            {plans?.current && (
+              <p className={page.masterSubtitle}>
+                On <strong>{plans.current.tierName}</strong> — {plans.current.remaining} of{' '}
+                {plans.current.total} applications left this month.
+              </p>
+            )}
+            {plans && <p className={page.masterSubtitle}>{plans.creditPolicy}</p>}
+            <div className={page.planGrid}>
+              {(plans?.tiers || []).map((t) => (
+                <div key={t.id} className={plans?.current?.tier === t.id ? page.planCardOn : page.planCard}>
+                  <div className={page.planName}>
+                    {t.name}{t.popular && <span className={page.planTag}>Most popular</span>}
+                  </div>
+                  <div className={page.planApps}>{t.applicationsPerMonth.toLocaleString()}<small> applications / month</small></div>
+                  <ul className={page.planFeatures}>
+                    {t.features.map((f) => <li key={f}>{f}</li>)}
+                    <li>{t.autoApply ? 'Auto Apply included' : 'Auto Apply not included'}</li>
+                  </ul>
+                  <button
+                    className={page.saveButton}
+                    disabled={plans?.current?.tier === t.id}
+                    onClick={() => choosePlan(t.id)}
+                  >
+                    {plans?.current?.tier === t.id ? 'Current plan' : `Switch to ${t.name}`}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {/* Stated rather than implied: no card is charged, because no
+                billing provider is connected. */}
+            <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
+              Billing is not connected yet, so switching plans takes no payment
+              and asks for no card. Prices are not shown because they have not
+              been set.
+            </p>
+          </div>
+        ) : tab === 'Referrals' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>Referrals</p>
+            <p className={page.masterSubtitle}>
+              Share your link. Rewards are paid in free applications.
+            </p>
+            <div className={page.referralBox}>
+              <code>
+                {typeof window !== 'undefined' ? `${window.location.origin}/signup?ref=${user?.id || ''}` : ''}
+              </code>
+            </div>
+            <p className={page.masterSubtitle}>
+              Nothing is credited automatically yet — referral rewards need the
+              billing side wired up first, and showing a balance that cannot be
+              spent would be worse than showing none.
+            </p>
+          </div>
+        ) : tab === 'Email' ? (
+          <div className={styles.card}>
+            <p className={page.masterTitle}>Email and notifications</p>
+            <label className={page.toggleRow}>
+              <input
+                type="checkbox"
+                checked={prefsForm?.notify_recommendations !== false}
+                onChange={(e) => savePref({ notify_recommendations: e.target.checked })}
+              />
+              <span><strong>Job recommendations</strong><em>New matches at your bar.</em></span>
+            </label>
+            <label className={page.toggleRow}>
+              <input
+                type="checkbox"
+                checked={Boolean(prefsForm?.notify_product)}
+                onChange={(e) => savePref({ notify_product: e.target.checked })}
+              />
+              <span><strong>Product updates</strong><em>Occasional notes about new features.</em></span>
+            </label>
+            <div className={page.formGroup} style={{ marginTop: 14 }}>
+              <label>Timezone</label>
+              <input
+                className={page.input}
+                value={prefsForm?.timezone || ''}
+                placeholder="Asia/Kolkata"
+                onChange={(e) => setPrefsForm((prev) => ({ ...prev, timezone: e.target.value }))}
+                onBlur={(e) => savePref({ timezone: e.target.value })}
+              />
+            </div>
+            <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
+              Recruiter mail is handled on the <a href="/inbox">Inbox</a> page,
+              which has your forwarding address.
+            </p>
+          </div>
         ) : tab === 'Profile' ? (
           <div className={styles.card}>
             <form onSubmit={handleProfileSave} className={page.form}>

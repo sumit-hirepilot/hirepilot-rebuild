@@ -87,9 +87,25 @@ const PROFILE_FIELDS = [
   'current_title', 'work_authorization', 'requires_sponsorship',
   'willing_to_relocate', 'notice_period', 'salary_expectation',
   'salary_currency', 'pronouns', 'authorized_countries',
+
+  // Application defaults (PRD 3.8) - the answers forms ask for over and over.
+  'visa_type', 'zip_code', 'in_person_ok', 'has_transport',
+  'needs_accommodation', 'start_immediately', 'prior_employee',
+  'gov_clearance', 'gov_ties',
+
+  /*
+   * Voluntary self-identification. Stored only if the user fills it in, and
+   * never defaulted: on a real application an unanswered EEO question is a
+   * legitimate answer, and a column defaulting to anything would put a claim on
+   * the form that nobody made.
+   */
+  'self_id_gender', 'self_id_ethnicity', 'self_id_veteran', 'self_id_disability',
 ];
 const ARRAY_FIELDS = new Set(['authorized_countries']);
-const BOOLEAN_FIELDS = new Set(['requires_sponsorship', 'willing_to_relocate']);
+const BOOLEAN_FIELDS = new Set([
+  'requires_sponsorship', 'willing_to_relocate', 'in_person_ok', 'has_transport',
+  'needs_accommodation', 'start_immediately', 'prior_employee', 'gov_ties',
+]);
 
 router.get('/profile', verifyToken, async (req, res) => {
   try {
