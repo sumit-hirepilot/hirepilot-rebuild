@@ -855,20 +855,35 @@ export default function Settings() {
                 Copy access token
               </button>
             </div>
-            <div className={page.integrationRow}>
-              <div>
-                <p className={page.integrationName}>LinkedIn</p>
-                <p className={page.integrationStatus}>Not connected</p>
+            {/*
+              * Disabled, not clickable-then-apologetic.
+              *
+              * These used to render live Connect buttons that only flashed "not
+              * configured for this deployment" - a control that looks like it
+              * works and silently does nothing, which is the same failure as the
+              * preference toggles that returned 200 and saved nowhere. If it
+              * cannot do the thing, it should not look like it can.
+              */}
+            {[
+              ['LinkedIn', 'Sign-in and profile import'],
+              ['Google Calendar', 'Interview scheduling'],
+              ['Gmail / Outlook', 'Reading recruiter mail from your own inbox'],
+            ].map(([name, what]) => (
+              <div className={page.integrationRow} key={name}>
+                <div>
+                  <p className={page.integrationName}>{name}</p>
+                  <p className={page.integrationStatus}>{what} &mdash; not built yet</p>
+                </div>
+                <button className={page.connectButton} disabled aria-disabled="true">
+                  Coming soon
+                </button>
               </div>
-              <button className={page.connectButton} onClick={() => flash('LinkedIn OAuth is not configured for this deployment.')}>Connect</button>
-            </div>
-            <div className={page.integrationRow}>
-              <div>
-                <p className={page.integrationName}>Google Calendar</p>
-                <p className={page.integrationStatus}>Not connected</p>
-              </div>
-              <button className={page.connectButton} onClick={() => flash('Google OAuth is not configured for this deployment.')}>Connect</button>
-            </div>
+            ))}
+            <p className={page.masterSubtitle} style={{ marginTop: 12 }}>
+              Recruiter mail works today through your HirePilot address on the{' '}
+              <a href="/inbox">Inbox</a> page. Connecting your own mailbox needs
+              third-party sign-in, which is not built yet.
+            </p>
           </div>
         ) : (
           <>
