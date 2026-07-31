@@ -473,11 +473,25 @@ const STATEMENTS = [
  */
 const backfillResumeDocs = async () => {
   try {
-    const { parseText } = require('./resumeDocument');
+    const { parseText, DOC_VERSION } = require('./resumeDocument');
+    /*
+     * Rows never parsed, plus rows parsed by an older parser - but ONLY where
+     * the user has not edited the document since. doc_updated_at is set by
+     * every editor write, so a document touched after its import is left alone
+     * and a parser improvement can never overwrite someone's own edits.
+     */
     const rows = await query(
       `SELECT id, original_file_text FROM resumes
-        WHERE doc IS NULL AND original_file_text IS NOT NULL AND length(original_file_text) > 40
-        LIMIT 500`
+        WHERE original_file_text IS NOT NULL AND length(original_file_text) > 40
+          AND (
+            doc IS NULL
+            OR (
+              COALESCE((doc->>'version')::int, 1) < $1
+              AND (doc_updated_at IS NULL OR doc_updated_at <= updated_at)
+            )
+          )
+        LIMIT 500`,
+      [DOC_VERSION]
     );
     let done = 0;
     for (const row of rows.rows) {
@@ -485,7 +499,7 @@ const backfillResumeDocs = async () => {
         const doc = parseText(row.original_file_text);
         if (!doc.sections.length) continue;
         await query(
-          'UPDATE resumes SET doc = $1::jsonb, doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND doc IS NULL',
+          'UPDATE resumes SET doc = $1::jsonb, doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2',
           [JSON.stringify(doc), row.id]
         );
         done += 1;
@@ -493,7 +507,7 @@ const backfillResumeDocs = async () => {
         console.warn(`[migrate] could not parse resume ${row.id}:`, err.message);
       }
     }
-    if (done) console.log(`Backfilled ${done} resume document(s) from flat text`);
+    if (done) console.log(`Parsed ${done} resume document(s) to model v${DOC_VERSION}`);
   } catch (err) {
     console.error('Resume doc backfill failed:', err.message);
   }

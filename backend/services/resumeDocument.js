@@ -30,9 +30,21 @@ function nid(prefix) {
   return `${prefix}_${Date.now().toString(36)}${seq.toString(36)}`;
 }
 
+/*
+ * Bumped whenever the parser improves in a way that changes existing output.
+ * The backfill re-parses anything below this, so a fix reaches documents that
+ * were already imported instead of only helping new ones - the first parse of
+ * a real resume produced "SUMITKUMAR" and five unclassified sections, and
+ * idempotent-by-doc-IS-NULL meant it stayed that way after the fix.
+ *
+ * Only ever re-parses from original_file_text, so a document the user has since
+ * edited is never overwritten - see the backfill's guard.
+ */
+const DOC_VERSION = 2;
+
 function emptyDoc() {
   return {
-    version: 1,
+    version: DOC_VERSION,
     meta: { name: '', title: '', email: '', phone: '', location: '', links: [] },
     sections: [],
   };
@@ -374,7 +386,7 @@ function reorderSections(doc, orderedIds) {
 }
 
 module.exports = {
-  SECTION_TYPES, ORIGINS,
+  SECTION_TYPES, ORIGINS, DOC_VERSION,
   emptyDoc, parseText, toText,
   walk, findNode, removeNode, countPending, reorderSections,
   nid,
