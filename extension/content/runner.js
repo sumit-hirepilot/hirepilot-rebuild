@@ -47,6 +47,9 @@ HP.discovery = (() => {
       // free text - which duplicates it on the review screen and sends the
       // fill down the wrong path. Verified on a live Greenhouse form.
       if (HP.combobox.isHiddenValueInput(el)) return false;
+      // The dial-code picker fills itself from the number. Reporting it as a
+      // question parked applications on a field that needed nothing.
+      if (HP.combobox.isDialCodePicker(el)) return false;
       return true;
     });
 

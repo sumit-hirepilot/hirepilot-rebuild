@@ -246,6 +246,49 @@ HP.combobox = (() => {
     return Boolean(c.querySelector('[role="combobox"]'));
   }
 
+  /*
+   * A phone dial-code picker, not a screening question.
+   *
+   * Checkr renders one beside the phone field. Discovery saw a combobox with
+   * 120 options, reported it as a question called "Country", and parked the
+   * application because it could not be set.
+   *
+   * It does not need setting. Verified live: the widget is empty until the
+   * number is typed, and typing "+91 76765 22867" into the phone field makes it
+   * read "+91" on its own. The number carries the country, so this is excluded
+   * for the same reason as isHiddenValueInput - a second control shadowing one
+   * the form already handles.
+   *
+   * Walks UP looking for an ancestor that contains a tel input, rather than
+   * matching a class. Two earlier attempts failed on the DOM's actual shape:
+   * the row splits into `phone-input__country` and `phone-input__phone` as
+   * SIBLINGS, so any class-based closest() lands on the country half - which
+   * holds no tel input - and stops. Only the shared parent above both sees it.
+   */
+  function isDialCodePicker(el) {
+    if (!el || el.type === 'tel') return false;
+    let n = el.parentElement;
+    for (let depth = 0; n && depth < 12; depth += 1) {
+      if (n.tagName === 'FORM') break;
+      if (n.querySelector('input[type="tel"]')) {
+        /*
+         * Found a tel input above - but is this the phone ROW, or a container
+         * holding half the form? An unbounded walk answered "true" for First
+         * Name, Last Name and Email, because eventually every ancestor contains
+         * the phone field.
+         *
+         * The phone row holds the dial-code combobox, the number, and
+         * react-select's required-input twin. Anything materially larger is a
+         * section, and this control is not its dial-code picker.
+         */
+        const controls = n.querySelectorAll('input, select, textarea');
+        return controls.length <= 4;
+      }
+      n = n.parentElement;
+    }
+    return false;
+  }
+
   function pointerSeq(el) {
     const specs = [['pointerdown', window.PointerEvent], ['mousedown', MouseEvent],
       ['mouseup', MouseEvent], ['click', MouseEvent]];
@@ -384,7 +427,7 @@ HP.combobox = (() => {
     return got === want || got.startsWith(want);
   }
 
-  return { is, open, close, readOptions, choose, typeAhead, optionsIn, selectedText, containerFor, isHiddenValueInput };
+  return { is, open, close, readOptions, choose, typeAhead, optionsIn, selectedText, containerFor, isHiddenValueInput, isDialCodePicker };
 })();
 
 /*
