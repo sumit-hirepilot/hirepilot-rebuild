@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Profile.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * Profile (PRD 3.8).
@@ -19,7 +20,7 @@ import page from '../styles/Profile.module.css';
  * the page looks.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const YES_NO = [['', 'Not answered'], ['true', 'Yes'], ['false', 'No']];
 

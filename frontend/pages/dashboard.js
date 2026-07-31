@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -47,7 +48,7 @@ export default function Dashboard() {
     async function loadData() {
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const base = process.env.NEXT_PUBLIC_API_URL;
+        const base = API_BASE;
 
         const [matchesRes, statsRes, activityRes, profileRes] = await Promise.all([
           fetch(`${base}/api/matches?limit=5`, { headers }),

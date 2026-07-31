@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import page from '../styles/ResumeEditor.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * Resume editor: instruction panel left, live document right.
@@ -20,7 +21,7 @@ import page from '../styles/ResumeEditor.module.css';
  * a PDF even if the user prints mid-review.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const FONT_SIZES = [9, 9.5, 10, 10.5, 11, 11.5, 12];
 

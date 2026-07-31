@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/ApplyQueue.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * The approval gate.
@@ -49,7 +50,7 @@ export default function ApplyQueue() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   const loadQueue = useCallback(async (authToken) => {
     try {

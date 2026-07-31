@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Settings.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const TABS = ['Account', 'Apply', 'Memory', 'Portfolio', 'Plans', 'Referrals', 'Email',
   'Apply Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Profile'];
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE_URL = API_BASE;
 
 function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
@@ -67,7 +68,7 @@ export default function Settings() {
   const [savingApply, setSavingApply] = useState(false);
   const [runningAutoPilot, setRunningAutoPilot] = useState(false);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   const loadProfile = useCallback(async (authToken) => {
     setLoading(true);

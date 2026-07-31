@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import page from '../styles/Onboarding.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
@@ -48,7 +49,7 @@ export default function Onboarding() {
   });
   const [autoApplyEnabled, setAutoApplyEnabled] = useState(false);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   useEffect(() => {
     const authToken = localStorage.getItem('token');

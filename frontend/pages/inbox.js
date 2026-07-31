@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Inbox.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * Inbox (PRD 3.4).
@@ -17,7 +18,7 @@ import page from '../styles/Inbox.module.css';
  * screen must never make.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const CATEGORIES = [
   ['all', 'All'], ['verification', 'Verification'], ['rejection', 'Rejection'],

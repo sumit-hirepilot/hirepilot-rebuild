@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const PAGE_SIZE = 20;
 
@@ -328,7 +329,7 @@ export default function Jobs() {
   const [relatedTotal, setRelatedTotal] = useState(0);
   const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(0);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   // Scored in one batch per page rather than per row. Failure is silent by
   // design: an ATS score is supplementary, and a scoring outage shouldn't stop

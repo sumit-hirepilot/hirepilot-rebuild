@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import styles from '../../styles/Dashboard.module.css';
 import page from '../../styles/AgentMatches.module.css';
+import { API_BASE } from '../../lib/apiBase';
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -28,7 +29,7 @@ export default function AgentMatches() {
   const [expandedId, setExpandedId] = useState(null);
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   const loadData = useCallback(async (authToken) => {
     if (!id) return;

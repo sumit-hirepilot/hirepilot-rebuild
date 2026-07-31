@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Agents.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
@@ -61,7 +62,7 @@ export default function Agents() {
   const [minMatchScore, setMinMatchScore] = useState(75);
   const [autoApply, setAutoApply] = useState(false);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   const loadAgents = useCallback(async (authToken) => {
     setLoading(true);

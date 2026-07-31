@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import styles from '../styles/NeedsYou.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * The one place a parked application gets answered.
@@ -16,7 +17,7 @@ import styles from '../styles/NeedsYou.module.css';
  * "notice period" once should not have to be done nine more times.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 export default function NeedsYouDrawer({ runId = null, title, emptyText, onResolved }) {
   const [data, setData] = useState(null);
@@ -26,14 +27,19 @@ export default function NeedsYouDrawer({ runId = null, title, emptyText, onResol
   const [open, setOpen] = useState({});
 
   const load = useCallback(async () => {
+    console.log('[NYD] load entry');
     const token = localStorage.getItem('token');
-    if (!token) return;
+    console.log('[NYD] token?', !!token, 'BASE', BASE);
+    if (!token) { console.log('[NYD] BAILED: no token'); return; }
     const qs = runId ? `?runId=${runId}` : '';
     const res = await fetch(`${BASE}/api/apply/blockers${qs}`, {
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => null);
-    if (!res || !res.ok) { setData({ blockers: [], total: 0, questionCount: 0 }); return; }
-    setData(await res.json());
+    console.log('[NYD] res', res && res.status);
+    if (!res || !res.ok) { console.log('[NYD] not ok'); setData({ blockers: [], total: 0, questionCount: 0 }); return; }
+    const j = await res.json();
+    console.log('[NYD] got', j.total, 'blockers -> setData');
+    setData(j);
   }, [runId]);
 
   useEffect(() => { load(); }, [load]);

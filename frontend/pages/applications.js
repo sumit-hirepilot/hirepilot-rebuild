@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Applications.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const COLUMNS = [
   { key: 'applied', label: 'Applied' },
@@ -30,7 +31,7 @@ export default function Applications() {
   const [retrying, setRetrying] = useState(null);
   const [reviewing, setReviewing] = useState(null);
 
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   const loadApplications = useCallback(async (authToken) => {
     setLoading(true);

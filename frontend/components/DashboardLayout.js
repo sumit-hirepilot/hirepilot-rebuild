@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from '../styles/Dashboard.module.css';
 import NotificationBell from './NotificationBell';
 import ExtensionInstallModal, { useExtensionDetected, extensionPrompt, DISMISS_KEY } from './ExtensionInstallModal';
+import { API_BASE } from '../lib/apiBase';
 
 const NAV_ITEMS = [
   {
@@ -157,10 +158,25 @@ export default function DashboardLayout({ children, title, user }) {
   // Credit counter (PRD 6). Read-only here; the meaning of a credit is defined
   // server-side and shown in the tooltip so the number is never just a number.
   const [credits, setCredits] = useState(null);
+  /*
+   * Nothing that depends on client-only state may render on the first pass.
+   *
+   * The credits pill rendered a <button> as soon as its fetch resolved, but the
+   * server rendered none - React reported "Expected server HTML to contain a
+   * matching <button> in <header>", replaced the tree, and effects stopped
+   * running throughout the app. Every page then sat in its loading state
+   * forever with no error and no failed request, because no effect ever fired
+   * to make one.
+   *
+   * Same fix as useExtensionDetected: first render matches the server, and
+   * client-only content appears on the pass after mount.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const [extModalOpen, setExtModalOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = API_BASE;
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -324,7 +340,7 @@ export default function DashboardLayout({ children, title, user }) {
               </span>
             </button>
           )}
-          {credits && (
+          {mounted && credits && (
             <a
               href="/settings?tab=Plans"
               className={credits.nearLimit ? styles.creditsPillLow : styles.creditsPill}

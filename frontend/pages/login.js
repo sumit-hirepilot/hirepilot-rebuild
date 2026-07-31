@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
 import styles from '../styles/Auth.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 export default function Login() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function Login() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`,
+        `${API_BASE}/api/auth/login`,
         {
           method: 'POST',
           headers: {

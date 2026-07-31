@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import styles from '../../styles/Dashboard.module.css';
 import page from '../../styles/ApplicationDetail.module.css';
+import { API_BASE } from '../../lib/apiBase';
 
 /*
  * Application detail (PRD 3.10).
@@ -18,7 +19,7 @@ import page from '../../styles/ApplicationDetail.module.css';
  * which stays worth showing whether or not anyone has to click first.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const STATUS = {
   approved: ['Ready to send', 'ok'],

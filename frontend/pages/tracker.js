@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Tracker.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * Tracker (PRD 3.5).
@@ -17,7 +18,7 @@ import page from '../styles/Tracker.module.css';
  * board should not blur them.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const COLUMNS = [
   { id: 'applied', label: 'Applied', empty: 'Verified applications land here automatically.' },

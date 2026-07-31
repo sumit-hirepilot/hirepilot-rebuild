@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/AutoApply.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 /*
  * Auto Apply.
@@ -27,7 +28,7 @@ import page from '../styles/AutoApply.module.css';
  *            Applied here means verified and nothing else sets it
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+const BASE = API_BASE;
 
 const QUALITY = [
   { id: 0.85, label: 'Excellent', hint: 'Only your strongest matches. Fewest applications, sharpest fit.' },

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import styles from '../styles/Home.module.css';
+import { API_BASE } from '../lib/apiBase';
 
 const SOURCE_LABELS = {
   remoteok: 'RemoteOK',
@@ -80,7 +81,7 @@ export default function Home() {
   useEffect(() => {
     const loadSources = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs/sources`);
+        const res = await fetch(`${API_BASE}/api/jobs/sources`);
         if (res.ok) {
           const data = await res.json();
           setSources((data.sources || []).filter((s) => s.count > 0));
