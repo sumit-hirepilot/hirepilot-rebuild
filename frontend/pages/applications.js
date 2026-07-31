@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
+import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Applications.module.css';
 
@@ -145,6 +146,19 @@ export default function Applications() {
       </Head>
 
       <DashboardLayout title="Applications" user={user}>
+        {/*
+          * The persistent, all-time list. Same component and same endpoint the
+          * Auto Apply screen uses - it passes a runId, this does not. A blocker
+          * from a run days ago is findable here without remembering which run
+          * produced it, which is the whole reason this surface exists.
+          */}
+        <div style={{ marginBottom: 20 }}>
+          <NeedsYouDrawer
+            emptyText="Nothing is waiting on you. Parked applications show up here with the question that stopped them."
+            onResolved={() => loadApplications(localStorage.getItem('token'))}
+          />
+        </div>
+
         <div className={page.headerRow}>
           <div>
             <p className={styles.dateLabel}>{totalCount} total applications</p>

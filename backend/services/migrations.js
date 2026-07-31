@@ -470,6 +470,30 @@ const STATEMENTS = [
   // Tailoring against a JD writes pending nodes into a doc snapshot, so the
   // preview can show them highlighted before anything is accepted.
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS doc JSONB`,
+
+  /* ---------------------------------------------------------------- *
+   * Apply runs
+   *
+   * "3 of 20 need you, from this run" had nothing to read: the extension's
+   * counters lived in service-worker memory, which is evicted routinely, so a
+   * progress display built on them would blank out mid-run and show nothing at
+   * all on another device.
+   *
+   * Deliberately NO counter columns. Progress is derived by counting
+   * applications with this run_id, so there is no second number that can drift
+   * from what actually happened - the applications are the count.
+   * ---------------------------------------------------------------- */
+  `CREATE TABLE IF NOT EXISTS apply_runs (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     ended_at TIMESTAMP,
+     source VARCHAR(24) DEFAULT 'extension'
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_apply_runs_user ON apply_runs(user_id, started_at DESC)`,
+
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS run_id INTEGER REFERENCES apply_runs(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_applications_run ON applications(run_id)`,
 ];
 
 /*

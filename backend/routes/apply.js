@@ -527,6 +527,18 @@ router.get('/queue/next', verifyToken, async (req, res) => {
       [req.user.id, exclude]
     );
     if (!r.rows.length) return res.json({ item: null });
+
+    /*
+     * Stamp the run here, where every batch item passes exactly once. Doing it
+     * in the extension would mean a separate write per application that could
+     * fail independently of the one that handed the item out.
+     */
+    if (req.query.runId) {
+      await query(
+        'UPDATE applications SET run_id = $1 WHERE id = $2 AND user_id = $3',
+        [Number(req.query.runId), r.rows[0].id, req.user.id]
+      ).catch(() => {});
+    }
     return res.json({ item: await buildReviewPayload(req.user.id, r.rows[0].id) });
   } catch (err) {
     console.error('GET /apply/queue/next failed:', err.message);
@@ -1247,6 +1259,161 @@ router.get('/submitted', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('GET /apply/submitted failed:', err.message);
     res.status(500).json({ error: 'Could not load submitted applications' });
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Runs, and the blockers both surfaces read
+ * ------------------------------------------------------------------ */
+
+// Opened when a batch starts, so its applications can be grouped afterwards.
+router.post('/runs', verifyToken, async (req, res) => {
+  try {
+    const r = await query(
+      `INSERT INTO apply_runs (user_id, source) VALUES ($1, $2) RETURNING id, started_at`,
+      [req.user.id, String(req.body.source || 'extension').slice(0, 24)]
+    );
+    res.status(201).json({ run: r.rows[0] });
+  } catch (err) {
+    console.error('POST /apply/runs failed:', err.message);
+    res.status(500).json({ error: 'Could not start a run' });
+  }
+});
+
+router.post('/runs/:id/end', verifyToken, async (req, res) => {
+  try {
+    await query(
+      `UPDATE apply_runs SET ended_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND user_id = $2 AND ended_at IS NULL`,
+      [Number(req.params.id), req.user.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /apply/runs/:id/end failed:', err.message);
+    res.status(500).json({ error: 'Could not end that run' });
+  }
+});
+
+/*
+ * Progress for a run, DERIVED from its applications.
+ *
+ * No stored counters on apply_runs on purpose. A counter incremented alongside
+ * the work is a second number that can disagree with the work, and the
+ * extension's in-memory version already did exactly that - it reset to zero
+ * whenever the service worker was evicted mid-run. Counting the applications
+ * cannot drift, because the applications ARE the count.
+ */
+router.get('/runs/latest', verifyToken, async (req, res) => {
+  try {
+    const r = await query(
+      `SELECT id, started_at, ended_at FROM apply_runs
+        WHERE user_id = $1 ORDER BY started_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (!r.rows.length) return res.json({ run: null });
+    const run = r.rows[0];
+    const c = await query(
+      `SELECT status, COUNT(*)::int AS n FROM applications
+        WHERE user_id = $1 AND run_id = $2 GROUP BY status`,
+      [req.user.id, run.id]
+    );
+    const counts = Object.fromEntries(c.rows.map((x) => [x.status, x.n]));
+    const total = c.rows.reduce((a, x) => a + x.n, 0);
+    res.json({
+      run: {
+        ...run,
+        counts,
+        total,
+        needsYou: counts.needs_user || 0,
+        submitted: counts.submitted || 0,
+        running: !run.ended_at,
+      },
+    });
+  } catch (err) {
+    console.error('GET /apply/runs/latest failed:', err.message);
+    res.status(500).json({ error: 'Could not load the latest run' });
+  }
+});
+
+/*
+ * Every parked application with its blocking questions inlined.
+ *
+ * The single source both surfaces read: the Auto Apply drawer passes ?runId to
+ * scope it to one batch, the Dashboard omits it for the all-time list. One
+ * query rather than two implementations, and rather than the N+1 a list
+ * endpoint plus per-application fetches would have meant.
+ *
+ * Questions come from screening_answers, not from failure_reason - that column
+ * holds a truncated three-question summary meant for a status line, and
+ * rendering inputs from it would ask for fewer answers than the form needs.
+ */
+router.get('/blockers', verifyToken, async (req, res) => {
+  try {
+    const params = [req.user.id];
+    let scope = '';
+    if (req.query.runId) {
+      params.push(Number(req.query.runId));
+      scope = ` AND a.run_id = $${params.length}`;
+    }
+
+    const r = await query(
+      `SELECT a.id, a.status, a.failure_reason, a.screening_answers, a.run_id,
+              a.target_form_url, a.updated_at,
+              j.title, j.company_name, j.location
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+        WHERE a.user_id = $1 AND a.status = 'needs_user'${scope}
+        ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC`,
+      params
+    );
+
+    const blockers = r.rows.map((row) => {
+      const stored = row.screening_answers || {};
+      const all = [...(stored.standard || []), ...(stored.questions || [])];
+      const unanswered = all.filter((q) => (
+        q.required && !q.optional
+        && (q.answer === null || q.answer === undefined || q.answer === '')
+      ));
+
+      /*
+       * A human step - CAPTCHA, login, MFA, consent - is not a question and has
+       * no answer to type. It is surfaced so the user knows why it stopped, but
+       * the drawer must not render an input for it.
+       */
+      const humanStep = /captcha|login|sign in|mfa|otp|consent|permission/i.test(row.failure_reason || '')
+        && !unanswered.length;
+
+      return {
+        applicationId: row.id,
+        runId: row.run_id,
+        job: { title: row.title, company: row.company_name, location: row.location },
+        targetFormUrl: row.target_form_url,
+        updatedAt: row.updated_at,
+        kind: humanStep ? 'human_step' : 'question',
+        humanStepReason: humanStep ? row.failure_reason : null,
+        questions: unanswered.map((q) => ({
+          // The employer's own wording. Internal field names would be
+          // meaningless to answer against.
+          question: q.question,
+          type: q.type || 'text',
+          options: q.options || null,
+          suggestion: q.suggestion || null,
+          confidence: q.confidence || null,
+          matchedQuestion: q.matchedQuestion || null,
+          reason: q.reason || 'Not in your profile yet.',
+        })),
+      };
+    });
+
+    res.json({
+      blockers,
+      total: blockers.length,
+      questionCount: blockers.reduce((a, b) => a + b.questions.length, 0),
+      scopedToRun: req.query.runId ? Number(req.query.runId) : null,
+    });
+  } catch (err) {
+    console.error('GET /apply/blockers failed:', err.message);
+    res.status(500).json({ error: 'Could not load blockers' });
   }
 });
 

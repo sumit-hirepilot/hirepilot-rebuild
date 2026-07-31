@@ -27,6 +27,7 @@ router.get('/', verifyToken, async (req, res) => {
     });
 
     // Organize by status for Kanban
+    const needsYou = [];
     const kanban = {
       applied: [],
       phone_screen: [],
@@ -44,6 +45,14 @@ router.get('/', verifyToken, async (req, res) => {
         rejected.push(app);
       } else if (app.status === 'failed') {
         failed.push(app);
+      } else if (app.status === 'needs_user') {
+        /*
+         * Parked applications matched none of the buckets and fell through
+         * entirely - they appeared nowhere on the Applications page, so a
+         * blocker was invisible unless the user happened to be watching the run
+         * that produced it.
+         */
+        needsYou.push(app);
       } else if (app.status === 'pending_review') {
         pendingReview.push(app);
       } else if (kanban[app.status]) {
@@ -54,6 +63,7 @@ router.get('/', verifyToken, async (req, res) => {
     res.json({
       total: result.rows.length,
       kanban,
+      needsYou,
       rejected,
       failed,
       pendingReview,

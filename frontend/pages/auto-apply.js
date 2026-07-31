@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
+import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/AutoApply.module.css';
 
@@ -67,6 +68,7 @@ export default function AutoApply() {
   const [submitted, setSubmitted] = useState([]);
   const [matches, setMatches] = useState([]);
   const [matchTotal, setMatchTotal] = useState(null);
+  const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
 
@@ -75,10 +77,14 @@ export default function AutoApply() {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
 
-    const [pf, q, kn, ap, sub] = await Promise.all([
+    const [pf, q, kn, ap, sub, rn] = await Promise.all([
       get('/api/profile'), get('/api/apply/queue'), get('/api/apply/knowledge'),
-      get('/api/apply/profile'), get('/api/apply/submitted'),
+      get('/api/apply/profile'), get('/api/apply/submitted'), get('/api/apply/runs/latest'),
     ]);
+    // Run progress is read from the server, not from the extension's in-memory
+    // counters - those are evicted with the service worker and would blank the
+    // display mid-batch.
+    if (rn) setRun(rn.run);
 
     if (pf) setPrefs(pf.profile || pf);
     if (q) { setQueue(q.queue || []); setCounts(q.counts || {}); }
@@ -195,24 +201,26 @@ export default function AutoApply() {
         </div>
       </div>
 
-      {blocked.length > 0 && (
-        <div className={page.blockedPanel}>
-          <strong>{blocked.length} application{blocked.length === 1 ? '' : 's'} need{blocked.length === 1 ? 's' : ''} you</strong>
-          <p>
-            Everything else keeps running. These stopped on something the law or the
-            employer requires a person for.
-          </p>
-          <ul>
-            {blocked.slice(0, 5).map((b) => {
-              const key = Object.keys(PAUSE_LABEL).find((k) => (b.failure_reason || '').includes(k));
-              return (
-                <li key={b.id}>
-                  <span className={page.blockedCo}>{b.company_name}</span>
-                  <span className={page.blockedWhy}>{PAUSE_LABEL[key] || b.failure_reason || 'Needs a look'}</span>
-                </li>
-              );
-            })}
-          </ul>
+      {/*
+        * The shared drawer, scoped to this run. Same component and same
+        * endpoint the Applications page uses for the all-time list - the run is
+        * a query parameter, not a second implementation.
+        */}
+      {run && (
+        <div className={page.runPanel}>
+          <div className={page.runHead}>
+            <strong>{run.running ? 'Run in progress' : 'Last run'}</strong>
+            <span>
+              {run.submitted} of {run.total} sent
+              {run.needsYou > 0 ? ` · ${run.needsYou} need you` : ''}
+            </span>
+          </div>
+          <NeedsYouDrawer
+            runId={run.id}
+            title={`${run.needsYou} of ${run.total} in this run need you`}
+            emptyText="Nothing from this run is waiting on you."
+            onResolved={() => load(token)}
+          />
         </div>
       )}
 
