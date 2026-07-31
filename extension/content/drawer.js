@@ -117,6 +117,35 @@ HP.drawer = (() => {
     textarea.askIn { resize: vertical; min-height: 56px; }
     .saveBtn { width: 100%; margin-top: 10px; }
 
+    /* The themed listbox that replaces a native <select>. Without these rules
+       the button renders with the browser's default 2px outset border and grey
+       fill, which in a screenshot is indistinguishable from a native control -
+       exactly the confusion that hid this. */
+    .askSel { position: relative; margin-top: 6px; }
+    .askSelBtn {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px;
+      background: #fff; color: #0f172a; font: inherit; font-size: 13px;
+      cursor: pointer; text-align: left;
+    }
+    .askSelBtn:hover { border-color: #7c3aed; }
+    .askSelVal { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .askSelVal.ph { color: #94a3b8; }
+    .askSelCaret { color: #64748b; font-size: 10px; flex-shrink: 0; }
+    .askSelList {
+      position: absolute; top: calc(100% + 3px); left: 0; right: 0; z-index: 5;
+      max-height: 210px; overflow-y: auto; background: #fff;
+      border: 1px solid #e2e8f0; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(15,23,42,.16);
+    }
+    .askSelOpt { padding: 8px 10px; font-size: 12.5px; line-height: 1.4; cursor: pointer; color: #0f172a; }
+    .askSelOpt:hover { background: #f5f3ff; }
+    .askSelOpt.on { background: #7c3aed; color: #fff; }
+
+    .askOpts { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .askOpt { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; cursor: pointer; }
+    .askOpt input { margin-top: 2px; accent-color: #7c3aed; }
+
     .row { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
     .row:last-child { border-bottom: none; }
     .q { font-size: 12px; font-weight: 600; }
