@@ -111,12 +111,17 @@ export default function AutoApply() {
     setToken(t);
     try { setUser(JSON.parse(localStorage.getItem('user') || 'null')); } catch { /* stale */ }
     load(t);
-  }, [router, load]);
+    // Mount only. `router` in the dependency list changes identity on
+    // navigation, and with `load` alongside it the effect's behaviour became
+    // dependent on render timing rather than on mounting - the page rendered
+    // its shell and never fetched anything.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const savePrefs = async (patch) => {
     setBusy(true);
     setNotice(null);
-    const next = { ...prefs, ...patch };
+    const next = { ...(prefs?.preferences || prefs || {}), ...patch };
     setPrefs(next); // optimistic: these are toggles, and a lagging switch feels broken
     try {
       // /preferences, not /profile: PUT /api/profile updates the user row and
@@ -140,18 +145,22 @@ export default function AutoApply() {
     }
   };
 
-  if (!prefs) {
-    return (
-      <DashboardLayout user={user}>
-        <Head><title>Auto Apply - HirePilot</title></Head>
-        <div className={page.loading}>Loading…</div>
-      </DashboardLayout>
-    );
-  }
-
-  const on = Boolean(prefs.auto_apply_enabled);
-  const cap = prefs.auto_apply_limit_per_day ?? 10;
-  const minScore = prefs.auto_apply_min_score ?? 0.7;
+  /*
+   * Render with defaults rather than hanging on a fetch.
+   *
+   * This returned a bare "Loading…" until prefs arrived, so ANY failure to
+   * populate it - a shape that did not match, an effect that did not fire -
+   * left the page permanently blank with no error and no way in. A settings
+   * screen should show its controls and fill in values as they land, not
+   * withhold itself until every request has answered.
+   *
+   * The preferences live under `preferences` on /api/profile; reading them off
+   * the root object silently yielded undefined for every one.
+   */
+  const p = prefs?.preferences || prefs || {};
+  const on = Boolean(p.auto_apply_enabled);
+  const cap = p.auto_apply_limit_per_day ?? 10;
+  const minScore = p.auto_apply_min_score ?? 0.7;
   const savedAnswers = Object.keys(profile?.custom_answers || {}).length;
   const blocked = queue.filter((q) => q.status === 'needs_user');
   const ready = counts.approved || 0;
