@@ -719,6 +719,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           const appId = await applicationForTab(tabId, _sender.tab.url);
           if (!appId) return respond({ ok: false, reason: 'no matching application' });
 
+          /*
+           * Read the LIVE form before answering.
+           *
+           * This served whatever screening_answers happened to hold, which is
+           * whatever the last run stored - so a form whose questions have since
+           * been re-grouped, or that was never discovered properly, showed
+           * stale questions with no options and rendered them as free-text
+           * boxes. Opening the page is how someone checks a fix, and that path
+           * never re-read the form.
+           *
+           * Discovery + PATCH refreshes the stored questions to match what is
+           * actually on screen, then the payload is built from that. Best
+           * effort: if discovery fails the stored copy is still shown, which is
+           * worse than fresh but better than nothing.
+           */
+          let discovery = await sendToTab(tabId, { type: 'HP_DISCOVER' }, 30000).catch(() => null);
+          if (discovery && discovery.navigating) {
+            await sleep(2000);
+            await waitForTabLoad(tabId);
+            await waitForRunner(tabId);
+            discovery = await sendToTab(tabId, { type: 'HP_DISCOVER' }, 30000).catch(() => null);
+          }
+          if (discovery && discovery.ok && (discovery.questions || []).length) {
+            await api(`/api/apply/queue/${appId}/questions`, {
+              method: 'PATCH',
+              body: JSON.stringify({ questions: discovery.questions }),
+            }).catch(() => null);
+          }
+
           const fresh = await api(`/api/apply/queue/${appId}`).catch(() => null);
           const item = fresh?.item;
           if (!item) return respond({ ok: false, reason: 'could not load application' });
