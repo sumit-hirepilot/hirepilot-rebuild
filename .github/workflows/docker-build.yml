@@ -1,0 +1,81 @@
+# Builds the production image on every push and pull request.
+#
+# This exists because a Dockerfile change went straight to main once and took
+# the API down: `apk add chromium` failed the build, Railway had no healthy
+# container, and the runtime fallback in resumePdf.js could not help because the
+# failure was the image build rather than the browser launch.
+#
+# Linting and unit tests would not have caught it. Only building the image
+# catches an image problem, so that is what this does.
+#
+# Railway deploys `main`. Infra changes go to a branch, wait for this to pass,
+# and only then merge.
+
+name: Build image
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Never pushed anywhere - this is a proof that it assembles, not a
+          # release step. Railway builds its own from the repo.
+          push: false
+          load: true
+          tags: hirepilot-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A build that assembles but cannot start is still broken, and that is
+      # the shape the Chromium failure took. Boot it and require the health
+      # endpoint to answer.
+      - name: Boot it and check health
+        run: |
+          docker run -d --name api -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e JWT_SECRET=ci-not-a-real-secret \
+            hirepilot-api:ci
+
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || true)
+            echo "attempt $i: health=$code"
+            # 200 is ideal; 500 still proves the process is up and routing,
+            # which is all that can be asked without a database attached.
+            if [ "$code" = "200" ] || [ "$code" = "500" ]; then
+              echo "container is serving"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::container never served a response"
+          docker logs api
+          exit 1
+
+      - name: Report what is in the image
+        if: always()
+        run: |
+          docker image inspect hirepilot-api:ci \
+            --format 'image size: {{.Size}} bytes' || true
+          # Chromium is optional at runtime, so its absence is reported rather
+          # than failed on - but a silent absence is how PDF export would
+          # quietly stay broken.
+          docker run --rm hirepilot-api:ci sh -c \
+            'command -v chromium || command -v chromium-browser || echo "no chromium in image - PDF export will report unavailable"' || true
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs api || true
