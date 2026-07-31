@@ -124,9 +124,24 @@ function remember(value) {
 }
 
 export function useExtensionDetected() {
-  // Seeded from the cache, so a remount renders the correct state on the first
-  // paint rather than flickering through "unknown".
-  const [detected, setDetected] = useState(initialDetection);
+  /*
+   * Starts null on EVERY first render, server and client alike.
+   *
+   * It used to seed from the cache synchronously, which reads document and
+   * sessionStorage - neither exists on the server. So the server rendered no
+   * extension button and the client rendered one, and React threw a hydration
+   * mismatch on every page in the app: "Expected server HTML to contain a
+   * matching <button> in <header>".
+   *
+   * The cache is still applied immediately below, in an effect, so a remount
+   * still settles within a frame rather than flickering through the full probe.
+   */
+  const [detected, setDetected] = useState(null);
+
+  useEffect(() => {
+    const cached = initialDetection();
+    if (cached !== null) setDetected(cached);
+  }, []);
 
   useEffect(() => {
     // Already known - but still listen, in case it is installed mid-session.
