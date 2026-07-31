@@ -438,6 +438,16 @@ const STATEMENTS = [
    * ---------------------------------------------------------------- */
   `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS doc JSONB`,
   `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS doc_updated_at TIMESTAMP`,
+  /*
+   * Who last wrote the document: the importer, or the user.
+   *
+   * This started as a comparison of doc_updated_at against updated_at, which
+   * was exactly backwards - the import sets doc_updated_at to now, making every
+   * freshly imported row look edited, so the re-parse skipped all of them. An
+   * explicit marker cannot be misread that way.
+   */
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS doc_source VARCHAR(16)`,
+  `UPDATE resumes SET doc_source = 'import' WHERE doc IS NOT NULL AND doc_source IS NULL`,
 
   // Per-document formatting (PRD 3.7 toolbar). Stored beside the content so a
   // version carries its own look rather than inheriting a global setting.
@@ -475,10 +485,10 @@ const backfillResumeDocs = async () => {
   try {
     const { parseText, DOC_VERSION } = require('./resumeDocument');
     /*
-     * Rows never parsed, plus rows parsed by an older parser - but ONLY where
-     * the user has not edited the document since. doc_updated_at is set by
-     * every editor write, so a document touched after its import is left alone
-     * and a parser improvement can never overwrite someone's own edits.
+     * Rows never parsed, plus rows parsed by an older parser - but ONLY those
+     * still marked as imports. The moment the user saves from the editor the
+     * row becomes doc_source='user' and is never re-parsed, so a parser
+     * improvement can reach stale imports without ever overwriting real edits.
      */
     const rows = await query(
       `SELECT id, original_file_text FROM resumes
@@ -487,7 +497,7 @@ const backfillResumeDocs = async () => {
             doc IS NULL
             OR (
               COALESCE((doc->>'version')::int, 1) < $1
-              AND (doc_updated_at IS NULL OR doc_updated_at <= updated_at)
+              AND COALESCE(doc_source, 'import') = 'import'
             )
           )
         LIMIT 500`,
@@ -499,7 +509,9 @@ const backfillResumeDocs = async () => {
         const doc = parseText(row.original_file_text);
         if (!doc.sections.length) continue;
         await query(
-          'UPDATE resumes SET doc = $1::jsonb, doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          `UPDATE resumes SET doc = $1::jsonb, doc_source = 'import',
+                  doc_updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2 AND COALESCE(doc_source, 'import') = 'import'`,
           [JSON.stringify(doc), row.id]
         );
         done += 1;

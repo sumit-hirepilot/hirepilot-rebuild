@@ -551,8 +551,11 @@ async function loadDoc(userId, resumeId) {
   const row = r.rows[0];
   if (!row.doc) {
     row.doc = docModel.parseText(row.original_file_text || '');
-    await query('UPDATE resumes SET doc = $1::jsonb, doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [JSON.stringify(row.doc), row.id]);
+    await query(
+      `UPDATE resumes SET doc = $1::jsonb, doc_source = 'import',
+              doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [JSON.stringify(row.doc), row.id]
+    );
   }
   return row;
 }
@@ -563,7 +566,9 @@ async function saveDoc(userId, resumeId, doc) {
   // accepted must not reach the text the extension pastes into a real form.
   const text = docModel.toText(doc, { includePending: false });
   await query(
-    `UPDATE resumes SET doc = $1::jsonb, original_file_text = $2,
+    // doc_source = 'user' takes this row out of the re-parse pool for good: from
+    // here on the document is the user's, not the importer's.
+    `UPDATE resumes SET doc = $1::jsonb, original_file_text = $2, doc_source = 'user',
             doc_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = $3 AND user_id = $4`,
     [JSON.stringify(doc), text, resumeId, userId]
