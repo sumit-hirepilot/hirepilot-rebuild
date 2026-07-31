@@ -299,6 +299,133 @@ const STATEMENTS = [
      CHECK (applied_at IS NULL OR status = 'submitted')`,
 
   `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
+
+  /* ---------------------------------------------------------------- *
+   * PRD build-out: Inbox, Tracker, Profile defaults, plans & credits
+   * ---------------------------------------------------------------- */
+
+  /*
+   * Inbox. Recruiter mail routed to a per-user proxy address and categorised.
+   *
+   * body_text is capped by the ingest route rather than here, because this
+   * database lives on a small volume that a stream of full HTML emails would
+   * fill in days. The full message stays with the mail provider; this stores
+   * what the list and reader need.
+   */
+  `CREATE TABLE IF NOT EXISTS inbox_messages (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL,
+     message_id VARCHAR(500),
+     from_email VARCHAR(320),
+     from_name VARCHAR(255),
+     subject VARCHAR(500),
+     body_text TEXT,
+     category VARCHAR(32) NOT NULL DEFAULT 'other',
+     otp_code VARCHAR(16),
+     company_name VARCHAR(255),
+     is_read BOOLEAN DEFAULT FALSE,
+     received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_message_id ON inbox_messages(user_id, message_id) WHERE message_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_user_cat ON inbox_messages(user_id, category, received_at DESC)`,
+
+  // The proxy address the user's recruiter mail is forwarded to.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS proxy_email VARCHAR(320)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_proxy_email ON users(proxy_email) WHERE proxy_email IS NOT NULL`,
+
+  /*
+   * Tracker. Kanban stage is deliberately SEPARATE from applications.status.
+   * status is machine state (submitting/submitted/failed); stage is where the
+   * human conversation has got to. Conflating them means a recruiter reply
+   * would have to overwrite the record of whether we actually submitted.
+   */
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS tracker_stage VARCHAR(32)`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS stage_changed_at TIMESTAMP`,
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
+  `CREATE INDEX IF NOT EXISTS idx_applications_stage ON applications(user_id, tracker_stage)`,
+
+  /*
+   * Application defaults (PRD 3.8). Kept on application_profiles beside the
+   * answers they feed, so the pre-fill engine reads one row.
+   *
+   * Self-identification stays nullable with no default: an unanswered EEO
+   * question is a legitimate answer, and a column defaulting to anything would
+   * put a claim on a real application that the user never made.
+   */
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS visa_type VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS in_person_ok BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS has_transport BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS needs_accommodation BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS start_immediately BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS prior_employee BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS gov_clearance VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS gov_ties BOOLEAN`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS self_id_gender VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS self_id_ethnicity VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS self_id_veteran VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS self_id_disability VARCHAR(64)`,
+  `ALTER TABLE application_profiles ADD COLUMN IF NOT EXISTS zip_code VARCHAR(16)`,
+
+  /*
+   * Plans and credits (PRD 6). Caps are stored per user rather than derived
+   * from the tier name, so changing a plan's allowance later does not silently
+   * rewrite what existing users were sold.
+   */
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier VARCHAR(16) DEFAULT 'starter'`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_total INTEGER DEFAULT 600`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_used INTEGER DEFAULT 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMP`,
+
+  /*
+   * Apply behaviour (PRD 4). Two account-level toggles.
+   *
+   * review_before_submit defaults FALSE here, against the PRD's recommended
+   * default, because this account explicitly asked for the approval step to be
+   * removed. It is a setting either way - the disagreement is only about the
+   * default, and the safer one is a switch away.
+   */
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS auto_approve BOOLEAN DEFAULT TRUE`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS review_before_submit BOOLEAN DEFAULT FALSE`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS resume_optimization VARCHAR(16) DEFAULT 'honest'`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS auto_cover_letter BOOLEAN DEFAULT TRUE`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS timezone VARCHAR(64)`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS notify_recommendations BOOLEAN DEFAULT TRUE`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS notify_product BOOLEAN DEFAULT FALSE`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS portfolio_public BOOLEAN DEFAULT FALSE`,
+
+  /*
+   * Networking (PRD 3.6). Outreach drafts and the daily lookup counter.
+   */
+  `CREATE TABLE IF NOT EXISTS outreach_contacts (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     company_name VARCHAR(255) NOT NULL,
+     contact_name VARCHAR(255),
+     contact_title VARCHAR(255),
+     contact_profile_url VARCHAR(600),
+     source VARCHAR(64),
+     draft_message TEXT,
+     status VARCHAR(24) DEFAULT 'draft',
+     sent_at TIMESTAMP,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_outreach_user ON outreach_contacts(user_id, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS outreach_lookups (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     company_name VARCHAR(255),
+     looked_up_on DATE DEFAULT CURRENT_DATE
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_outreach_lookups_day ON outreach_lookups(user_id, looked_up_on)`,
+
+  /*
+   * Resume versions (PRD 3.7). Default version plus duplicates/imports.
+   */
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS version_name VARCHAR(120)`,
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE`,
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS template VARCHAR(32) DEFAULT 'standard'`,
 ];
 
 const runMigrations = async () => {

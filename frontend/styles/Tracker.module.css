@@ -1,0 +1,90 @@
+/* Tracker board. Tokens only - see AutoApply.module.css for why. */
+
+.loading { padding: 40px 0; color: var(--text-secondary); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.search {
+  flex: 1; min-width: 200px; padding: 9px 13px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-secondary); color: var(--text);
+}
+.search:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.total { font-size: 12px; color: var(--text-secondary); margin-left: auto; }
+
+.ghostBtn, .primaryBtn {
+  padding: 9px 15px; border-radius: 9px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600;
+}
+.ghostBtn { background: var(--bg-secondary); color: var(--text); border: 1px solid var(--border); }
+.ghostBtn:hover { border-color: var(--primary); }
+.primaryBtn { background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+.primaryBtn:hover { filter: brightness(1.06); }
+.ghostBtn:disabled, .primaryBtn:disabled { opacity: .55; cursor: not-allowed; }
+
+.notice {
+  margin-bottom: 14px; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+  background: var(--info-bg); border: 1px solid var(--info); color: var(--info); font-size: 13px;
+}
+
+.addForm {
+  margin-bottom: 16px; padding: 14px 16px; border-radius: 12px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+.addHint { margin: 0 0 10px; font-size: 12.5px; color: var(--text-secondary); }
+.addRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.addRow input, .addRow select {
+  flex: 1; min-width: 130px; padding: 8px 11px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text);
+}
+
+/* Five columns that scroll horizontally rather than squeezing to unreadable
+   widths - a Kanban column below ~200px cannot show a company and a role. */
+.board {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(232px, 1fr);
+  gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start;
+}
+.col {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 12px; display: flex; flex-direction: column; min-height: 180px;
+}
+.colHead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.colLabel { font-size: 13px; font-weight: 700; color: var(--text); }
+.colCount {
+  font-size: 11px; font-weight: 700; color: var(--text-secondary);
+  background: var(--bg-subtle); padding: 1px 8px; border-radius: 999px;
+}
+.colBody { padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+.colEmpty { margin: 0; padding: 8px 4px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+
+.card {
+  padding: 11px 12px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+}
+.cardTitle { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.cardCo { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.cardMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.cardDate { font-size: 11px; color: var(--text-secondary); }
+.cardRef { margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--success); }
+
+.tagVerified, .tagManual {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: .3px;
+}
+.tagVerified { background: var(--success-bg); color: var(--success); }
+.tagManual { background: var(--bg-subtle); color: var(--text-secondary); }
+
+.moveSel {
+  width: 100%; margin-top: 9px; padding: 6px 8px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg-secondary); color: var(--text); cursor: pointer;
+}
+.moveSel:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+@media (max-width: 720px) {
+  .board { grid-auto-columns: minmax(212px, 1fr); }
+  .total { margin-left: 0; }
+}

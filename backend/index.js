@@ -14,6 +14,9 @@ const activityRoutes = require('./routes/activity');
 const notificationsRoutes = require('./routes/notifications');
 const analyticsRoutes = require('./routes/analytics');
 const applyRoutes = require('./routes/apply');
+const inboxRoutes = require('./routes/inbox');
+const trackerRoutes = require('./routes/tracker');
+const plansRoutes = require('./routes/plans');
 const { startScheduler } = require('./services/scheduler');
 const { runMigrations } = require('./services/migrations');
 
@@ -75,6 +78,15 @@ app.use('/api/analytics', analyticsRoutes);
 // Application queue, Application Profile, and the submission-evidence ingest
 // the browser extension posts back to.
 app.use('/api/apply', applyRoutes);
+
+// Recruiter mail routed to a per-user proxy address and categorised (PRD 3.4).
+app.use('/api/inbox', inboxRoutes);
+
+// Kanban pipeline of applications that actually reached an employer (PRD 3.5).
+app.use('/api/tracker', trackerRoutes);
+
+// Tiers, allowances, and the credit counter (PRD 6).
+app.use('/api/plans', plansRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

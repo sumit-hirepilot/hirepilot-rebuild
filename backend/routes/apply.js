@@ -40,6 +40,7 @@ const { checkAts } = require('../services/atsChecker');
 const { prefillAnswers, summarize, normalizeKey } = require('../services/screeningPrefill');
 const { recordSeen, confirmVariation, stats: knowledgeStats } = require('../services/questionKnowledge');
 const { classify } = require('../services/questionConcepts');
+const { spend: spendCredit } = require('./plans');
 
 const router = express.Router();
 
@@ -1101,6 +1102,11 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
          SET status = 'submitted',
              applied_at = $1,
              submitted_at = $1,
+             -- Onto the tracker board the moment it is verified, so a confirmed
+             -- application is never invisible while waiting for someone to file
+             -- it. A stage already set by hand or by a recruiter reply wins.
+             tracker_stage = COALESCE(tracker_stage, 'applied'),
+             stage_changed_at = COALESCE(stage_changed_at, CURRENT_TIMESTAMP),
              verified_at = CURRENT_TIMESTAMP,
              confirmation_captured_at = CURRENT_TIMESTAMP,
              employer_confirmation_id = $2,
@@ -1121,6 +1127,13 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
         id, req.user.id,
       ]
     );
+
+    /*
+     * A credit is spent here and nowhere else - on a submission the employer
+     * has confirmed. Charging on an attempt would bill someone for a form that
+     * stalled on a CAPTCHA or had to be retried after a bad fill.
+     */
+    if (r.rows.length) spendCredit(req.user.id, 1).catch(() => {});
 
     // Notification stream. Keyed on event_type/job_id/metadata to match the
     // activity_log schema the Notification Center reads.

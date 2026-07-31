@@ -48,6 +48,27 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/inbox',
+    label: 'Inbox',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 5h16v14H4z" />
+        <path d="m4 7 8 6 8-6" />
+      </svg>
+    ),
+  },
+  {
+    href: '/tracker',
+    label: 'Tracker',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="5" height="16" rx="1.4" />
+        <rect x="9.5" y="4" width="5" height="11" rx="1.4" />
+        <rect x="16" y="4" width="5" height="7" rx="1.4" />
+      </svg>
+    ),
+  },
+  {
     href: '/applications',
     label: 'Applications',
     icon: (
@@ -123,6 +144,9 @@ export default function DashboardLayout({ children, title, user }) {
    * dashboard route.
    */
   const extensionDetected = useExtensionDetected();
+  // Credit counter (PRD 6). Read-only here; the meaning of a credit is defined
+  // server-side and shown in the tooltip so the number is never just a number.
+  const [credits, setCredits] = useState(null);
   const [extModalOpen, setExtModalOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -149,6 +173,16 @@ export default function DashboardLayout({ children, title, user }) {
         setAutoPilotLoaded(true);
       })
       .catch(() => setAutoPilotLoaded(true));
+  }, [token, base]);
+
+  useEffect(() => {
+    if (!token) return;
+    // Failing quietly is right here: a header counter that cannot load must not
+    // block the page it sits on.
+    fetch(`${base}/api/plans/credits`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d) => d && setCredits(d))
+      .catch(() => {});
   }, [token, base]);
 
   useEffect(() => {
@@ -279,6 +313,15 @@ export default function DashboardLayout({ children, title, user }) {
                 <span className={styles.extensionCtaLabelLong}>Download </span>Extension
               </span>
             </button>
+          )}
+          {credits && (
+            <a
+              href="/settings?tab=Plans"
+              className={credits.nearLimit ? styles.creditsPillLow : styles.creditsPill}
+              title={`${credits.remaining} of ${credits.total} applications left on ${credits.tierName}. One credit is spent per application the employer confirms.`}
+            >
+              <span className={styles.creditsNum}>{credits.remaining}</span> left
+            </a>
           )}
           <NotificationBell token={token} base={base} />
           <button
