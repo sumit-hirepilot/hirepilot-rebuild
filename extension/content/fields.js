@@ -128,9 +128,39 @@ HP.fields = (() => {
     const selectContainer = el.closest('[class*="select__container"], [class*="select-shell"]');
     const scope = selectContainer || el;
 
+    /*
+     * The label immediately before this control, checked BEFORE walking up to a
+     * field group.
+     *
+     * Checkr's phone row wraps the country selector in `.phone-input`, which the
+     * group selector below does not match - so the walk continued past it to an
+     * outer wrapper whose first label is "First Name*", and the Country question
+     * could never find its own control. Two comboboxes both answered to "First
+     * Name*". Its actual preceding sibling reads "Country*".
+     *
+     * A group label describes the group's first control; a sibling label
+     * describes exactly this one, so it is the better answer whenever it exists.
+     */
+    const prev = scope.previousElementSibling;
+    if (prev && /^(label|legend|span|div|p)$/i.test(prev.tagName)) {
+      const text = clean(prev.textContent);
+      if (text && text.length <= 70 && prev.querySelectorAll('input, select, textarea').length === 0) {
+        return text;
+      }
+    }
+
     // Field-group wrapper: the nearest preceding label-ish node.
-    const group = scope.closest('[class*="field"], [class*="question"], fieldset, .form-group');
+    const group = scope.closest('[class*="field"], [class*="question"], fieldset, .form-group, [class*="input"]');
     if (group) {
+      /*
+       * Prefer a label whose `for` names this control. A group with several
+       * labels - Checkr's phone row has "Country*" and "Phone*" - otherwise
+       * hands its first one to every control inside it.
+       */
+      if (el.id) {
+        const own = group.querySelector(`label[for="${cssEscape(el.id)}"]`);
+        if (own) return clean(own.textContent);
+      }
       const l = group.querySelector('label, legend, [class*="label"]');
       if (l) return clean(l.textContent);
     }
