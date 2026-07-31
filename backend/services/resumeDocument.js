@@ -59,20 +59,62 @@ const HEADING_HINTS = [
 const BULLET_RE = /^\s*[-*•·▪◦‣]\s+/;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.]+/;
 const PHONE_RE = /(\+?\d[\d\s()-]{7,}\d)/;
-const URL_RE = /\b((?:https?:\/\/|www\.)[^\s,;]+)/gi;
+/*
+ * Bare domains too. Requiring a scheme or "www." lost "linkedin.com/in/handle"
+ * off a real resume - the single most common way a resume writes its own
+ * LinkedIn - and the round trip then dropped it entirely.
+ */
+const URL_RE = /\b((?:https?:\/\/|www\.)[^\s,;]+|(?:[a-z0-9-]+\.)+(?:com|io|dev|net|org|co|me|app|work|design)(?:\/[^\s,;·|]*)?)/gi;
 
 // "Role at Company | 2021 - Present" and the many shapes near it.
 const DATE_RANGE_RE = /((?:19|20)\d{2}|present|current|now)\s*[–—-]\s*((?:19|20)\d{2}|present|current|now)/i;
 
+/*
+ * Many resumes are exported with letter-spaced headings ("P R O F E S S I O N A
+ * L   S U M M A R Y"), and PDF text extraction then collapses the runs of
+ * spaces that separated words - so the word boundaries are gone for good and
+ * "CORE SKILLS & TOOLS" cannot be recovered from "C O R E S K I L L S".
+ *
+ * That is fine for classification, which only needs to know it is a skills
+ * heading. Matching happens on the de-spaced form, and the section is then
+ * given its canonical name rather than an unreadable reconstruction.
+ */
+function isLetterSpaced(line) {
+  const toks = line.trim().split(/\s+/);
+  if (toks.length < 4) return false;
+  const singles = toks.filter((t) => t.length === 1).length;
+  return singles / toks.length >= 0.6;
+}
+
+const deSpace = (line) => line.replace(/\s+/g, '');
+
+// Canonical labels, so a mangled heading still reads properly in the editor.
+const CANONICAL = {
+  experience: 'Experience', education: 'Education', skills: 'Skills',
+  projects: 'Projects', summary: 'Summary',
+};
+
 function classifyHeading(line) {
   const t = line.trim().replace(/[:]+$/, '');
-  if (!t || t.length > 52) return null;
-  const looksHeading = HEADING_RE.test(t) || /^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/.test(t);
+  if (!t || t.length > 60) return null;
+
+  const spaced = isLetterSpaced(t);
+  // Classify against the de-spaced form; a hint like /^summary/ can never match
+  // "P R O F E S S I O N A L   S U M M A R Y" as written.
+  const probe = spaced ? deSpace(t) : t;
+
+  const looksHeading = spaced || HEADING_RE.test(t) || /^[A-Z][a-z]+(\s[A-Z][a-z]+)?$/.test(t);
   if (!looksHeading) return null;
+
   for (const [re, type] of HEADING_HINTS) {
-    if (re.test(t)) return { type, title: t };
+    // Anchored hints need to match anywhere once the spacing is gone:
+    // "PROFESSIONALSUMMARY" ends with the word, it does not start with it.
+    const loose = new RegExp(re.source.replace(/^\^/, ''), 'i');
+    if (loose.test(probe)) {
+      return { type, title: spaced ? CANONICAL[type] : t };
+    }
   }
-  // An ALL-CAPS line that matches no hint is still a heading the user wrote.
+  if (spaced) return { type: 'custom', title: t };
   return HEADING_RE.test(t) ? { type: 'custom', title: t } : null;
 }
 
@@ -88,7 +130,12 @@ function parseText(text) {
   const headLines = lines.slice(0, 8).join('\n');
   doc.meta.email = (headLines.match(EMAIL_RE) || [''])[0];
   doc.meta.phone = (headLines.match(PHONE_RE) || [''])[0].trim();
-  const links = headLines.match(URL_RE) || [];
+  /*
+   * Strip emails before looking for links, or the domain half of an address is
+   * captured as a website - "sumituxai@gmail.com" produced a link to gmail.com.
+   */
+  const linkSource = headLines.replace(new RegExp(EMAIL_RE.source, 'g'), ' ');
+  const links = linkSource.match(URL_RE) || [];
   doc.meta.links = [...new Set(links)].slice(0, 6).map((url) => ({
     label: /linkedin/i.test(url) ? 'LinkedIn' : /github/i.test(url) ? 'GitHub' : 'Website',
     url: url.replace(/[.,;]$/, ''),
@@ -103,10 +150,19 @@ function parseText(text) {
   }) || '';
   const trimmed = firstReal.trim();
   const letterSpaced = /^(?:\S\s+){2,}\S$/.test(trimmed) && trimmed.replace(/\s/g, '').length <= 40;
-  doc.meta.name = letterSpaced
-    // Two-or-more spaces separate words; single spaces separate letters.
-    ? trimmed.split(/\s{2,}/).map((w) => w.replace(/\s+/g, '')).join(' ')
-    : trimmed;
+  if (letterSpaced) {
+    const words = trimmed.split(/\s{2,}/).map((w) => w.replace(/\s+/g, '')).filter(Boolean);
+    /*
+     * Only trust the reconstruction when the runs of spaces actually marked word
+     * boundaries. PDF extraction often collapses them, leaving every letter a
+     * single space apart - and then de-spacing yields "SUMITKUMAR", which is
+     * worse than leaving it alone. The spaced original at least reads correctly.
+     */
+    const recoverable = words.length > 1 && words.every((w) => w.length <= 14);
+    doc.meta.name = recoverable ? words.join(' ') : trimmed;
+  } else {
+    doc.meta.name = trimmed;
+  }
 
   /*
    * Location, from the contact line. Dropping it lost "Bengaluru, India" on the
@@ -118,7 +174,13 @@ function parseText(text) {
   const locPart = contactLine
     .split(/\s*[|·•]\s*/)
     .map((x) => x.trim())
-    .find((x) => x && !EMAIL_RE.test(x) && !PHONE_RE.test(x) && !/^https?:|^www\./i.test(x) && /[a-z]/i.test(x));
+    .find((x) => (
+      x && !EMAIL_RE.test(x) && !PHONE_RE.test(x) && !/^https?:|^www\./i.test(x)
+      // Must look like a place. Without this it happily took "Senior Product
+      // Designer" off a contact line and filed it as the user's location.
+      && /^[A-Z][\w.'-]*(?:\s[\w.'-]+)*,\s*[A-Z][\w.'-]*(?:\s[\w.'-]+)*$/.test(x)
+      && x.length <= 60
+    ));
   if (locPart) doc.meta.location = locPart;
 
   let current = null;
