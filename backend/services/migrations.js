@@ -426,7 +426,78 @@ const STATEMENTS = [
   `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS version_name VARCHAR(120)`,
   `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE`,
   `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS template VARCHAR(32) DEFAULT 'standard'`,
+
+  /* ---------------------------------------------------------------- *
+   * Structured resume document
+   *
+   * The editor needs addressable parts - you cannot reorder a section or mark
+   * one bullet as pending when the whole resume is a single string. `doc` is
+   * the source of truth; original_file_text stays as the DERIVED flat view,
+   * regenerated on every write, because the extension, the ATS checker and
+   * every stored tailored row already read it.
+   * ---------------------------------------------------------------- */
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS doc JSONB`,
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS doc_updated_at TIMESTAMP`,
+
+  // Per-document formatting (PRD 3.7 toolbar). Stored beside the content so a
+  // version carries its own look rather than inheriting a global setting.
+  `ALTER TABLE resumes ADD COLUMN IF NOT EXISTS style JSONB`,
+
+  /*
+   * Edit rules the user has set ("keep bullets under two lines"). Applied as
+   * constraints on what the editor may propose, and shown back to them so a
+   * rule they forgot setting is not silently shaping their resume.
+   */
+  `CREATE TABLE IF NOT EXISTS resume_edit_rules (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     rule TEXT NOT NULL,
+     active BOOLEAN DEFAULT TRUE,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_resume_edit_rules_user ON resume_edit_rules(user_id)`,
+
+  // Tailoring against a JD writes pending nodes into a doc snapshot, so the
+  // preview can show them highlighted before anything is accepted.
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS doc JSONB`,
 ];
+
+/*
+ * Parse existing flat-text resumes into the structured model.
+ *
+ * Idempotent by `doc IS NULL`, so it fills in rows created before the column
+ * existed and never touches one someone has since edited. Heuristic and
+ * imperfect on purpose - a rough parse the user can correct in the editor beats
+ * blocking the whole feature on a perfect one, and nothing is destroyed:
+ * original_file_text is left exactly as it was.
+ */
+const backfillResumeDocs = async () => {
+  try {
+    const { parseText } = require('./resumeDocument');
+    const rows = await query(
+      `SELECT id, original_file_text FROM resumes
+        WHERE doc IS NULL AND original_file_text IS NOT NULL AND length(original_file_text) > 40
+        LIMIT 500`
+    );
+    let done = 0;
+    for (const row of rows.rows) {
+      try {
+        const doc = parseText(row.original_file_text);
+        if (!doc.sections.length) continue;
+        await query(
+          'UPDATE resumes SET doc = $1::jsonb, doc_updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND doc IS NULL',
+          [JSON.stringify(doc), row.id]
+        );
+        done += 1;
+      } catch (err) {
+        console.warn(`[migrate] could not parse resume ${row.id}:`, err.message);
+      }
+    }
+    if (done) console.log(`Backfilled ${done} resume document(s) from flat text`);
+  } catch (err) {
+    console.error('Resume doc backfill failed:', err.message);
+  }
+};
 
 const runMigrations = async () => {
   await applyBaseSchema();
@@ -437,6 +508,7 @@ const runMigrations = async () => {
       console.error('Migration failed:', statement.slice(0, 60), '-', err.message);
     }
   }
+  await backfillResumeDocs();
   console.log('Migrations complete');
 };
 

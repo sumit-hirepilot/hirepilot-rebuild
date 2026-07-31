@@ -14,6 +14,23 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Chromium for PDF export. Puppeteer's bundled build does not run on Alpine
+# (musl, not glibc), so the system package is installed and pointed at
+# explicitly. This adds roughly 200MB to the IMAGE - it does not touch the
+# Postgres volume, which is the disk that has run out before.
+#
+# If this layer ever fails to build, resumePdf.js degrades to reporting export
+# as unavailable rather than taking the API down with it.
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+ENV CHROME_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_DOWNLOAD=true
+
 ENV NODE_ENV=production
 # Only a default for local `docker run`; Railway overrides PORT at runtime.
 ENV PORT=3000
