@@ -58,13 +58,26 @@ HP.discovery = (() => {
       if (!label || label.length < 2) continue;
       if (IDENTITY_RE.test(label) || DOC_RE.test(label)) continue;
 
-      // Radio groups produce one entry, not one per option.
-      const key = el.type === 'radio' ? `radio:${el.name || label}` : `${label}:${el.type}`;
+      /*
+       * Radio AND checkbox groups produce one entry, not one per option.
+       *
+       * Checkboxes were keyed per element, so Gusto's "How did you hear about
+       * this opportunity? (select all that apply)" - eleven boxes sharing one
+       * name and one fieldset - was reported as eleven separate required
+       * questions called "LinkedIn", "Glassdoor", "Indeed" and so on. It
+       * inflated that application from six real questions to sixteen and would
+       * have asked the user eleven times for one answer.
+       */
+      const grouped = el.type === 'radio' || (el.type === 'checkbox' && el.name);
+      const key = grouped ? `${el.type}:${el.name || label}` : `${label}:${el.type}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
       let type = el.tagName === 'TEXTAREA' ? 'textarea' : el.type || 'text';
       let options = null;
+      // Set when a control turns out to belong to a group whose legend is the
+      // real question - the element's own label is then just one option's name.
+      let groupLabel = null;
 
       if (HP.combobox.is(el)) {
         type = 'select';
@@ -82,10 +95,24 @@ HP.discovery = (() => {
         options = group.map((r) => HP.fields.labelTextFor(r)).filter(Boolean);
       } else if (el.type === 'checkbox') {
         type = 'checkbox';
+        const group = el.closest('fieldset, [class*="field"], [class*="question"]');
+        const peers = group && el.name
+          ? Array.from(group.querySelectorAll(`input[type="checkbox"][name="${CSS.escape(el.name)}"]`))
+          : [];
+        if (peers.length > 1) {
+          // The group's own legend is the question; the boxes are its options.
+          const legend = group.querySelector('legend, label, [class*="label"]');
+          if (legend) groupLabel = HP.fields.clean(legend.textContent);
+          options = peers.map((p) => {
+            const l = p.labels && p.labels[0];
+            return HP.fields.clean(l ? l.textContent : p.value);
+          }).filter(Boolean);
+          type = 'checkbox_multi';
+        }
       }
 
       out.push({
-        question: label,
+        question: groupLabel || label,
         type,
         options,
         required: HP.fields.isRequired(el),

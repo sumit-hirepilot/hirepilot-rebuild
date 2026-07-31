@@ -43,6 +43,9 @@ const state = {
   // separately from failures: nothing went wrong, the drawer is asking.
   awaitingAnswers: 0,
   pausedFor: null,
+  // The server-side run these counters belong to. The UI reads the run, not
+  // these - they do not survive the worker being evicted.
+  runId: null,
 };
 
 /* ------------------------------------------------------------------ *
@@ -215,6 +218,24 @@ async function runQueue() {
   await broadcast();
 
   const attempted = [];
+
+  /*
+   * Open a run so its applications can be grouped afterwards.
+   *
+   * The counters in `state` below are for this loop and the popup only. The
+   * Auto Apply screen reads the run from the server, because these are evicted
+   * with the service worker and would blank the display mid-batch.
+   */
+  let runId = null;
+  try {
+    const r = await api('/api/apply/runs', { method: 'POST', body: JSON.stringify({ source: 'extension' }) });
+    runId = r?.run?.id || null;
+    state.runId = runId;
+  } catch (err) {
+    // A run is for grouping, not for working - never block the batch on it.
+    console.warn('[HirePilot] could not open a run:', err.message);
+  }
+
   try {
     // Bounded rather than while(true): a server bug that keeps handing back the
     // same item should stop, not spin forever opening tabs.
@@ -224,8 +245,10 @@ async function runQueue() {
       // Ids already attempted this run. Without it, an item the server still
       // reports as runnable but which parks again immediately would be handed
       // back on every iteration until the guard trips.
-      const skip = attempted.length ? `?exclude=${attempted.join(',')}` : '';
-      const { item } = await api(`/api/apply/queue/next${skip}`);
+      const qs = [];
+      if (attempted.length) qs.push(`exclude=${attempted.join(',')}`);
+      if (runId) qs.push(`runId=${runId}`);
+      const { item } = await api(`/api/apply/queue/next${qs.length ? `?${qs.join('&')}` : ''}`);
       if (!item) break;
       attempted.push(item.applicationId);
 
@@ -286,9 +309,12 @@ async function runQueue() {
   } finally {
     state.running = false;
     state.currentApplicationId = null;
+    if (runId) {
+      await api(`/api/apply/runs/${runId}/end`, { method: 'POST' }).catch(() => {});
+    }
     await broadcast();
   }
-  return { done: true, ...counters() };
+  return { done: true, runId, ...counters() };
 }
 
 async function processOne(item) {
@@ -698,10 +724,39 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           if (!item) return respond({ ok: false, reason: 'could not load application' });
 
           const profile = await api('/api/apply/profile').catch(() => null);
+
+          /*
+           * Unanswered required questions become an ASK list, not just rows in
+           * a read-only summary.
+           *
+           * The drawer only rendered inputs when a live run pushed
+           * status:'asking'. Land on a parked application afterwards - which is
+           * exactly when someone sits down to clear blockers - and it showed
+           * "16 questions need your answer" with no way to answer any of them.
+           * Their options are carried through so a fixed-choice question is a
+           * dropdown rather than a free-text box inviting a value the form will
+           * reject.
+           */
+          const unanswered = (item.screeningQuestions || []).filter((q) => (
+            q.required && !q.optional
+            && (q.answer === null || q.answer === undefined || q.answer === '')
+          ));
+
           return respond({
             ok: true,
             payload: {
               job: item.job,
+              ask: unanswered.length ? unanswered.map((q) => ({
+                question: q.question,
+                type: q.type || 'text',
+                options: q.options || null,
+                required: true,
+                optional: false,
+                suggestion: q.suggestion || null,
+                confidence: q.confidence || null,
+                matchedQuestion: q.matchedQuestion || null,
+                reason: q.reason || 'Not in your profile yet.',
+              })) : null,
               fields: [...(item.standardFields || []), ...(item.screeningQuestions || [])],
               ats: item.resume ? {
                 score: item.resume.atsScore,
@@ -713,6 +768,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
                 ? { ...profile.profile, savedAnswers: Object.keys(profile.profile.custom_answers || {}).length }
                 : null,
               ...idleDrawerState(item.status),
+              // An ask list outranks the idle message: there is something to do.
+              ...(unanswered.length ? { status: 'asking' } : {}),
             },
           });
         }

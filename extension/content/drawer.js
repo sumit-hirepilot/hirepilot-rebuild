@@ -198,11 +198,36 @@ HP.drawer = (() => {
     const suggested = (v) => (a.suggestion && String(a.suggestion).trim().toLowerCase() === String(v).trim().toLowerCase());
 
     let control;
-    if (opts && opts.length && (a.type === 'select' || a.type === 'radio')) {
-      control = `<select class="askIn" name="${name}" ${a.required && !a.optional ? 'required' : ''}>
-        <option value="">Choose…</option>
-        ${opts.map((o) => `<option value="${esc(o)}" ${suggested(o) ? 'selected' : ''}>${esc(o)}</option>`).join('')}
-      </select>`;
+    if (opts && opts.length && a.type === 'checkbox_multi') {
+      /*
+       * "Select all that apply" is genuinely multi-select. Rendering it as a
+       * single-choice dropdown would quietly discard every answer but one.
+       */
+      control = `<div class="askOpts">${opts.map((o, oi) => `
+        <label class="askOpt">
+          <input type="checkbox" name="${name}" value="${esc(o)}" data-multi="1" ${oi === 0 && suggested(o) ? 'checked' : ''} />
+          <span>${esc(o)}</span>
+        </label>`).join('')}</div>`;
+    } else if (opts && opts.length && (a.type === 'select' || a.type === 'radio')) {
+      /*
+       * A listbox, not a native <select>.
+       *
+       * The OS draws a native select's popup and no CSS reaches it, so on macOS
+       * it rendered as a grey system menu in the middle of the panel - nothing
+       * like the rest of the drawer. Inside a shadow root a real listbox is
+       * fully styleable and keeps the theme.
+       */
+      const picked = opts.find(suggested) || '';
+      control = `<div class="askSel" data-sel="${name}">
+        <button type="button" class="askSelBtn" aria-haspopup="listbox" aria-expanded="false">
+          <span class="askSelVal ${picked ? '' : 'ph'}">${esc(picked || 'Choose…')}</span>
+          <span class="askSelCaret" aria-hidden="true">▾</span>
+        </button>
+        <div class="askSelList" role="listbox" hidden>
+          ${opts.map((o) => `<div class="askSelOpt ${suggested(o) ? 'on' : ''}" role="option" data-val="${esc(o)}">${esc(o)}</div>`).join('')}
+        </div>
+        <input type="hidden" name="${name}" value="${esc(picked)}" />
+      </div>`;
     } else if (a.type === 'checkbox') {
       // Consent and attestations are never pre-ticked, and never saved as an
       // answer to reuse - the user ticks these on the page itself.
@@ -357,13 +382,51 @@ HP.drawer = (() => {
      * up on this one form and nowhere else, which is exactly how a user ends up
      * retyping the same answer on every application.
      */
+    // Custom listboxes: open, choose, close. One open at a time, and a click
+    // anywhere else closes them - a dropdown stuck open over the document is
+    // worse than a native one.
+    root.querySelectorAll('.askSel').forEach((sel) => {
+      const btn = sel.querySelector('.askSelBtn');
+      const list = sel.querySelector('.askSelList');
+      const val = sel.querySelector('.askSelVal');
+      const hidden = sel.querySelector('input[type="hidden"]');
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        const opening = list.hidden;
+        root.querySelectorAll('.askSelList').forEach((l) => { l.hidden = true; });
+        list.hidden = !opening;
+        btn.setAttribute('aria-expanded', String(opening));
+      };
+      list.querySelectorAll('.askSelOpt').forEach((opt) => {
+        opt.onclick = (ev) => {
+          ev.stopPropagation();
+          hidden.value = opt.dataset.val;
+          val.textContent = opt.dataset.val;
+          val.classList.remove('ph');
+          list.querySelectorAll('.askSelOpt').forEach((o) => o.classList.remove('on'));
+          opt.classList.add('on');
+          list.hidden = true;
+          btn.setAttribute('aria-expanded', 'false');
+        };
+      });
+    });
+    root.addEventListener('click', () => {
+      root.querySelectorAll('.askSelList').forEach((l) => { l.hidden = true; });
+    });
+
     const askForm = root.querySelector('.askForm');
     if (askForm) {
       askForm.onsubmit = (ev) => {
         ev.preventDefault();
         const answers = (state.ask || []).map((a, i) => {
-          const el = askForm.querySelector(`[name="ask_${i}"]`);
-          return el ? { question: a.question, answer: el.value, options: a.options, type: a.type } : null;
+          const nodes = askForm.querySelectorAll(`[name="ask_${i}"]`);
+          if (!nodes.length) return null;
+          // A checkbox group answers with every ticked option, comma separated -
+          // one value would lose the rest.
+          const value = nodes[0].dataset.multi
+            ? Array.from(nodes).filter((n) => n.checked).map((n) => n.value).join(', ')
+            : nodes[0].value;
+          return { question: a.question, answer: value, options: a.options, type: a.type };
         }).filter((a) => a && String(a.answer).trim() !== '');
 
         if (!answers.length) {
