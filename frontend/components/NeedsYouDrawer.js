@@ -117,9 +117,9 @@ export default function NeedsYouDrawer({ runId = null, title, emptyText, onResol
                 <span className={styles.co}>{b.job.company}</span>
               </span>
               <span className={styles.count}>
-                {b.kind === 'human_step'
-                  ? 'needs you on the page'
-                  : `${b.questions.length} question${b.questions.length === 1 ? '' : 's'}`}
+                {b.kind === 'human_step' ? 'needs you on the page'
+                  : b.kind === 'unresolved' ? 'could not complete'
+                    : `${b.questions.length} question${b.questions.length === 1 ? '' : 's'}`}
               </span>
             </button>
 
@@ -129,6 +129,17 @@ export default function NeedsYouDrawer({ runId = null, title, emptyText, onResol
                 {b.humanStepReason || 'This one needs you on the employer’s page.'}
                 {b.targetFormUrl && (
                   <a href={b.targetFormUrl} target="_blank" rel="noreferrer"> Open it</a>
+                )}
+              </div>
+            )}
+
+            {/* No form: there is no question to answer, so offering one would
+                ask for something we cannot name. */}
+            {isOpen && b.kind === 'unresolved' && (
+              <div className={styles.humanStep}>
+                {b.unresolvedReason}
+                {b.targetFormUrl && (
+                  <a href={b.targetFormUrl} target="_blank" rel="noreferrer"> Open the form</a>
                 )}
               </div>
             )}

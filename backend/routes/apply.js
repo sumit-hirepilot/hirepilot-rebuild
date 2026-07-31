@@ -1383,14 +1383,31 @@ router.get('/blockers', verifyToken, async (req, res) => {
       const humanStep = /captcha|login|sign in|mfa|otp|consent|permission/i.test(row.failure_reason || '')
         && !unanswered.length;
 
+      /*
+       * Parked, but with no question to show.
+       *
+       * The extension hit a field it could not fill which is not among the
+       * questions we recorded - the Checkr phone widget is the known example.
+       * There is genuinely nothing to type here, so this must not render as a
+       * question card with an empty form: that would ask the user to answer
+       * something we cannot name, and a Save button that does nothing.
+       *
+       * Surfaced as its own state so it reads as "we could not complete this",
+       * which is the truth, rather than as a question they have failed to answer.
+       */
+      const kind = humanStep ? 'human_step' : (unanswered.length ? 'question' : 'unresolved');
+
       return {
         applicationId: row.id,
         runId: row.run_id,
         job: { title: row.title, company: row.company_name, location: row.location },
         targetFormUrl: row.target_form_url,
         updatedAt: row.updated_at,
-        kind: humanStep ? 'human_step' : 'question',
+        kind,
         humanStepReason: humanStep ? row.failure_reason : null,
+        unresolvedReason: kind === 'unresolved'
+          ? 'HirePilot could not complete a field on this form and cannot tell which — open it and finish it yourself.'
+          : null,
         questions: unanswered.map((q) => ({
           // The employer's own wording. Internal field names would be
           // meaningless to answer against.
