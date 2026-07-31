@@ -233,7 +233,28 @@ async function runQueue() {
       state.pausedFor = null;
       await broadcast();
 
-      const result = await processOne(item);
+      /*
+       * Per-item error containment.
+       *
+       * processOne was awaited inside the loop's own try, so an unexpected
+       * throw - a network blip on a resume fetch, a tab closed mid-run, any
+       * unhandled case - aborted the ENTIRE batch from that item onwards. One
+       * application's bad luck silently cancelled every application behind it,
+       * and the run looked like it had simply finished.
+       *
+       * A throw is now that application's failure and nobody else's.
+       */
+      let result;
+      try {
+        result = await processOne(item);
+      } catch (err) {
+        console.error(`[HirePilot] application ${item.applicationId} threw:`, err);
+        await reportFailure(item.applicationId, `Unexpected error: ${err.message}`, true).catch(() => {});
+        state.processed += 1;
+        state.failed += 1;
+        await sleep(1200);
+        continue;
+      }
       state.processed += 1;
       if (result.submitted) state.submitted += 1;
       else if (result.failed) state.failed += 1;
