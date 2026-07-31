@@ -113,7 +113,9 @@ export default function AutoApply() {
     const next = { ...prefs, ...patch };
     setPrefs(next); // optimistic: these are toggles, and a lagging switch feels broken
     try {
-      const res = await fetch(`${BASE}/api/profile`, {
+      // /preferences, not /profile: PUT /api/profile updates the user row and
+      // ignores these keys, so the filters would have saved into nothing.
+      const res = await fetch(`${BASE}/api/profile/preferences`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

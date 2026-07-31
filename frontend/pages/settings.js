@@ -153,11 +153,25 @@ export default function Settings() {
     if ('notify_recommendations' in patch) body.notifyRecommendations = patch.notify_recommendations;
     if ('notify_product' in patch) body.notifyProduct = patch.notify_product;
     if ('timezone' in patch) body.timezone = patch.timezone;
-    await fetch(`${BASE_URL}/api/profile`, {
+    /*
+     * /preferences, not /profile. PUT /api/profile updates the USER row (name,
+     * title, location) and ignores everything else, so posting preference keys
+     * there returned 200 and silently changed nothing - every toggle on these
+     * tabs would have looked saved and done nothing.
+     */
+    const res = await fetch(`${BASE_URL}/api/profile/preferences`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (res && res.ok) {
+      // Re-seed from the server so the switch reflects what was actually stored
+      // rather than what was clicked.
+      const saved = await res.json().catch(() => null);
+      if (saved) setPrefsForm(saved);
+    } else {
+      setMessage('Could not save that setting.');
+    }
   };
 
   const choosePlan = async (tier) => {
