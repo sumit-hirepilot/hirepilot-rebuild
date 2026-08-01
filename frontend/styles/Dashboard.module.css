@@ -1288,3 +1288,28 @@
 /* Near the limit is a warning, not an error - nothing has broken yet. */
 .creditsPillLow { background: var(--warning-bg); border-color: var(--warning); color: var(--warning); }
 .creditsPillLow .creditsNum { color: var(--warning); }
+
+/* Drawer header additions. These live HERE, not in Jobs.module.css: the job
+   drawer imports Dashboard.module.css as `styles`, so rules added to the Jobs
+   sheet resolved to undefined and both elements rendered with no class at all -
+   present in the DOM, invisible as design. */
+.drawerAts {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px;
+  margin-top: 9px; font-size: 12.5px; color: var(--text-secondary);
+}
+.drawerAtsLabel {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 2px 7px; border-radius: 999px;
+  background: var(--bg-subtle); color: var(--text-secondary);
+}
+.drawerAts strong { font-size: 15px; color: var(--text); }
+.drawerAtsHint { font-size: 11.5px; }
+
+.drawerSaved, .drawerSavedOn {
+  width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+  font-size: 16px; line-height: 1; display: grid; place-items: center;
+  background: transparent; border: 1px solid var(--border);
+}
+.drawerSaved { color: var(--text-secondary); }
+.drawerSaved:hover { color: var(--primary); border-color: var(--primary); }
+.drawerSavedOn { color: var(--primary); border-color: var(--primary); background: var(--bg-subtle); }

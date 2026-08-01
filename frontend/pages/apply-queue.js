@@ -171,7 +171,7 @@ export default function ApplyQueue() {
             <div className={page.empty}>
               <p><strong>Nothing queued.</strong></p>
               <p className={page.muted}>
-                Pick jobs on the Jobs page and choose &ldquo;Prepare application&rdquo; to
+                Pick jobs on the Jobs page and choose &ldquo;Apply Now&rdquo; to
                 build a queue.
               </p>
               <button className={page.primaryBtn} onClick={() => router.push('/jobs')}>

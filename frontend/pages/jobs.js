@@ -224,13 +224,6 @@ function regionFor(location) {
   return 'Not specified';
 }
 
-// Thresholds match the bands buildAtsGuide() uses on the backend, so the badge
-// colour never disagrees with the written verdict inside the drawer.
-function atsBadgeClass(score) {
-  if (score >= 70) return page.atsBadgeGood;
-  if (score >= 45) return page.atsBadgeWarn;
-  return page.atsBadgeBad;
-}
 
 function atsRingClass(score) {
   if (score >= 70) return page.atsRingGood;
@@ -725,36 +718,24 @@ export default function Jobs() {
             {' · '}{postedTimeAgo(job.posted_at)}
           </p>
         </div>
+        {/* The ATS badge lives in the drawer now. It answers "how well does my
+            resume's wording match this posting" - a question you ask about one
+            job you are considering, not about twenty you are scanning past. */}
         {score !== null && (
           <div className={page.scoreRing} title="Profile match score: skills, experience and location">{score}</div>
         )}
-        {/* ATS keyword coverage is a different measure from the match score
-            above: match compares your profile to the role, this compares your
-            resume's wording to this posting's wording. Both are shown so a
-            strong profile fit with weak keyword coverage is visible. */}
-        {atsScores[job.id] !== undefined && (
-          <div
-            className={atsBadgeClass(atsScores[job.id])}
-            title={`ATS keyword coverage: ${atsScores[job.id]}% of this posting's meaningful terms appear in your resume. Open the job for the full breakdown.`}
-          >
-            <span className={page.atsBadgeLabel}>ATS</span>
-            {atsScores[job.id]}%
-          </div>
-        )}
         <div className={page.jobActions}>
-          <button
-            className={page.saveButton}
-            onClick={() => toggleSave(job)}
-            aria-label={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
-            title={savedIds.has(job.id) ? 'Unsave job' : 'Save job'}
-          >
-            {savedIds.has(job.id) ? '★' : '☆'}
-          </button>
           <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
           {appliedIds.has(job.id) ? (
             <span className={page.appliedBadge}>In queue</span>
           ) : (
-            <button className={page.applyButton} onClick={() => handleQueue(job.id)} title="Prepares a tailored resume, cover letter and pre-filled answers, then waits for your approval in the Apply Queue before anything is submitted.">Prepare application</button>
+            <button
+              className={page.applyButton}
+              onClick={() => handleQueue(job.id)}
+              title="Queues this with a tailored resume, cover letter and pre-filled answers. The extension fills and submits it."
+            >
+              Apply Now
+            </button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
         </div>
@@ -1037,6 +1018,9 @@ export default function Jobs() {
         <JobDetailDrawer
           job={selectedJob}
           match={matchByJobId[selectedJob.id]}
+          atsScore={atsScores[selectedJob.id]}
+          saved={savedIds.has(selectedJob.id)}
+          onToggleSave={() => toggleSave(selectedJob)}
           applied={appliedIds.has(selectedJob.id)}
           onClose={() => setSelectedJob(null)}
           onApply={() => { handleQueue(selectedJob.id); }}
@@ -1049,7 +1033,7 @@ export default function Jobs() {
   );
 }
 
-function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, router }) {
+function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, onClose, onApply, token, base, router }) {
   // apply_url points at the ATS form where we have one; job_url can be the
   // company careers page, which is not always the application itself.
   const applyUrl = job.apply_url || job.job_url;
@@ -1172,8 +1156,34 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
               <span className={styles.drawerAvatar}>{job.company_name?.charAt(0) || '?'}</span>
               {job.company_name}
             </p>
+            {/* ATS coverage belongs to one posting you are considering, not to a
+                list you are scanning. It measures how much of THIS posting's
+                wording appears in your resume - a different question from the
+                profile match score, so it is labelled rather than left as a
+                bare number next to another bare number. */}
+            {atsScore !== undefined && atsScore !== null && (
+              <p className={styles.drawerAts} title="Share of this posting's meaningful terms that appear in your resume.">
+                <span className={styles.drawerAtsLabel}>ATS match</span>
+                <strong>{atsScore}%</strong>
+                <span className={styles.drawerAtsHint}>
+                  of this posting&apos;s terms appear in your resume
+                </span>
+              </p>
+            )}
           </div>
           <div className={styles.drawerHeadActions}>
+            {/* Saving moved here with the star's removal from the card. The
+                "Saved jobs" filter still exists, so dropping the only way to
+                add to it would have left a filter for something you could no
+                longer do. */}
+            <button
+              className={saved ? styles.drawerSavedOn : styles.drawerSaved}
+              onClick={onToggleSave}
+              aria-label={saved ? 'Remove from saved jobs' : 'Save this job'}
+              title={saved ? 'Remove from saved jobs' : 'Save this job'}
+            >
+              {saved ? '★' : '☆'}
+            </button>
             <a
               className={styles.drawerExternal}
               href={applyUrl}
@@ -1405,7 +1415,9 @@ function JobDetailDrawer({ job, match, applied, onClose, onApply, token, base, r
           {applied ? (
             <span className={styles.appliedTag}>Tracked</span>
           ) : (
-            <button className={styles.primaryBtn} onClick={onApply}>Prepare application</button>
+            // Same wording as the card, so the drawer is not offering a
+            // differently-named version of the same action.
+            <button className={styles.primaryBtn} onClick={onApply}>Apply Now</button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={styles.secondaryBtn}>Original Posting</a>
           <button className={styles.secondaryBtn} onClick={() => router.push(`/network?jobId=${job.id}&company=${encodeURIComponent(job.company_name)}`)}>

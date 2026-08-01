@@ -379,16 +379,6 @@
   cursor: pointer;
 }
 
-.saveButton {
-  padding: 0.4rem 0.625rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background-color: transparent;
-  color: var(--warning);
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
 
 .applyButton {
   padding: 0.4rem 0.9rem;
@@ -672,31 +662,8 @@
   white-space: nowrap;
 }
 
-/* ---- ATS keyword coverage ---- */
 
-.atsBadgeGood, .atsBadgeWarn, .atsBadgeBad {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: help;
-  border: 1px solid transparent;
-}
 
-.atsBadgeLabel {
-  font-size: 0.5625rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  opacity: 0.75;
-}
-
-.atsBadgeGood { background-color: var(--success-bg); color: var(--success); border-color: var(--success); }
-.atsBadgeWarn { background-color: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
-.atsBadgeBad  { background-color: var(--error-bg);   color: var(--error);   border-color: var(--error); }
 
 .atsHeadRow {
   display: flex;
