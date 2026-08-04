@@ -246,6 +246,39 @@ Ordered. Do not soften acceptance criteria.
 - [ ] Every user-facing surface: counts, percentages, `+`/`k`/`M` suffixes, time claims, status colours.
 - [ ] Each hit becomes a real query or is deleted. Read every matched line.
 
+**A7 — Feed consistency and UI truth** · L1
+Operator-reported from production screenshots. All observed, not hypothetical.
+
+- **A7.1 — Dashboard and Jobs must be the same product.** "View all jobs" leads
+  from a scored, personalised list to an unranked dump - language coaches and
+  nurse practitioners for a product designer. Jobs must be score-sorted by
+  default with the match score visible on every row. Apply a minimum score
+  floor to the browsable feed, visible and adjustable, not silent. No single
+  source may dominate: micro1 currently swamps every page. Add per-source
+  diversity to ranking.
+- **A7.2 — No parse failure reaches the UI.** A job row rendered company as
+  literally "name". Any row whose company, title or location failed to parse is
+  repaired or withheld, never rendered with the placeholder visible.
+  Constraint 1. Audit how many indexed jobs carry unparsed fields; report the
+  count. (A2c covers the render side - this covers ingestion.)
+- **A7.3 — Dates.** "date unavailable" and "Publication date unavailable" are
+  one state with two strings. Unify. Report what fraction of indexed jobs lack
+  a publication date, per source - D4 is impossible without it, so this is a
+  wedge blocker. "Today's matches" currently includes a 98-day-old posting:
+  either the label or the query is wrong.
+- **A7.4 — Activity feed reads as English.** `application_submitted` is a raw
+  event key rendered to the user. Map every event type to a human string. Every
+  activity line names the company - "Retried application to UX Designer Senior"
+  is not actionable without it.
+- **A7.5 — Full CTA and flow sweep.** Walk every nav item and button, signed
+  in, desktop and mobile. For each: where it goes, whether the destination
+  matches the label, whether the content is consistent with where the user came
+  from. Full map to PROGRESS.md. Fix every mismatch. Report any CTA that is
+  dead, mislabelled, or lands somewhere unrelated.
+- **A7.6 — Jobs page checkboxes.** Rows have selection checkboxes with no
+  visible bulk action. Wire them to B1 batch-apply or remove them until B1
+  ships. A control that does nothing is worse than no control.
+
 ### WAVE B — Core product
 
 **B1 — Batch apply flow** · L1

@@ -455,6 +455,31 @@ second is uncomfortable:
   Preventing a recurrence is done - the constraint stops the rows being created
   - but the historical question is open and cannot be answered from the DB.
 
+## A2c — unknown never renders as zero  [shipped + VERIFIED 2026-08-05]
+Layer: L1
+Changed: frontend/lib/renderState.js, frontend/pages/jobs.js,
+  frontend/pages/auto-apply.js, frontend/components/NotificationBell.js,
+  frontend/__tests__/renderState.test.js,
+  frontend/__tests__/noFabricatedZero.test.js
+Evidence:
+  - Production, signed in, sampled every 30ms across a client-side navigation
+    so the FIRST PAINT was captured, not just the settled state. Every value
+    the counter took: ["Loading results…", "23,958 results"].
+    everSaidZeroResults FALSE. Before A2c this rendered "0 results".
+  - "Company not stated" renders; the raw "name" placeholder does not.
+  - 16 tests (12 primitive + 4 repo-wide guard), each confirmed to fail
+    deliberately: two mutations of the primitive, reintroducing useState(0) in
+    jobs.js, and removing a real-zero: annotation.
+Learned: I called this deploy "not live" on a false negative. The first check
+  piped a 42KB minified chunk through a shell variable and grepped the
+  variable; the robust check (curl to a file, grep the file) found the strings
+  in the SAME build. I broke "verify the artifact, not the proxy" while trying
+  to verify an artifact. The poll before that was also the wrong probe - it
+  watched SSR HTML for strings that are auth-gated and client-rendered, so it
+  could never have matched. Two bad probes in a row on a deploy that had
+  already succeeded.
+Follow-ups: A2c-ingest, A7.2
+
 ## A2c — component inventory (counts, statuses, parsed fields)
 
 Measured, not guessed: every file under pages/ and components/ scanned for
@@ -484,6 +509,18 @@ touched, which is how this defect spread. Confirmed to fail deliberately by
 reintroducing the bug in jobs.js and by removing the `real-zero:` annotation.
 
 ## Standing rules
+- **A justification comment is only worth the check behind it.** The
+  `// real-zero:` annotation that permits a literal zero puts the burden on the
+  writer to say why the zero is measured. That works only while the annotation
+  means something. If one ever appears on a zero that is NOT measured, the
+  guard is worse than useless - it launders the exact defect it was built to
+  catch, and it does so with a comment that reads like diligence. Treat an
+  unexplained or copy-pasted `real-zero:` as a defect in its own right.
+- **A corrective migration must write an audit row before it mutates.** The
+  boot-time UPDATE that repaired false "applied" rows overwrote them in place
+  and kept no record, so A1 could prove the current state is clean but could
+  never answer who had been affected. That information is gone. Any future
+  corrective statement records what it is about to change, first.
 - **Assert on the argument that actually carries the value.** A test that
   checked `query.mock.calls[n][1]` (the bound parameters) for an event name
   that is a literal inside the SQL string passed cleanly against the broken
