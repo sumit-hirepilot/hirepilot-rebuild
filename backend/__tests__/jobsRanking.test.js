@@ -43,7 +43,11 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     const res = await request(app()).get('/api/jobs?limit=1').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.ranking.mode).toBe('score');
+    // A7.7 renamed the vocabulary: `mode` is now ranked|all (is this the
+    // personalised set?) and `sort` is score|recent (in what order?). They
+    // were one field, which is why choosing "newest" used to drop the scores.
+    expect(res.body.ranking.mode).toBe('ranked');
+    expect(res.body.ranking.sort).toBe('score');
     const sql = query.mock.calls.map((c) => c[0]).join('\n');
     expect(sql).toMatch(/JOIN job_matches/);
     expect(sql).not.toMatch(/ORDER BY posted_at DESC\s*\n\s*LIMIT/);
@@ -101,15 +105,17 @@ describe('A7.1 — unranked browse stays available, but only on request', () => 
     const res = await request(app()).get('/api/jobs?limit=1'); // no token
 
     expect(res.status).toBe(200);
-    expect(res.body.ranking.mode).toBe('recent');
+    expect(res.body.ranking.mode).toBe('all');
     expect(query.mock.calls.map((c) => c[0]).join('\n')).not.toMatch(/JOIN job_matches/);
   });
 
   it('honours an explicit opt-out into unranked browse', async () => {
+    // `ranked=0`, not `sort=recent`: sorting by newest keeps the personalised
+    // set, opting out abandons it. Conflating the two lost the scores.
     mockRows();
-    const res = await request(app()).get('/api/jobs?limit=1&sort=recent').set('Authorization', `Bearer ${token}`);
+    const res = await request(app()).get('/api/jobs?limit=1&ranked=0').set('Authorization', `Bearer ${token}`);
 
-    expect(res.body.ranking.mode).toBe('recent');
+    expect(res.body.ranking.mode).toBe('all');
     expect(res.body.ranking.minScore).toBeNull();
   });
 
@@ -119,6 +125,67 @@ describe('A7.1 — unranked browse stays available, but only on request', () => 
     const res = await request(app()).get('/api/jobs?limit=1').set('Authorization', 'Bearer not-a-jwt');
 
     expect(res.status).toBe(200);
-    expect(res.body.ranking.mode).toBe('recent');
+    expect(res.body.ranking.mode).toBe('all');
+  });
+});
+
+
+describe('A7.7 — the sort is explicit and deterministic', () => {
+  it('breaks equal scores by recency, then by a unique key', async () => {
+    /*
+     * The reported bug. With a 24h filter the feed read 67, 63, 59, 59, 59,
+     * 59, 59 - correct by score - but the equal-score rows came back 23h, 20h,
+     * 5h, 6h, 7h ago. The secondary sort was falling back to insertion order,
+     * which to a user reads as no order at all.
+     *
+     * jobs.id is the unique final key: without it, rows sharing BOTH a score
+     * and a timestamp still come back in whatever order the plan produces, and
+     * the list can reshuffle between reloads.
+     */
+    mockRows();
+    await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
+
+    const pageSql = query.mock.calls[1][0];
+    expect(pageSql).toMatch(/ORDER BY overall_score DESC, posted_at DESC NULLS LAST, id DESC/);
+  });
+
+  it('puts undated jobs last, not first', async () => {
+    // Postgres defaults DESC to NULLS FIRST, so `ORDER BY posted_at DESC` led
+    // the "newest" list with jobs that have no date at all.
+    mockRows();
+    await request(app()).get('/api/jobs?limit=20&sort=recent').set('Authorization', `Bearer ${token}`);
+
+    const pageSql = query.mock.calls[1][0];
+    expect(pageSql).toMatch(/posted_at DESC NULLS LAST/);
+    expect(pageSql).not.toMatch(/posted_at DESC(?!\s+NULLS LAST)/);
+  });
+
+  it('treats a time filter as a recency request', async () => {
+    // Ordering by score while the user asked for "last 24 hours" gives a list
+    // whose order they cannot explain from what is on screen.
+    mockRows();
+    const res = await request(app())
+      .get('/api/jobs?limit=20&datePosted=24h')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.body.ranking.sort).toBe('recent');
+  });
+
+  it('keeps the scores when sorting by newest', async () => {
+    // sort and ranked are different questions. Choosing "newest" reorders the
+    // personalised set; it does not abandon it.
+    mockRows();
+    const res = await request(app())
+      .get('/api/jobs?limit=20&sort=recent')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.body.ranking.mode).toBe('ranked');
+    expect(query.mock.calls[1][0]).toMatch(/jm\.overall_score/);
+  });
+
+  it('reports the active sort so the UI never has to infer it', async () => {
+    mockRows();
+    const res = await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
+    expect(['score', 'recent']).toContain(res.body.ranking.sort);
   });
 });

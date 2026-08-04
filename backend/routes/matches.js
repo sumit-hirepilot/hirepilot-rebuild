@@ -105,7 +105,10 @@ router.get('/', verifyToken, async (req, res) => {
        FROM job_matches jm
        JOIN jobs j ON jm.job_id = j.id
        WHERE jm.user_id = $1 AND jm.overall_score >= $2
-       ORDER BY jm.overall_score DESC
+       -- A7.7: jm.id is the unique final key. Without it, equal-score rows
+       -- come back in whatever order the plan produces and the Dashboard
+       -- reshuffles between reloads.
+       ORDER BY jm.overall_score DESC, j.posted_at DESC NULLS LAST, jm.id DESC
        LIMIT $3 OFFSET $4`,
       [req.user.id, minScore, limit, offset]
     );

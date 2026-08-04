@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN applications a ON a.job_id = am.job_id AND a.user_id = sa.user_id
        WHERE sa.user_id = $1
        GROUP BY sa.id
-       ORDER BY sa.created_at DESC`,
+       ORDER BY sa.created_at DESC, sa.id DESC`,
       [req.user.id]
     );
 
@@ -175,7 +175,7 @@ router.get('/:id/matches', async (req, res) => {
        LEFT JOIN job_matches jm ON jm.job_id = j.id AND jm.user_id = $2
        LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = $2
        WHERE am.agent_id = $1
-       ORDER BY jm.overall_score DESC NULLS LAST, am.matched_at DESC`,
+       ORDER BY jm.overall_score DESC NULLS LAST, am.matched_at DESC NULLS LAST, am.id DESC`,
       [req.params.id, req.user.id]
     );
 

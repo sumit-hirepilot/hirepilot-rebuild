@@ -433,10 +433,40 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * Anonymous callers cannot be scored, so they keep the chronological feed.
      */
     const userId = req.user?.id || null;
-    const sort = req.query.sort || (userId ? 'score' : 'recent');
+    /*
+     * A7.7 — the sort is stated, never implied.
+     *
+     * A time filter IS a recency request, so it flips the default. Ordering
+     * by score while the user has asked for "last 24 hours" gives them a list
+     * whose order they cannot explain from what is on screen.
+     */
+    const sortDefault = datePosted ? 'recent' : (userId ? 'score' : 'recent');
+    const sort = req.query.sort === 'recent' || req.query.sort === 'score'
+      ? req.query.sort
+      : sortDefault;
     const minScore = Number(req.query.minScore ?? 0.4);
-    const rankByScore = Boolean(userId) && sort === 'score' && Number.isFinite(minScore);
-    let ranking = { mode: 'recent', minScore: null, sourceDiversified: false };
+
+    /*
+     * `sort` and `ranked` are different questions, and conflating them lost the
+     * scores whenever a user chose "newest": ordering by recency does not mean
+     * abandoning the personalised set. `ranked=0` is the explicit escape hatch
+     * into browsing everything indexed, unscored.
+     */
+    const rankByScore = Boolean(userId)
+      && req.query.ranked !== '0'
+      && Number.isFinite(minScore);
+    let ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false };
+
+    /*
+     * NULLS LAST on every recency key: Postgres puts NULLs FIRST on DESC, so
+     * `ORDER BY posted_at DESC` led the "newest" list with jobs that have no
+     * date at all. `id DESC` is the unique final key - without it rows sharing
+     * a score and a timestamp come back in whatever order the plan happens to
+     * produce, which is what made equal-score rows look randomly shuffled.
+     */
+    const orderBySql = sort === 'recent'
+      ? 'posted_at DESC NULLS LAST, overall_score DESC, id DESC'
+      : 'overall_score DESC, posted_at DESC NULLS LAST, id DESC';
 
     // Multiple keyword "chips" - accepts repeated ?keywords=X&keywords=Y, or
     // falls back to the single ?search= param for backward compatibility
@@ -568,7 +598,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
       const result = await query(
         `${scoredCte} SELECT * FROM scored WHERE ${tierFilter}${dateFilterSql}
-         ORDER BY match_tier ASC, posted_at DESC
+         ORDER BY match_tier ASC, posted_at DESC NULLS LAST, id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       );
@@ -661,12 +691,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         `${rankedCte}
          SELECT * FROM ranked
           WHERE source_rank <= GREATEST(3, CEIL(($${scoreIdx + 3}::numeric * $${scoreIdx + 1}) / 4))
-          ORDER BY overall_score DESC, id
+          ORDER BY ${orderBySql}
           LIMIT $${scoreIdx + 1} OFFSET $${scoreIdx + 2}`,
         [...scoreParams, limit, offset, page]
       );
       jobs = result.rows;
-      ranking = { mode: 'score', minScore, sourceDiversified: true };
+      ranking = { mode: 'ranked', sort, minScore, sourceDiversified: true };
     } else {
       const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}${dateFilterSql}`, params);
       total = parseInt(countResult.rows[0].count, 10);
@@ -674,12 +704,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       const result = await query(
         `SELECT ${JOB_COLUMNS}
          FROM jobs WHERE ${filterClause}${dateFilterSql}
-         ORDER BY posted_at DESC
+         ORDER BY posted_at DESC NULLS LAST, id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       );
       jobs = result.rows;
-      ranking = { mode: 'recent', minScore: null, sourceDiversified: false };
+      ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false };
 
       if (datePosted) {
         const unknownDateResult = await query(

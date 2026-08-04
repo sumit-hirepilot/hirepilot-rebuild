@@ -46,7 +46,7 @@ router.get('/', verifyToken, async (req, res) => {
          FROM applications a
          LEFT JOIN jobs j ON j.id = a.job_id
         WHERE a.user_id = $1 AND ${ON_BOARD}${extra}
-        ORDER BY COALESCE(a.stage_changed_at, a.submitted_at, a.created_at) DESC`,
+        ORDER BY COALESCE(a.stage_changed_at, a.submitted_at, a.created_at) DESC NULLS LAST, a.id DESC`,
       params
     );
 
@@ -179,7 +179,7 @@ router.get('/export.csv', verifyToken, async (req, res) => {
               a.submitted_at, a.employer_confirmation_id, a.target_form_url, a.is_manual
          FROM applications a LEFT JOIN jobs j ON j.id = a.job_id
         WHERE a.user_id = $1 AND ${ON_BOARD}
-        ORDER BY a.submitted_at DESC NULLS LAST`,
+        ORDER BY a.submitted_at DESC NULLS LAST, a.id DESC`,
       [req.user.id]
     );
     // Quote every field and double embedded quotes: company names contain

@@ -298,7 +298,8 @@ export default function Jobs() {
   const [total, setTotal] = useState(null);
   const [jobsError, setJobsError] = useState(null);
   // A7.1 — the floor and the ranking mode are the user's, and both are visible.
-  const [rankMode, setRankMode] = useState('score');
+  const [rankMode, setRankMode] = useState('ranked');
+  const [sortBy, setSortBy] = useState(null); // null = follow the server default
   const [minScore, setMinScore] = useState(0.4);
   const [ranking, setRanking] = useState(null);
   const [page_, setPage] = useState(1);
@@ -388,8 +389,11 @@ export default function Jobs() {
       rg.forEach((v) => v && qs.append('region', v));
       if (co) qs.set('company', co);
       // Score ranking is the default; `recent` is the explicit unranked browse.
-      qs.set('sort', rankMode);
-      if (rankMode === 'score') qs.set('minScore', String(minScore));
+      // A7.7 — sort and ranked are separate. Choosing "newest" must not throw
+      // away the scores; it changes the order of the same personalised set.
+      if (rankMode !== 'ranked') qs.set('ranked', '0');
+      if (sortBy) qs.set('sort', sortBy);
+      if (rankMode === 'ranked') qs.set('minScore', String(minScore));
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
         // A7.1: this call sent no Authorization header, so /api/jobs could not
@@ -943,22 +947,35 @@ export default function Jobs() {
           <div className={page.rankModes}>
             <button
               type="button"
-              className={rankMode === 'score' ? page.rankOn : page.rankOff}
-              onClick={() => { setRankMode('score'); setPage(1); }}
+              className={(ranking?.sort || 'score') === 'score' ? page.rankOn : page.rankOff}
+              onClick={() => { setSortBy('score'); setPage(1); }}
             >
-              Best match first
+              Best match
             </button>
             <button
               type="button"
-              className={rankMode === 'recent' ? page.rankOn : page.rankOff}
-              onClick={() => { setRankMode('recent'); setPage(1); }}
+              className={ranking?.sort === 'recent' ? page.rankOn : page.rankOff}
+              onClick={() => { setSortBy('recent'); setPage(1); }}
             >
-              Everything, newest first
+              Newest first
+            </button>
+            <button
+              type="button"
+              className={rankMode === 'ranked' ? page.rankOff : page.rankOn}
+              onClick={() => { setRankMode(rankMode === 'ranked' ? 'all' : 'ranked'); setPage(1); }}
+              title="Every indexed job, not scored against your profile"
+            >
+              {rankMode === 'ranked' ? 'Browse all jobs' : 'Back to my matches'}
             </button>
           </div>
-          {rankMode === 'score' ? (
+          {rankMode === 'ranked' ? (
             <label className={page.floorControl}>
-              <span>Only show matches above {Math.round(minScore * 100)}%</span>
+              <span>
+                {ranking?.sort === 'recent'
+                  ? 'Newest first, then best match'
+                  : 'Best match first, ties broken by newest'}
+                {' · '}Only show matches above {Math.round(minScore * 100)}%
+              </span>
               <input
                 type="range"
                 min="0" max="0.9" step="0.05"

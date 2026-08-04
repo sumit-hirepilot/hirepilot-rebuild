@@ -1262,7 +1262,7 @@ router.get('/submitted', verifyToken, async (req, res) => {
               a.submitted_by, j.title, j.company_name
        FROM applications a JOIN jobs j ON j.id = a.job_id
        WHERE a.user_id = $1 AND a.status = 'submitted'
-       ORDER BY a.submitted_at DESC NULLS LAST`,
+       ORDER BY a.submitted_at DESC NULLS LAST, a.id DESC`,
       [req.user.id]
     );
     res.json({
@@ -1383,7 +1383,7 @@ router.get('/blockers', verifyToken, async (req, res) => {
          FROM applications a
          JOIN jobs j ON j.id = a.job_id
         WHERE a.user_id = $1 AND a.status = 'needs_user'${scope}
-        ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC`,
+        ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC, a.id DESC`,
       params
     );
 
