@@ -1,7 +1,17 @@
 # HirePilot — Progress
 
 Current wave: 0
-Current goal: G0.1 — Live counters resolve or degrade honestly
+Current goal: #45 (health failure, preempts backlog)
+
+## Next session order (revised)
+1. #45 — Auto Apply / Applications never load their data. A health-check failure,
+   so it preempts the backlog. It was run behind G0.1-G0.3 last session; that
+   was wrong by the loop's own ASSESS rule.
+2. G0.6 — Submission audit. See below: this is now an audit of live behaviour,
+   not forward planning.
+3. G0.7 — Reconcile ALL submission copy, not just the FAQ.
+4. G0.5 — Hardcoded figure sweep.
+5. G0.4 — Pricing page.
 Blocked on: —
 
 ## Health (last checked 2026-07-31)
@@ -94,12 +104,74 @@ Learned: the FAQ claimed the product cannot submit to employers, which stopped
   product. Worth re-reading marketing text whenever a capability lands.
 Follow-ups created: none
 
+## Incidents
+
+### Production down twice in one session — Chromium in the API image
+**Cause.** PDF export was built as a server-side render through headless
+Chromium. Attempt 1: `apk add chromium` on node:18-alpine failed the image
+build; Railway had no healthy container and the API was down roughly six
+minutes. Attempt 2: Debian slim with apt chromium built, passed a CI image
+build, booted, deployed, and reported export available — then the first real
+render killed the container and it did not come back.
+
+**Resolution.** Both reverted. PDF export moved to client-side print from the
+editor's preview iframe, which is strictly more faithful anyway: it prints the
+same DOM the user is looking at, so the output cannot drift from the preview.
+resumePdf.js and both /pdf routes were deleted rather than left dormant.
+
+**What it teaches.** A CI step that builds the image was added after the first
+outage and did its job — it went green on attempt 2. It was still insufficient:
+building and booting an image does not prove a several-hundred-megabyte
+subprocess survives inside a small container doing real work. Infra changes go
+branch-first with a CI image build AND get flagged before shipping, because a
+green build is not a green boot.
+
+**Second defect found in the same work.** The PDF endpoint answered 200 with a
+plausible content-type and 879KB of body that was `{"0":37,"1":80,...}` — a
+Uint8Array JSON-serialised by res.send, because Puppeteer v23 returns Uint8Array
+rather than Buffer. Every download was a corrupt file. Status code, header and
+byte count all looked correct. Only opening the file caught it.
+
+## Findings that change the roadmap
+
+### Submission already exists in production, unaudited
+The extension submits to employers today, in the user's own signed-in browser,
+and marks an application applied only after capturing the employer's
+confirmation page. One submission is verified end to end (Scale AI, Greenhouse).
+
+This shipped without the §3 Constraint 4 assessment. Two things follow, and the
+second is uncomfortable:
+
+- **G0.6 — audit live submission behaviour.** Which platforms, by what
+  mechanism, and does each permit it? Known today: Greenhouse verified, Lever
+  and Ashby adapters exist but are unverified against a live form; Workday,
+  Taleo and iCIMS are not automated.
+- **The mechanism is browser automation, not a public API.** Constraint 4 says
+  browser automation against a third party's ATS is `deferred: ToS`. The shipped
+  path is exactly that. G0.6 therefore is not only "which platforms may we add"
+  but "does what already ships conform to the constraint the project set
+  itself". That question needs answering before more submission work, and it may
+  conclude that a shipped feature has to change.
+- **G0.7 — reconcile all submission copy.** The FAQ was corrected in G0.3; other
+  surfaces were not audited. Copy matching product has to be complete.
+
 ## Standing rules
 - Assert on properties, never on literals. G0.1 watched for "23,1xx" for ten
   minutes while the page already said 23,203.
 - Read every grep hit before counting it as evidence. "Illustrative example"
   first matched .next build output; "+0" matched Google Fonts unicode-range.
 - Comments that describe a bug are not the bug. Strip them before asserting.
+- **Verify against parsed DOM text, never raw markup.** Three false positives in
+  three goals, all from treating HTML as a string: the count regex, the
+  unicode-range hit, and "© <!-- -->2026<!-- -->" where React splits an
+  interpolation with comment markers and a `©\s*\d{4}` pattern cannot match.
+  The rule caught all three, but the substrate was wrong each time. Parse, then
+  read textContent.
+- Present-but-non-functional is a fake pass. An SVG og:image satisfies "og:image
+  exists" and renders on no major platform. Generalises well past OG images.
+- Prefer a test that binds a claim to its source over a comment asserting it.
+  D3's weights test means the landing page cannot drift from the engine's maths;
+  a comment saying "keep these in sync" would not.
 
 ## Follow-ups
 
