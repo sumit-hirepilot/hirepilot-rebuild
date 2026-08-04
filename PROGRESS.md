@@ -1,8 +1,8 @@
 # HirePilot — Progress
 
 Current wave: A (Master Prompt v2)
-Current goal: A2c - the Jobs feed renders "0 results" before data lands.
-Then A3.
+Current goal: A3. Then A4, A5, A6, then A7.2-A7.6.
+A7.1 shipped and verified 2026-08-05 (priority override).
 Blocked on: nothing hard. ADMIN_EMAILS would add identities to the A1 audit,
 but the audit itself already ran and found zero affected users.
 
@@ -193,6 +193,42 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## A7.1 — Jobs is the same product as the Dashboard  [shipped + VERIFIED 2026-08-05]
+Layer: L1
+Changed: backend/middleware/auth.js, backend/routes/jobs.js,
+  backend/__tests__/jobsRanking.test.js, frontend/pages/jobs.js,
+  frontend/styles/Jobs.module.css
+WHY THEY DIVERGED (so it cannot recur):
+  /api/jobs took no token. It was unauthenticated, so it could not personalise
+  even in principle and fell back to ORDER BY posted_at DESC. The Dashboard
+  read /api/matches - authenticated, ORDER BY overall_score DESC. jobs.js
+  compounded it by fetching /api/jobs with NO Authorization header while
+  sending one to every other call in the same Promise.all. Two ranked products
+  for the same user in the same second, because one endpoint never learned who
+  was asking.
+Evidence (production, real Principal Product Designer account):
+  - ranking {mode: score, minScore: 0.4, sourceDiversified: true}, total 500.
+  - Top 5 rendered: 75% UX Designer Senior (Valtech), 71% Product Designer
+    (Ashby), 71% Staff Product Designer (Greenhouse), 71% UX Designer Senior,
+    71% UI/UX Engineer. All design roles. Dashboard's top match was 75% UX
+    Designer Senior - the feed's top result now equals it.
+  - Score visible on 20/20 rows, strictly descending, at desktop AND 375px.
+  - 6 distinct sources on page 1, max 5 from any one. micro1 - which swamped
+    every page before - does not appear at all.
+  - 375px: no horizontal overflow, controls stack, floor adjustable.
+Learned: the first implementation interleaved by source_rank. It stopped
+  domination but BROKE score order - the feed read 0.75 0.71 0.67 0.63 0.59
+  then jumped back to 0.71 as the next round began. "Score-sorted by default"
+  and "no single source may dominate" contradict each other under round-robin.
+  Capping each source and THEN ordering by score satisfies both literally.
+  Caught only because live verification checked the score SEQUENCE rather than
+  just the top row.
+  Also: the score rendered as a bare "75" with no unit. A regex looking for a
+  score matched 0 of 20 rows while the row text plainly contained it - the
+  number was there, the meaning was not.
+Follow-ups: A7.3 (dates - "Publication date unavailable" and a 98d-old posting
+  under "Today's matches" both observed again during this verification)
 
 ## A2 — scoring runs server-side, not per-page  [shipped 2026-08-05]
 Layer: L1
