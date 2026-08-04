@@ -23,30 +23,44 @@ const SOURCE_LABELS = {
 
 const DIRECT_ATS = new Set(['greenhouse', 'lever', 'ashby']);
 
-// Illustrative examples only - not live user data. Labeled as such wherever shown.
-const MATCH_EXAMPLE = {
-  title: 'Senior Product Designer',
-  company: 'Figma',
-  score: 87,
-  breakdown: [
-    { label: 'Skills matched', value: '9 / 10' },
-    { label: 'Experience', value: '6 yrs vs. 5+ required' },
-    { label: 'Location', value: 'Remote — match' },
-  ],
-};
+/*
+ * Facts about how the product works, not examples of it working.
+ *
+ * These three panels previously showed a fabricated Figma role scored 87%, a
+ * fabricated resume diff, and fabricated tracker counts, each captioned
+ * "Illustrative example". A caption does not make an invented number safe on a
+ * page whose whole claim is that it does not invent numbers - and a visitor
+ * scanning the strip reads 87% before they read the caption.
+ *
+ * A real score cannot be shown here at all: scoring runs against a user's own
+ * skills and experience, and a logged-out visitor has none. So the panel shows
+ * the actual weights the engine uses instead of a number it cannot compute.
+ * Every value below is read from shipped code and cited to its file.
+ */
 
-const DIFF_EXAMPLE = [
-  { type: 'context', text: 'SKILLS\nFigma, Prototyping, Design Systems, User Research' },
-  { type: 'added', text: ', Accessibility (WCAG)' },
-  { type: 'context', text: '\n\nEXPERIENCE\nSenior Product Designer — 2021–present' },
+// services/matchingEngine.js, calculateMatch()
+const SCORE_WEIGHTS = [
+  { label: 'Skills overlap', weight: 40 },
+  { label: 'Experience fit', weight: 30 },
+  { label: 'Location fit', weight: 20 },
+  { label: 'Salary alignment', weight: 10 },
 ];
 
-const TRACK_EXAMPLE = [
-  { status: 'Applied', count: 12 },
-  { status: 'Phone Screen', count: 3 },
-  { status: 'Interview', count: 2 },
-  { status: 'Offer', count: 1 },
+// services/resumeGuard.js - the checks every proposed edit must pass.
+const GUARD_RULES = [
+  { rule: 'no_deletion', plain: 'Nothing already in your resume can be removed.' },
+  { rule: 'invented_number', plain: 'A figure not already in your material is rejected outright.' },
+  { rule: 'untraceable_claim', plain: 'Every word must trace to your resume, skills or work history.' },
 ];
+
+// routes/apply.js - the real status lifecycle.
+const TRACK_STATES = [
+  { state: 'approved', plain: 'everything required is answered' },
+  { state: 'submitting', plain: 'the extension is filling the form' },
+  { state: 'needs_user', plain: 'paused on a question, login, CAPTCHA or consent' },
+  { state: 'submitted', plain: 'the employer confirmed it — nothing else earns this' },
+];
+
 
 const FAQS = [
   {
@@ -101,7 +115,6 @@ export default function Home({ stats = null }) {
   const [sources, setSources] = useState([]);
   const [tickerIndex, setTickerIndex] = useState(0);
   const [openFaq, setOpenFaq] = useState(0);
-  const [rejectedDiff, setRejectedDiff] = useState(false);
   const tickerRef = useRef(null);
 
   useEffect(() => {
@@ -281,20 +294,18 @@ export default function Home({ stats = null }) {
               </div>
               <div className={styles.pipelineVisual}>
                 <div className={styles.matchCard}>
-                  <p className={styles.exampleTag}>Illustrative example</p>
-                  <div className={styles.matchHeader}>
-                    <div>
-                      <p className={styles.matchTitle}>{MATCH_EXAMPLE.title}</p>
-                      <p className={styles.matchCompany}>{MATCH_EXAMPLE.company}</p>
-                    </div>
-                    <span className={styles.matchScore}>{MATCH_EXAMPLE.score}%</span>
-                  </div>
-                  {MATCH_EXAMPLE.breakdown.map((row) => (
+                  <p className={styles.factTag}>The actual weights, from the scoring engine</p>
+                  {SCORE_WEIGHTS.map((row) => (
                     <div key={row.label} className={styles.matchRow}>
                       <span>{row.label}</span>
-                      <span>{row.value}</span>
+                      <span className={styles.matchWeight}>{row.weight}%</span>
                     </div>
                   ))}
+                  <p className={styles.factNote}>
+                    Your score is these four, computed against your own skills and
+                    experience. There is no number to show here until you have a
+                    profile — so this shows the formula instead of inventing one.
+                  </p>
                 </div>
               </div>
             </div>
@@ -311,20 +322,16 @@ export default function Home({ stats = null }) {
               </div>
               <div className={styles.pipelineVisual}>
                 <div className={styles.diffCard}>
-                  <p className={styles.exampleTag}>Illustrative example</p>
-                  <pre className={styles.diffPre}>
-                    {DIFF_EXAMPLE[0].text}
-                    <span
-                      className={rejectedDiff ? styles.diffRejected : styles.diffAdded}
-                      onClick={() => setRejectedDiff((r) => !r)}
-                      title="Click to toggle accept/reject"
-                    >
-                      {DIFF_EXAMPLE[1].text}
-                    </span>
-                    {DIFF_EXAMPLE[2].text}
-                  </pre>
-                  <p className={styles.diffHint}>
-                    {rejectedDiff ? 'Rejected — click to accept again' : 'Added — click to reject'}
+                  <p className={styles.factTag}>Every proposed edit passes these three checks</p>
+                  {GUARD_RULES.map((r) => (
+                    <div key={r.rule} className={styles.matchRow}>
+                      <code className={styles.factCode}>{r.rule}</code>
+                      <span>{r.plain}</span>
+                    </div>
+                  ))}
+                  <p className={styles.factNote}>
+                    Enforced in code, not by instruction. An edit that fails any of
+                    them is rejected before you ever see it offered.
                   </p>
                 </div>
               </div>
@@ -342,15 +349,17 @@ export default function Home({ stats = null }) {
               </div>
               <div className={styles.pipelineVisual}>
                 <div className={styles.trackCard}>
-                  <p className={styles.exampleTag}>Illustrative example</p>
-                  <div className={styles.trackRow}>
-                    {TRACK_EXAMPLE.map((col) => (
-                      <div key={col.status} className={styles.trackColumn}>
-                        <span className={styles.trackCount}>{col.count}</span>
-                        <span className={styles.trackLabel}>{col.status}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <p className={styles.factTag}>The real status lifecycle</p>
+                  {TRACK_STATES.map((s2) => (
+                    <div key={s2.state} className={styles.matchRow}>
+                      <code className={styles.factCode}>{s2.state}</code>
+                      <span>{s2.plain}</span>
+                    </div>
+                  ))}
+                  <p className={styles.factNote}>
+                    Counts are not shown here because they would be someone
+                    else&apos;s. Yours appear on your own tracker.
+                  </p>
                 </div>
               </div>
             </div>

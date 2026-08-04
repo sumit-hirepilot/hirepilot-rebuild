@@ -28,6 +28,10 @@ HP.drawer = (() => {
     profile: null,
     status: 'idle',
     message: null,
+    // Whether the runner will click Submit. Shown and controlled here, because
+    // the one thing a person needs to know before pressing Fill is whether it
+    // stops at a filled form or sends the application.
+    autoSubmit: true,
     // Questions the profile could not answer, put back to the user. Cleared the
     // moment they are saved - a stale ask list would re-prompt for answers the
     // profile already has.
@@ -186,6 +190,13 @@ HP.drawer = (() => {
     .btn.ghost { background: #fff; color: #475569; border-color: #e2e8f0; }
     .btn.ghost:hover { background: #f8fafc; }
     .note { font-size: 10.5px; color: #94a3b8; padding: 0 14px 11px; }
+    .submitRow {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 14px 12px; cursor: pointer; border-top: 1px solid #f1f5f9;
+    }
+    .submitRow input { margin-top: 2px; accent-color: #7c3aed; }
+    .submitRow strong { display: block; font-size: 11.5px; font-weight: 700; color: #0f172a; }
+    .submitRow em { display: block; margin-top: 2px; font-size: 10.5px; line-height: 1.45; font-style: normal; color: #94a3b8; }
     .empty { color: #94a3b8; font-size: 12px; padding: 10px 0; }
 
     .fab {
@@ -375,7 +386,15 @@ HP.drawer = (() => {
           </button>
           <button class="btn ghost" data-act="open">Open in HirePilot</button>
         </div>
-        <div class="note">HirePilot never clicks Submit for you — review the form and submit it yourself.</div>
+        <label class="submitRow">
+          <input type="checkbox" data-act="autosubmit" ${state.autoSubmit ? 'checked' : ''} />
+          <span>
+            <strong>${state.autoSubmit ? 'Submits automatically' : 'Fills only — you click Submit'}</strong>
+            <em>${state.autoSubmit
+    ? 'Fills the form and clicks Submit, then captures the employer’s confirmation. Nothing is marked Applied without it.'
+    : 'Fills every field and stops. The form stays on screen for you to send.'}</em>
+          </span>
+        </label>
       </div>`;
 
     root.querySelectorAll('.tab').forEach((b) => {
@@ -495,6 +514,18 @@ HP.drawer = (() => {
               ? 'No queued application matches this page. Prepare it in HirePilot first.'
               : `Could not fill: ${reason}`,
         }));
+      };
+    }
+    const autoBox = root.querySelector('[data-act="autosubmit"]');
+    if (autoBox) {
+      autoBox.onchange = (ev) => {
+        const value = ev.target.checked;
+        update({ autoSubmit: value });
+        try {
+          chrome.runtime.sendMessage({ type: 'HP_SET_SUBMIT', value }, () => {
+            if (chrome.runtime.lastError) update({ autoSubmit: !value });
+          });
+        } catch { update({ autoSubmit: !value }); }
       };
     }
     root.querySelector('[data-act="open"]').onclick = () => send('HP_DRAWER_OPEN_APP', (r) => update({

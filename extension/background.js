@@ -753,6 +753,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           if (!item) return respond({ ok: false, reason: 'could not load application' });
 
           const profile = await api('/api/apply/profile').catch(() => null);
+          const submitPref = await chrome.storage.local.get(['autoSubmit']);
 
           /*
            * Unanswered required questions become an ASK list, not just rows in
@@ -797,6 +798,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
                 ? { ...profile.profile, savedAnswers: Object.keys(profile.profile.custom_answers || {}).length }
                 : null,
               ...idleDrawerState(item.status),
+              // The drawer must state what will happen, not a fixed sentence.
+              // Its footer claimed HirePilot never clicks Submit while the code
+              // defaulted to clicking it - the UI said the opposite of the
+              // behaviour, so there was no way to know which was true.
+              autoSubmit: submitPref.autoSubmit !== false,
               // An ask list outranks the idle message: there is something to do.
               ...(unanswered.length ? { status: 'asking' } : {}),
             },
@@ -910,6 +916,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
          * on any device, resolve the same question without asking: it is the
          * profile that learned, not this browser.
          */
+        case 'HP_SET_SUBMIT': {
+          await chrome.storage.local.set({ autoSubmit: Boolean(msg.value) });
+          return respond({ ok: true, autoSubmit: Boolean(msg.value) });
+        }
         case 'HP_SAVE_ANSWERS': {
           const answers = Array.isArray(msg.answers) ? msg.answers : [];
           if (!answers.length) return respond({ ok: false, reason: 'no answers supplied' });

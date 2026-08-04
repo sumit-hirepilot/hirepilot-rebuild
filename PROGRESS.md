@@ -45,7 +45,43 @@ does not exist yet — worth knowing before that wave is planned in detail.
 
 ## Shipped
 
-<append RECORD entries here, newest last>
+## G0.1 — Live counters resolve or degrade honestly  [shipped 2026-08-04]
+Moat: M3
+Changed: backend/routes/jobs.js, frontend/pages/index.js,
+  frontend/styles/Home.module.css, backend/__tests__/jobStats.test.js
+Evidence:
+  - Real integers <2s: server HTML carries "23,203 active jobs indexed";
+    /api/jobs/stats measured at 507ms
+  - Board counts real, not +0: zeroed placeholder rows deleted; page shows
+    "12 sources indexed"
+  - Stated fallback: "connecting to live sources…" replaced with a real count
+    plus last-synced time; failure path renders "source count unavailable"
+  - Verified on the production URL by fetching it
+Learned: the hardcoded "180+" was gated on a boolean and the true figure is 153
+  - an 18% overstatement. Assume other hardcoded figures exist (G0.5).
+Follow-ups created: H1 resolved by lastSyncedAt
+
+## G0.2 — Remove or replace "Illustrative example"  [shipped 2026-08-04]
+Moat: M3
+Changed: frontend/pages/index.js, frontend/styles/Home.module.css,
+  frontend/__tests__/landingHonesty.test.js
+Evidence:
+  - No "Illustrative example" label renders; asserted in test
+  - All three fabricated constants deleted (MATCH_EXAMPLE 87% Figma role,
+    DIFF_EXAMPLE, TRACK_EXAMPLE counts)
+  - Panels now show scoring weights, guard rule names and status vocabulary,
+    each cited to the file it is read from
+  - 5 tests, 3 of which fail against the pre-change file
+Learned: a caption does not make an invented number safe - a visitor reads 87%
+  before they read "illustrative". Removing the number was the only fix.
+Follow-ups created: none
+
+## Standing rules
+- Assert on properties, never on literals. G0.1 watched for "23,1xx" for ten
+  minutes while the page already said 23,203.
+- Read every grep hit before counting it as evidence. "Illustrative example"
+  first matched .next build output; "+0" matched Google Fonts unicode-range.
+- Comments that describe a bug are not the bug. Strip them before asserting.
 
 ## Follow-ups
 
