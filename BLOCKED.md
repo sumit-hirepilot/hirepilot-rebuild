@@ -22,7 +22,22 @@ Also: run jest from inside backend/ or frontend/. `npx --prefix backend jest`
 silently produces no output rather than failing, which reads as a passing test
 suite if you only grep the result.
 
-## No DB access to HirePilot from this machine — blocks A1's all-user audit
+## RESOLVED 2026-08-05 — A1's all-user audit ran without local DB access
+Root cause of the block: the Railway CLI is authenticated as sumituxi@gmail.com,
+which has ONE workspace, no teams, and one project (regintel-ai). HirePilot is
+not in that account at all - confirmed against the Railway GraphQL API, not just
+`railway list`. So `railway link` was never going to reach it, and the app
+account is a different address (sumituxui@gmail.com).
+
+Solved by routing the audit through the deployed backend, which already holds
+DATABASE_URL: GET /api/applications/integrity. Aggregates are safe for any
+authenticated caller; identities are gated on ADMIN_EMAILS.
+
+The one thing still needing a human, and ONLY if the count ever goes non-zero:
+    set ADMIN_EMAILS=sumituxui@gmail.com on the API service
+It currently reports users_affected 0, so there is nobody to identify.
+
+## (historical) No DB access to HirePilot from this machine
 `railway whoami` authenticates as sumituxi@gmail.com, but `railway list` shows
 only `regintel-ai`. HirePilot is not in this account's project list, so there is
 no `railway run` / `railway connect` path to its Postgres, and there is no

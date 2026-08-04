@@ -1,10 +1,10 @@
 # HirePilot — Progress
 
-Current wave: A (Master Prompt v2 adopted 2026-08-04)
-Current goal: A2 - new-user path (scoring must run on resume upload).
-Then A1 - false "applied" rows (DIAGNOSED, at BUILD; see D10/D10a).
-Blocked on: A1's all-user audit needs DB access - VERIFY it at ASSESS, do not
-assume the railway link landed.
+Current wave: A (Master Prompt v2)
+Current goal: A2c - the Jobs feed renders "0 results" before data lands.
+Then A3.
+Blocked on: nothing hard. ADMIN_EMAILS would add identities to the A1 audit,
+but the audit itself already ran and found zero affected users.
 
 Wave 0 goals map onto v2 as: G0.6 -> A4, G0.7 -> A5, G0.5 -> A6,
 H2/H3/H4/H6/H7/H8 -> A3. G0.4 (pricing) -> B3.
@@ -17,22 +17,23 @@ H2/H3/H4/H6/H7/H8 -> A3. G0.4 (pricing) -> B3.
       jobs 23,444 · sources 12 · companies 3,308 · directCompanies 153
 [x] Source poller ran within 8 hours   lastSyncedAt 2026-08-04T07:30:44Z
 [x] Job count non-zero and grew        23,130 -> 23,203 -> 23,444
-[ ] Signup -> resume upload -> scored feed, no manual step
-      FAIL. Upload 201 and apply-parsed 200 both succeed, but /api/matches
-      returned total 0 until POST /api/matches/recalculate was called BY HAND.
-      A2 names this exact condition a blocker. A new user reaching the feed
-      sees zero matches and no reason.
+[x] Signup -> resume upload -> scored feed, no manual step
+      FIXED by A2 and re-verified 2026-08-05 on a brand-new production
+      account with no manual recalculate: total 500, top score 0.70.
 [x] Latest Railway deploy green
 [ ] Zero console errors on landing, dashboard, applications, auto-apply
       /applications and /auto-apply verified clean on production (#45).
       Landing and dashboard NOT re-checked this cycle -> A3.
-[ ] No tracker row carries "applied" without a submission record
-      FAIL. See A1 diagnosis below.
+[x] No tracker row carries "applied" without a submission record
+      FIXED by A1 and audited across ALL users 2026-08-05:
+      applied_false 0, users_affected 0, constraintPresent true
+      (read from pg_constraint).
 [x] Every enabled ATS adapter has a verified live run on record
       SUPPORTED_ATS = {greenhouse} only; verified end to end.
 ```
 
-## A1 — DIAGNOSIS (written before any fix; NOT yet started)
+## A1 — DIAGNOSIS (RESOLVED 2026-08-05 - kept for the reasoning; see the
+## shipped entry for what the audit actually found)
 
 **The hole is still open in production.** `POST /api/applications`
 (backend/routes/applications.js:89) inserts `status = 'applied'` as a string
@@ -69,16 +70,11 @@ constraint placed before the corrective UPDATE would never apply while looking
 like it had. Correct the rows first, or add NOT VALID then VALIDATE. Confirm
 the constraint exists afterwards rather than inferring it from a clean boot.
 
-**Why it was not started this session:** past the §3 session budget. A1 is a
-CHECK-constraint + migration + route change on the `applications` table, and
-§3 forbids starting a goal that cannot be verified in-session. A half-applied
-migration on that table is the irreversible class of change §3 warns about.
-
-**Verification path already available to the next session:** user 2
-(`hp45-new-1785827128@example.com`, id 2) holds exactly one false applied row
-on job 14150. `GET /api/applications` for that user must stop reporting it as
-applied once the migration lands - a concrete before/after with no DB access
-needed.
+**Outcome.** Shipped 2026-08-05. The live generator turned out to be
+agents/[id].js -> POST /api/applications, not merely a latent hole. The
+all-user audit found ZERO false rows (the pre-existing corrective UPDATE runs
+on every boot and had already cleared them, including the one I created during
+the #45 regression check). The constraint now stops them being recreated.
 
 
 ### Pre-existing defects carried in from earlier work
@@ -197,6 +193,58 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## A2 — scoring runs server-side, not per-page  [shipped 2026-08-05]
+Layer: L1
+Changed: backend/routes/matches.js, backend/routes/resume.js,
+  backend/__tests__/scoreOnRead.test.js
+Evidence:
+  - Root cause was path-dependence, not a missing call: onboarding.js
+    recalculates only on its FINAL step (abandon it and you are never scored),
+    and resume.js applies parsed skills and never recalculated at all - so the
+    Resume page produced a profile and a stale feed.
+  - Production, brand-new account a2-verify-...@example.com, no manual
+    recalculate at any point: signup -> upload 201 -> apply-parsed
+    (skillsAdded 4, scored true) -> GET /api/matches total 500, top 0.70 with
+    matched skills Design Systems/Figma/Prototyping/User Research.
+  - Before the resume: total 0, scoredOnRead false - a user with no skills is
+    not scanned, and is not told a number that was never computed.
+  - 6 tests, each verified failing individually against the pre-change files.
+    Two of the six pin the new scoredOnRead contract rather than changed
+    behaviour; they guard the new path against over-triggering.
+Learned: my first ASSESS called this "scoring never runs automatically", from
+  an API sequence no real user performs. Reproducing through the actual UI path
+  changed the diagnosis. The prompt's own rule - reproduce before diagnosing -
+  caught it.
+Follow-ups: A2c
+
+## A1 — "applied" is bound to a submission record, in the table  [shipped 2026-08-05]
+Layer: L1
+Changed: backend/routes/applications.js, backend/services/migrations.js,
+  backend/__tests__/appliedRequiresSubmission.test.js
+Evidence:
+  - The generator was still live: agents/[id].js POSTs /api/applications and
+    then shows the job as "applied", while that route inserted status='applied'
+    as a literal with no submitted_at, confirmation or employer response.
+  - ALL-USER AUDIT RAN on production via GET /api/applications/integrity:
+    applied_total 0, applied_false 0, users_affected 0, submitted_total 1.
+    Zero false rows across every user. Nothing to NOTIFY.
+  - constraintPresent TRUE, read from pg_constraint - not inferred from a clean
+    boot, per the standing rule.
+  - D10 honoured: COALESCE(is_manual, FALSE) = TRUE is exempt, so honest manual
+    entries are untouched. Manual tracker rows were separately confirmed to use
+    status='submitted' with submitted_at set, so the pre-existing corrective
+    UPDATE never touched them either.
+  - Ordering trap avoided and pinned by test: the corrective UPDATE precedes
+    ADD CONSTRAINT, and the constraint's evidence set is a superset of what the
+    UPDATE leaves behind - otherwise a survivor would fail the ADD and
+    runMigrations would swallow it.
+  - 7 tests, each verified failing individually against the pre-change files.
+- Suites: backend 22 passed, frontend 18 passed.
+Learned: one of the 7 first passed against the broken file because it asserted
+  on the query PARAMS while the event name is a literal in the SQL string.
+  Checking the wrong argument is its own way to write a test that cannot fail.
+Follow-ups: A1-identities (ADMIN_EMAILS)
 
 ## #45 — Applications and Auto Apply have a floor in every state  [shipped 2026-08-04]
 Moat: M3
@@ -413,6 +461,19 @@ second is uncomfortable:
 
 ## Follow-ups
 
+- **A2c — the Jobs feed renders "0 results" before its data lands.** Caught at
+  375px on production as a new user: the page showed "Jobs - 0 results" while
+  the API held 23,949, then read "23949 results" on reload. A confident zero
+  during a wait state is a fabricated number (Constraint 1) and fails A2's
+  "every wait state says what is happening". Same class as the "0 total
+  applications" removed in #45. THIS IS THE NEXT GOAL.
+  WEAKENED: A2 criterion 3 is therefore only partly met - no horizontal
+  overflow at 375px and no indefinite spinner were confirmed, but this wait
+  state was not fixed.
+- **A1-identities** — the integrity endpoint reports counts to any
+  authenticated caller and withholds per-user identities unless ADMIN_EMAILS is
+  set. It currently reports zero affected users, so there is nothing to
+  identify; set the env var only if that count ever becomes non-zero.
 - **H9 — audit which migration statements actually took effect.** Every
   statement in `services/migrations.js` has run under a catch-and-continue
   runner, so any that failed did so silently while the boot log still read
