@@ -1,48 +1,74 @@
 # HirePilot — Progress
 
-Current wave: 0
-Current goal: G0.6 (immutable submission receipt) - #45 closed 2026-08-04
+Current wave: A (Master Prompt v2 adopted 2026-08-04)
+Current goal: A1 - false "applied" rows. DIAGNOSED, NOT STARTED.
+Blocked on: no DB access to HirePilot from this machine (see BLOCKED.md)
 
-## Next session order (revised)
-0. DONE THIS SESSION — kill switch, BOTH paths.
-   The extension resolves its adapter from the PAGE, not from the server, so the
-   server whitelist alone was not blocking. processOne gated on
-   automationSupported; the drawer's "Fill this form" did not - the same
-   application the queue refused to touch could be submitted by hand through an
-   unverified adapter. Both gate now, pinned by
-   backend/__tests__/extensionWhitelist.test.js.
-0b. Server-side kill switch. Lever and Ashby removed from SUPPORTED_ATS.
-   They were permitted to submit while never having been run against a live
-   form. Re-enable per-adapter only alongside evidence of a verified live run;
-   backend/__tests__/supportedAts.test.js makes that edit deliberate.
-1. DONE 2026-08-04 — #45 closed with evidence on production.
-2. G0.6 — Submission audit. See below: this is now an audit of live behaviour,
-   not forward planning.
-3. G0.7 — Reconcile ALL submission copy, not just the FAQ.
-4. G0.5 — Hardcoded figure sweep.
-5. G0.4 — Pricing page.
-Blocked on: —
+Wave 0 goals map onto v2 as: G0.6 -> A4, G0.7 -> A5, G0.5 -> A6,
+H2/H3/H4/H6/H7/H8 -> A3. G0.4 (pricing) -> B3.
 
-## Health (last checked 2026-07-31)
+## Health (last checked 2026-08-04, Master Prompt v2 §6)
 
 ```
-[x] Production URL returns 200 and renders above-the-fold content
-      app 200 · api 200
-[ ] Hero counters show real integers
-      FAIL — renders "— active jobs indexed", "— live sources", "— companies"
-      and a hanging "connecting to live sources…". "+0" also present on the page.
-[?] Source poller ran within the last 8 hours
-      13 sources returned, but /api/jobs/sources exposes no last_fetched, so
-      freshness is UNVERIFIABLE from outside. Treated as a finding, not a pass.
-[x] Job count in DB is non-zero and grew since the last check
-      23,130 jobs across 13 sources (himalayas 3,984 · nofluffjobs 2,980 ·
-      jobicy 377 · remoteok 324 · hackernews 209 · landingjobs 51 · others)
-[ ] Signup → resume upload → scored feed completes end to end
-      NOT RUN this cycle — deferred to the G0.1 regression check
-[x] Latest Railway deploy is green
-[ ] No console errors on the landing page or dashboard
-      FAIL — known hydration errors; see the pre-existing defects below
+[x] Production returns 200, renders above-the-fold content   app 200 · api 200
+[x] Hero counters show real integers
+      jobs 23,444 · sources 12 · companies 3,308 · directCompanies 153
+[x] Source poller ran within 8 hours   lastSyncedAt 2026-08-04T07:30:44Z
+[x] Job count non-zero and grew        23,130 -> 23,203 -> 23,444
+[ ] Signup -> resume upload -> scored feed, no manual step
+      FAIL. Upload 201 and apply-parsed 200 both succeed, but /api/matches
+      returned total 0 until POST /api/matches/recalculate was called BY HAND.
+      A2 names this exact condition a blocker. A new user reaching the feed
+      sees zero matches and no reason.
+[x] Latest Railway deploy green
+[ ] Zero console errors on landing, dashboard, applications, auto-apply
+      /applications and /auto-apply verified clean on production (#45).
+      Landing and dashboard NOT re-checked this cycle -> A3.
+[ ] No tracker row carries "applied" without a submission record
+      FAIL. See A1 diagnosis below.
+[x] Every enabled ATS adapter has a verified live run on record
+      SUPPORTED_ATS = {greenhouse} only; verified end to end.
 ```
+
+## A1 — DIAGNOSIS (written before any fix; NOT yet started)
+
+**The hole is still open in production.** `POST /api/applications`
+(backend/routes/applications.js:89) inserts `status = 'applied'` as a string
+literal with no `submitted_at`, no `verified_at`, no
+`confirmation_captured_at`, and no `employer_confirmation_text`. Any
+authenticated user can create a row that reads as a real submission to a real
+employer. This is Constraint 7, structurally unenforced.
+
+Evidence I produced myself: during the #45 regression check I called that
+endpoint for user 2 and got back `201` with
+`submitted_at: null, verified_at: null, confirmation_captured_at: null` and
+`status: applied`. That row exists in production now and is a false "applied".
+It is mine, not a real user's, but it proves the path is live.
+
+**Do not blanket-convert every evidence-free 'applied' row.** The schema
+carries `is_manual` and `submitted_by`, and the status vocabulary has a
+separate `submitted` state. A user manually logging an application they sent
+themselves is honestly "applied" with no HirePilot submission record. The rows
+A1 must correct are the ones written *automatically* without a send. Flattening
+that distinction would relabel honest user entries as failures.
+
+Proposed rule, to be confirmed against `is_manual`/`submitted_by` semantics
+before writing the migration:
+  a row may claim `status='applied'` with no evidence ONLY if it is a
+  user-entered manual record, and the UI must show it as user-entered rather
+  than as something HirePilot sent.
+
+**Why it was not started this session:** past the §3 session budget. A1 is a
+CHECK-constraint + migration + route change on the `applications` table, and
+§3 forbids starting a goal that cannot be verified in-session. A half-applied
+migration on that table is the irreversible class of change §3 warns about.
+
+**Verification path already available to the next session:** user 2
+(`hp45-new-1785827128@example.com`, id 2) holds exactly one false applied row
+on job 14150. `GET /api/applications` for that user must stop reporting it as
+applied once the migration lands - a concrete before/after with no DB access
+needed.
+
 
 ### Pre-existing defects carried in from earlier work
 

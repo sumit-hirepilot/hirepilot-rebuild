@@ -54,3 +54,26 @@ Disabled rather than deleted: the adapters are probably fine, they are simply
 unproven. Re-enable per-adapter alongside evidence of a verified live run.
 A test pins the list so re-enabling requires editing it, which is the moment
 someone has to produce that evidence.
+
+## D8 — Master Prompt v2 adopted; Wave 0 goals remapped onto Wave A
+v2 supersedes v1 and reorders the backlog around trust first. The outstanding
+Wave 0 goals were not discarded, they were remapped: G0.6 -> A4, G0.7 -> A5,
+G0.5 -> A6, the H2-H8 follow-ups -> A3, G0.4 -> B3. Recorded so a cold start
+does not treat the Wave 0 IDs as dropped work.
+
+## D9 — A1 diagnosed but deliberately not started
+Past the §3 session budget, and §3 forbids starting a goal that cannot be
+verified in-session. A1 is a CHECK constraint + corrective migration + route
+change on the `applications` table; a half-applied migration there is the
+irreversible class of change §3 singles out. Wrote the full diagnosis and a
+concrete before/after verification path instead, so the next session starts at
+BUILD rather than re-deriving. Stopping cost one session; shipping an unverified
+migration on real users' application records could not be undone.
+
+## D10 — A1 must not blanket-convert every evidence-free "applied" row
+The obvious reading of Constraint 7 is "any applied row without a submission
+record is false". That is wrong here: the schema carries `is_manual` and
+`submitted_by`, and a user manually logging an application they sent themselves
+is honestly applied with no HirePilot submission record. Only rows written
+*automatically* without a send are false. Flattening the distinction would
+relabel honest user entries as failures - itself a Constraint 1 violation.
