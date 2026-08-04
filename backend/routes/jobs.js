@@ -309,6 +309,52 @@ router.get('/facets', async (req, res) => {
   }
 });
 
+/*
+ * Landing-page counters, as real integers.
+ *
+ * The hero rendered "—" for all three and a hardcoded "180+" for companies
+ * watched. One was a placeholder nobody could read a number out of; the other
+ * was a figure invented to look impressive, gated on a boolean so it appeared
+ * whenever ANY direct-ATS source existed. Both are the same failure - a surface
+ * a visitor reads as live, showing something that is not.
+ *
+ * Every field here is a COUNT(*) against the same rows the feed serves.
+ * last_synced_at also answers the health check's poller-freshness question,
+ * which /sources could not.
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const [totals, direct, synced] = await Promise.all([
+      query(`SELECT COUNT(*)::int AS jobs,
+                    COUNT(DISTINCT source)::int AS sources,
+                    COUNT(DISTINCT company_name)::int AS companies
+               FROM jobs WHERE is_active = TRUE`),
+      // "Watched directly" means the company's OWN board is polled through its
+      // ATS's public API - not a job that happens to be listed on an aggregator.
+      query(`SELECT COUNT(DISTINCT company_name)::int AS n
+               FROM jobs
+              WHERE is_active = TRUE AND source = ANY($1::text[])`,
+      [['greenhouse', 'lever', 'ashby']]),
+      query('SELECT MAX(fetched_at) AS last FROM jobs'),
+    ]);
+
+    res.set('Cache-Control', 'public, max-age=120');
+    res.json({
+      jobs: totals.rows[0].jobs,
+      sources: totals.rows[0].sources,
+      companies: totals.rows[0].companies,
+      directCompanies: direct.rows[0].n,
+      lastSyncedAt: synced.rows[0].last || null,
+    });
+  } catch (err) {
+    console.error('GET /jobs/stats failed:', err.message);
+    // 503 rather than a zeroed body: a caller must be able to tell "no data
+    // right now" from "genuinely zero jobs", because the page renders those
+    // two states differently.
+    res.status(503).json({ error: 'Stats unavailable' });
+  }
+});
+
 router.get('/sources', async (req, res) => {
   try {
     const [countsResult, runsResult] = await Promise.all([

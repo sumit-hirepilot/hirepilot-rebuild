@@ -71,7 +71,33 @@ const FAQS = [
   },
 ];
 
-export default function Home() {
+/*
+ * Counters are fetched on the SERVER so the HTML carries real integers.
+ *
+ * They were client-only, so the first paint - and anything that does not run
+ * JavaScript, including every crawler and preview card - saw "—". "Real
+ * integers within 2s" cannot be satisfied by a value that only exists after
+ * hydration.
+ *
+ * A failure here does not blank the page: `stats` comes back null and the hero
+ * says so, with the last sync time, instead of hanging on a skeleton.
+ */
+export async function getServerSideProps() {
+  const base = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+  try {
+    const ctrl = new AbortController();
+    // Well inside the 2s budget; a slow stats query must not hold the page.
+    const timer = setTimeout(() => ctrl.abort(), 1500);
+    const res = await fetch(`${base}/api/jobs/stats`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { props: { stats: null } };
+    return { props: { stats: await res.json() } };
+  } catch {
+    return { props: { stats: null } };
+  }
+}
+
+export default function Home({ stats = null }) {
   const [sources, setSources] = useState([]);
   const [tickerIndex, setTickerIndex] = useState(0);
   const [openFaq, setOpenFaq] = useState(0);
@@ -101,8 +127,15 @@ export default function Home() {
     return () => clearInterval(tickerRef.current);
   }, [sources]);
 
-  const totalJobs = sources.reduce((sum, s) => sum + s.count, 0);
-  const directCompanyCount = sources.filter((s) => DIRECT_ATS.has(s.source)).length;
+  const liveTotal = sources.reduce((sum, s) => sum + s.count, 0);
+  const totalJobs = stats?.jobs ?? (liveTotal || null);
+  const sourceCount = stats?.sources ?? (sources.length || null);
+  // The real number of companies whose own board is polled. This was the string
+  // "180+", shown whenever any direct-ATS source existed.
+  const directCompanyCount = stats?.directCompanies ?? null;
+  const lastSynced = stats?.lastSyncedAt
+    ? new Date(stats.lastSyncedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null;
   const activeTicker = sources[tickerIndex];
 
   return (
@@ -154,24 +187,29 @@ export default function Home() {
                       </p>
                     ) : (
                       <p className={styles.terminalLine}>
-                        <span className={styles.terminalPrompt}>&gt;</span> connecting to live sources…
+                        <span className={styles.terminalPrompt}>&gt;</span>{' '}
+                        {stats
+                          ? `${stats.sources} sources indexed${lastSynced ? ` · last synced ${lastSynced}` : ''}`
+                          : 'source count unavailable — the stats service did not respond'}
                       </p>
                     )}
                   </div>
                   <div className={styles.statStrip}>
                     <div className={styles.statCell}>
                       <span className={styles.statNumber}>
-                        {totalJobs ? totalJobs.toLocaleString() : '—'}
+                        {totalJobs ? totalJobs.toLocaleString() : <span className={styles.statUnknown}>unavailable</span>}
                       </span>
                       <span>active jobs indexed</span>
                     </div>
                     <div className={styles.statCell}>
-                      <span className={styles.statNumber}>{sources.length || '—'}</span>
+                      <span className={styles.statNumber}>
+                        {sourceCount || <span className={styles.statUnknown}>unavailable</span>}
+                      </span>
                       <span>live sources</span>
                     </div>
                     <div className={styles.statCell}>
                       <span className={styles.statNumber}>
-                        {directCompanyCount ? '180+' : '—'}
+                        {directCompanyCount ? directCompanyCount.toLocaleString() : <span className={styles.statUnknown}>unavailable</span>}
                       </span>
                       <span>companies watched directly</span>
                     </div>
@@ -207,14 +245,25 @@ export default function Home() {
                     <span className={styles.terminalDot} />
                   </div>
                   <div className={styles.terminalBody}>
-                    {(sources.length ? sources : [{ source: 'greenhouse', count: 0 }, { source: 'ashby', count: 0 }, { source: 'lever', count: 0 }])
-                      .slice(0, 4)
-                      .map((s) => (
+                    {/* No zeroed placeholder rows. This listed greenhouse,
+                        ashby and lever at "+0" until the fetch returned, which
+                        reads as "these boards have no jobs" rather than "not
+                        loaded yet" - and on a failed fetch it stayed that way. */}
+                    {sources.length ? (
+                      sources.slice(0, 4).map((s) => (
                         <p key={s.source} className={styles.terminalLine}>
                           <span className={styles.terminalPrompt}>&gt;</span> {SOURCE_LABELS[s.source] || s.source}{' '}
                           <span className={styles.terminalCount}>+{s.count}</span>
                         </p>
-                      ))}
+                      ))
+                    ) : (
+                      <p className={styles.terminalLine}>
+                        <span className={styles.terminalPrompt}>&gt;</span>{' '}
+                        {stats
+                          ? `${stats.jobs.toLocaleString()} jobs across ${stats.sources} sources`
+                          : 'per-board counts unavailable right now'}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

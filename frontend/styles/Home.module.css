@@ -523,3 +523,13 @@
     padding-right: 0;
   }
 }
+
+/* A counter that has no number says so. An em-dash makes a visitor guess
+   whether it is loading, zero, or broken. */
+.statUnknown {
+  font-size: .42em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-tertiary);
+  text-transform: none;
+}
