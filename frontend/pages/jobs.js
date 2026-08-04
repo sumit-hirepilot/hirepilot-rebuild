@@ -389,11 +389,21 @@ export default function Jobs() {
       rg.forEach((v) => v && qs.append('region', v));
       if (co) qs.set('company', co);
       // Score ranking is the default; `recent` is the explicit unranked browse.
-      // A7.7 — sort and ranked are separate. Choosing "newest" must not throw
-      // away the scores; it changes the order of the same personalised set.
-      if (rankMode !== 'ranked') qs.set('ranked', '0');
-      if (sortBy) qs.set('sort', sortBy);
-      if (rankMode === 'ranked') qs.set('minScore', String(minScore));
+      /*
+       * A7.7 — sort and ranked are separate. Choosing "newest" must not throw
+       * away the scores; it changes the order of the same personalised set.
+       *
+       * Read through params first, like every other control on this page.
+       * Setting state alone does not refetch here - loadJobs is called
+       * explicitly by each control - so a button that only calls its setter
+       * silently does nothing.
+       */
+      const rMode = params.rankMode ?? rankMode;
+      const srt = params.sortBy ?? sortBy;
+      const floor = params.minScore ?? minScore;
+      if (rMode !== 'ranked') qs.set('ranked', '0');
+      if (srt) qs.set('sort', srt);
+      if (rMode === 'ranked') qs.set('minScore', String(floor));
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
         // A7.1: this call sent no Authorization header, so /api/jobs could not
@@ -461,7 +471,7 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company, loadAtsScores]);
+  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company, rankMode, sortBy, minScore, loadAtsScores]);
 
   // Facet counts are fetched once and reflect the whole active job pool, so
   // each option can show how many jobs it would match before it's applied.
@@ -948,21 +958,25 @@ export default function Jobs() {
             <button
               type="button"
               className={(ranking?.sort || 'score') === 'score' ? page.rankOn : page.rankOff}
-              onClick={() => { setSortBy('score'); setPage(1); }}
+              onClick={() => { setSortBy('score'); setPage(1); loadJobs(token, { page: 1, sortBy: 'score' }); }}
             >
               Best match
             </button>
             <button
               type="button"
               className={ranking?.sort === 'recent' ? page.rankOn : page.rankOff}
-              onClick={() => { setSortBy('recent'); setPage(1); }}
+              onClick={() => { setSortBy('recent'); setPage(1); loadJobs(token, { page: 1, sortBy: 'recent' }); }}
             >
               Newest first
             </button>
             <button
               type="button"
               className={rankMode === 'ranked' ? page.rankOff : page.rankOn}
-              onClick={() => { setRankMode(rankMode === 'ranked' ? 'all' : 'ranked'); setPage(1); }}
+              onClick={() => {
+                const next = rankMode === 'ranked' ? 'all' : 'ranked';
+                setRankMode(next); setPage(1);
+                loadJobs(token, { page: 1, rankMode: next });
+              }}
               title="Every indexed job, not scored against your profile"
             >
               {rankMode === 'ranked' ? 'Browse all jobs' : 'Back to my matches'}
@@ -980,7 +994,11 @@ export default function Jobs() {
                 type="range"
                 min="0" max="0.9" step="0.05"
                 value={minScore}
-                onChange={(e) => { setMinScore(Number(e.target.value)); setPage(1); }}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setMinScore(v); setPage(1);
+                  loadJobs(token, { page: 1, minScore: v });
+                }}
               />
             </label>
           ) : (
