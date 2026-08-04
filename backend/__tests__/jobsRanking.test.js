@@ -74,14 +74,24 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     expect(query.mock.calls[0][0]).toMatch(/overall_score >= \$/);
   });
 
-  it('interleaves sources so no single one can own a page', async () => {
-    // micro1 alone swamped every page of results.
+  it('caps any single source without breaking score order', async () => {
+    /*
+     * micro1 alone swamped every page of results.
+     *
+     * The first implementation interleaved by source_rank, which prevented
+     * domination but broke the score ordering - the list descended, then
+     * jumped back up when the next round began. Capping each source's
+     * contribution and ordering by score honours both requirements at once,
+     * so this pins BOTH halves: the cap exists, and score is the sort key.
+     */
     mockRows();
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
 
-    const sql = query.mock.calls.map((c) => c[0]).join('\n');
-    expect(sql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
-    expect(sql).toMatch(/ORDER BY source_rank ASC/);
+    const pageSql = query.mock.calls[1][0];
+    expect(pageSql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
+    expect(pageSql).toMatch(/WHERE source_rank <=/);
+    expect(pageSql).toMatch(/ORDER BY overall_score DESC/);
+    expect(pageSql).not.toMatch(/ORDER BY source_rank/);
   });
 });
 

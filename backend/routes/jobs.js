@@ -644,12 +644,26 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked`, scoreParams);
       total = parseInt(countResult.rows[0].count, 10);
 
+      /*
+       * Diversity as a CAP, not a round-robin.
+       *
+       * Interleaving by source_rank did prevent domination, but it broke score
+       * order: the list read 0.75 0.71 0.67 0.63 0.59, then jumped back up to
+       * 0.71 when the next round began. "Score-sorted by default" and "no
+       * single source may dominate" then contradict each other.
+       *
+       * Capping each source's contribution and THEN ordering by score honours
+       * both literally. The cap scales with depth so pagination still works -
+       * a source may hold at most a quarter of everything requested so far,
+       * rather than a fixed number that would starve later pages.
+       */
       const result = await query(
         `${rankedCte}
          SELECT * FROM ranked
-          ORDER BY source_rank ASC, overall_score DESC
+          WHERE source_rank <= GREATEST(3, CEIL(($${scoreIdx + 3}::numeric * $${scoreIdx + 1}) / 4))
+          ORDER BY overall_score DESC, id
           LIMIT $${scoreIdx + 1} OFFSET $${scoreIdx + 2}`,
-        [...scoreParams, limit, offset]
+        [...scoreParams, limit, offset, page]
       );
       jobs = result.rows;
       ranking = { mode: 'score', minScore, sourceDiversified: true };
