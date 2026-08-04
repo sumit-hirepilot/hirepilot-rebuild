@@ -1,7 +1,7 @@
 # HirePilot — Progress
 
 Current wave: 0
-Current goal: #45 (health failure, preempts backlog)
+Current goal: G0.6 (immutable submission receipt) - #45 closed 2026-08-04
 
 ## Next session order (revised)
 0. DONE THIS SESSION — kill switch, BOTH paths.
@@ -15,9 +15,7 @@ Current goal: #45 (health failure, preempts backlog)
    They were permitted to submit while never having been run against a live
    form. Re-enable per-adapter only alongside evidence of a verified live run;
    backend/__tests__/supportedAts.test.js makes that edit deliberate.
-1. #45 — Auto Apply / Applications never load their data. A health-check failure,
-   so it preempts the backlog. It was run behind G0.1-G0.3 last session; that
-   was wrong by the loop's own ASSESS rule.
+1. DONE 2026-08-04 — #45 closed with evidence on production.
 2. G0.6 — Submission audit. See below: this is now an audit of live behaviour,
    not forward planning.
 3. G0.7 — Reconcile ALL submission copy, not just the FAQ.
@@ -48,10 +46,11 @@ Blocked on: —
 
 ### Pre-existing defects carried in from earlier work
 
-- **#45 — Auto Apply and Applications pages never load their data.** `load()` is
-  never entered; no effect fires in those components. Ruled out: API base, token,
-  response shape, state updates, hydration, stale caches. The Needs You drawer is
-  unreachable in the web app as a result.
+- ~~#45 — Auto Apply and Applications pages never load their data.~~ CLOSED
+  2026-08-04. The filed description was wrong in two ways: auto-apply had
+  already been fixed and never verified, and the real defect in applications
+  was missing render/error floors rather than a fetch that never fired. See
+  the diagnosis and shipped entry below.
 - **#44 — Checkr submit rejected.** Two Checkr applications fail at submit for two
   *different* reasons; `8088900` shows no validation errors at all.
 - Extension drawer, question learning, the additive-resume guard and
@@ -161,6 +160,40 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## #45 — Applications and Auto Apply have a floor in every state  [shipped 2026-08-04]
+Moat: M3
+Changed: frontend/pages/applications.js, frontend/pages/auto-apply.js,
+  frontend/components/NeedsYouDrawer.js, frontend/styles/Applications.module.css,
+  frontend/styles/AutoApply.module.css, frontend/jest.config.js,
+  frontend/__tests__/applicationsScreen.test.js
+Evidence (all on the production URL, asserted on parsed DOM innerText):
+  - Three states seeded and verified. user 1 (history): "2 total
+    applications", rows render. user 3 (zero): "No applications yet" + a
+    "Find jobs to apply to" button. Brand-new with no cached user blob:
+    covered by test, renders instead of bouncing to /login.
+  - Zero-application state carries a next action and no spinner.
+  - Failure FORCED, not read: patched fetch to answer 500, navigated
+    client-side. Applications rendered "Could not load your applications -
+    the server answered 500." + Try again, with "Application count
+    unavailable" and NO "0 total applications" and NO empty state. Auto
+    Apply rendered its own banner, class resolved (AutoApply_loadError__ixHbb,
+    1px border) so the styles landed too.
+  - Zero console errors on both screens on production.
+  - 9 new tests; 8 verified failing INDIVIDUALLY against the pre-change file.
+    The 9th asserts a correct zero and passes pre-change - kept as state
+    coverage and labelled as such in the test rather than counted as proof.
+  - Suites executed non-zero: frontend 18 passed, backend 9 passed.
+  - Regression end to end on a fresh account: signup 201 -> resume upload 201
+    (skills parsed) -> apply-parsed 4 skills / 1 role -> recalculate 500
+    matches, top score 0.91 -> tracker write 201 -> read back total 1.
+Learned: the filed symptom was stale and the page still had the defect. Both
+  were true at once. auto-apply.js had already been fixed in an earlier
+  session and never verified, so #45 sat open describing a screen that
+  worked; applications.js had never received the same fix, so it still
+  carried the failure - it just needed hydration to be disrupted to show it.
+  Closing a goal without evidence cost a whole session of re-derivation.
+Follow-ups created: H2, H3, H4, H5
 
 ## G0.1 — Live counters resolve or degrade honestly  [shipped 2026-08-04]
 Moat: M3
@@ -334,6 +367,25 @@ second is uncomfortable:
 
 - H1 — `/api/jobs/sources` returns no `last_fetched`, so poller freshness cannot
   be checked from outside. Needed by the health check itself. Created by ASSESS.
+- **H2 — SSR/client mismatch in `Layout.js` on every page that uses it.** The
+  header renders `href="/#features"` server-side and `href="/dashboard"` on the
+  client, because it keys off a token that does not exist during SSR. React 18
+  discards the server HTML and re-renders. Found while diagnosing #45; it is
+  the reason the local dev server never hydrates cleanly. Not fixed - out of
+  #45's scope.
+- **H3 — `toLocaleString` hydration mismatch on `pages/index.js`.** Server
+  renders "Aug 4, 12:12 PM", client "4 Aug, 12:12". A regression I introduced
+  in G0.1/G0.3. Fix by formatting with an explicit locale or formatting
+  client-side only.
+- **H4 — `page.proof` and `page.proofTitle` are referenced in `auto-apply.js`
+  but not defined in `AutoApply.module.css`.** They resolve to `undefined`, so
+  that block renders unstyled. Pre-existing, found by a class-resolution check
+  added during #45. The same class of defect as the two earlier
+  CSS-in-the-wrong-module bugs.
+- **H5 — the local dev server cannot be used for browser verification.** No
+  page hydrates (see H2). Verification for #45 was done against production,
+  which is the substrate the criteria name anyway, but this needs fixing before
+  any UI work can be checked locally.
 
 ## Rejected
 
