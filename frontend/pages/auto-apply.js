@@ -72,6 +72,7 @@ export default function AutoApply() {
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async (t) => {
     const get = (p) => fetch(`${BASE}${p}`, { headers: { Authorization: `Bearer ${t}` } })
@@ -82,6 +83,18 @@ export default function AutoApply() {
       get('/api/profile'), get('/api/apply/queue'), get('/api/apply/knowledge'),
       get('/api/apply/profile'), get('/api/apply/submitted'), get('/api/apply/runs/latest'),
     ]);
+
+    /*
+     * Every `get` above collapses a failure to null, and each setter below is
+     * guarded by `if (x)`. That is fine for one panel going quiet, but when
+     * the two that carry the user's own settings and counts both fail, the
+     * page still renders its defaults - "0 queued to send", "10/day",
+     * "Strong" - and a visitor reads those as their configuration. They were
+     * never loaded. Say so instead.
+     */
+    setLoadError(!pf && !q
+      ? 'Could not load your Auto Apply settings. The figures below are defaults, not your saved configuration.'
+      : null);
     // Run progress is read from the server, not from the extension's in-memory
     // counters - those are evicted with the service worker and would blank the
     // display mid-batch.
@@ -169,6 +182,15 @@ export default function AutoApply() {
   return (
     <DashboardLayout user={user}>
       <Head><title>Auto Apply - HirePilot</title></Head>
+
+      {loadError && (
+        <div className={page.loadError} role="alert">
+          <p className={page.loadErrorTitle}>{loadError}</p>
+          <button type="button" className={page.retryButton} onClick={() => load(token)}>
+            Try again
+          </button>
+        </div>
+      )}
 
       <div className={styles.pageHeader}>
         <div>

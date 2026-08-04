@@ -264,3 +264,70 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/*
+ * #45 - the states this page had no way to show.
+ *
+ * It previously rendered null when `user` was unset and rendered an empty
+ * board when a request failed, so a blank screen and a confident "0
+ * applications" were the only two outcomes of anything going wrong.
+ */
+
+.loadError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--danger, #dc2626);
+  background-color: rgba(220, 38, 38, 0.06);
+  padding: 0.875rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.loadErrorTitle {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.loadError .retryButton {
+  width: auto;
+  flex-shrink: 0;
+  padding: 0.375rem 0.875rem;
+}
+
+.zeroState {
+  border-radius: 16px;
+  border: 1px dashed var(--border);
+  background-color: var(--bg-secondary);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+
+.zeroStateTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.zeroStateBody {
+  margin: 0 auto 1.25rem;
+  max-width: 34rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.zeroStateAction {
+  padding: 0.5rem 1.125rem;
+  border-radius: 8px;
+  border: 1px solid var(--primary);
+  background-color: var(--primary);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}

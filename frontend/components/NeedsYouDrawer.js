@@ -27,18 +27,14 @@ export default function NeedsYouDrawer({ runId = null, title, emptyText, onResol
   const [open, setOpen] = useState({});
 
   const load = useCallback(async () => {
-    console.log('[NYD] load entry');
     const token = localStorage.getItem('token');
-    console.log('[NYD] token?', !!token, 'BASE', BASE);
-    if (!token) { console.log('[NYD] BAILED: no token'); return; }
+    if (!token) return;
     const qs = runId ? `?runId=${runId}` : '';
     const res = await fetch(`${BASE}/api/apply/blockers${qs}`, {
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => null);
-    console.log('[NYD] res', res && res.status);
-    if (!res || !res.ok) { console.log('[NYD] not ok'); setData({ blockers: [], total: 0, questionCount: 0 }); return; }
+    if (!res || !res.ok) { setData({ blockers: [], total: 0, questionCount: 0 }); return; }
     const j = await res.json();
-    console.log('[NYD] got', j.total, 'blockers -> setData');
     setData(j);
   }, [runId]);
 

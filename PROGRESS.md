@@ -64,6 +64,102 @@ it (isolation, evidence gating, question learning) is sound; the loop does not
 yet reliably send applications. Wave 4's rejection intelligence needs volume that
 does not exist yet — worth knowing before that wave is planned in detail.
 
+## #45 — DIAGNOSIS (written before any fix)
+
+### The filed symptom does not reproduce on production
+
+Both screens were loaded on the production URL with a real token and read via
+parsed DOM `innerText`, not regex over HTML:
+
+- `/applications`, user 1 (has history): 8,737 chars. Needs You drawer with
+  6 applications / 27 questions, pipeline counts, per-column "No applications",
+  2 failed rows carrying real reasons.
+- `/auto-apply`, user 1: 6,691 chars, all panels populated.
+- `/applications`, user 2 (brand new, seeded this session): 1,932 chars,
+  "Nothing is waiting on you.", "0 total applications", empty column states.
+- `/auto-apply`, user 2: 3,456 chars, "Nothing clears this bar yet. Lower it,
+  or wait for the next ingestion run."
+
+So "never load their data" is STALE as filed. `auto-apply.js` was in fact fixed
+in an earlier session — the fix and its reasoning are in the comments at
+`pages/auto-apply.js` (mount-only effect; render with defaults instead of
+gating on `prefs`). It was never verified and never closed, so it stayed on the
+board as an open health failure.
+
+### First hypothesis — tested, WRONG
+
+`if (!user) return null` (applications.js:126) makes SSR emit an empty
+`#__next`, so the page shows nothing until the client sets `user`. Proposed as
+the whole explanation. Disproved: production runs the same code and renders
+fully. The guard is necessary to the failure but not sufficient to cause it.
+
+Probe that settled it: replacing the null branch with a marker div showed the
+marker present in the DOM while `window.__COMPONENT_RAN` was never set — and
+that line is skipped only when `typeof window === 'undefined'`. So the render
+in the DOM was the SERVER's, and the client never executed the component.
+(Confirmed the probe could see page globals at all by injecting a `<script>`
+tag and reading its value back — same world, so the negative was real.)
+
+### What actually reproduces, and where
+
+Local dev, `/applications`: renders nothing and issues NO request to
+`/api/applications` at all — network log is empty of it. Survives a clean
+rebuild (`.next` deleted, server restarted, fresh tab), so not a stale cache.
+
+Cause is not page-specific: NO page hydrates cleanly in dev. Every page using
+`Layout.js` emits an SSR/client mismatch — server renders `href="/#features"`,
+client renders `href="/dashboard"`, because the header keys off a token that
+does not exist during SSR. `pages/index.js` adds a second mismatch via
+`toLocaleString` (server "Aug 4, 12:12 PM" vs client "4 Aug, 12:12"), a
+regression I introduced in G0.1/G0.3. React 18 responds by discarding the
+server HTML and re-rendering on the client.
+
+Pages that server-render their content survive that — `/` still shows 3,364
+chars. `/applications` does not, because its SSR output is *empty by design*:
+there is no server HTML to fall back to, so a disrupted hydration leaves a
+permanently blank page.
+
+### The real defect in applications.js — three parts, one theme
+
+None of these is "the page cannot fetch". All three are **missing floors**:
+the page has no state to show when something goes wrong, so every failure
+renders as either nothing or a confident lie.
+
+1. **No floor under render.** `if (!user) return null` renders literally
+   nothing — no shell, no spinner, no empty state, no error. A user sees a
+   blank screen and there is nothing on it to diagnose from. This is the
+   difference between `/applications` failing visibly and `/auto-apply`
+   surviving: auto-apply was already changed to render its shell and fill in
+   values as they land.
+
+2. **Effect timing depends on render identity.** Deps are
+   `[router, loadApplications]`. `router` changes identity on navigation. This
+   is the exact pattern already identified and fixed in `auto-apply.js`, where
+   the comment records the consequence: "the page rendered its shell and never
+   fetched anything." `applications.js` never got the same fix.
+
+3. **A failed request renders as a confident zero.** `loadApplications` does
+   `if (res.ok) { ...setState }` with **no else**, and its `catch` only calls
+   `console.error`. On a 401/500 every piece of state keeps its initial value
+   and `loading` flips to false — so the page renders "0 total applications"
+   and eight "No applications" columns. That is indistinguishable from a
+   genuinely empty account. Same class as the fabricated "180+": a number
+   presented as fact that was never computed. Constraint 1, not just a missing
+   error state.
+
+### Answering the three diagnostic questions asked
+
+- Failing request, bad shape, or crash before the request? **None of those.**
+  On production the request succeeds and renders. In the local repro no request
+  is issued at all, because the client never runs the component. The bug is
+  absent render floors, not a broken fetch.
+- All users or only some? **Verified on both seeded states on production and it
+  fails for neither.** It fails wherever hydration is disrupted, which is
+  user-independent — it is environment- and build-dependent.
+- Do empty/error states exist? **Empty yes, error no.** The zero-application
+  empty state renders, but carries no next action, and there is no error state
+  at all on either screen.
+
 ## Shipped
 
 ## G0.1 — Live counters resolve or degrade honestly  [shipped 2026-08-04]
