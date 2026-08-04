@@ -746,13 +746,12 @@ export default function Jobs() {
         {/* The ATS badge lives in the drawer now. It answers "how well does my
             resume's wording match this posting" - a question you ask about one
             job you are considering, not about twenty you are scanning past. */}
+        {/* A7.1 — a bare "75" is not a score, it is a number; the % carries the
+            meaning. Kept to ONE line: .scoreRing is a fixed 2.5rem flex circle,
+            so a second child becomes a sibling flex item and spills out of the
+            ring across the actions beside it. */}
         {score !== null && (
-          <div className={page.scoreRing} title="Profile match score: skills, experience and location">
-            {/* A7.1 — a bare "75" is not a score, it is a number. The unit is
-                what makes it readable while scanning a list. */}
-            <span className={page.scoreValue}>{score}%</span>
-            <span className={page.scoreLabel}>match</span>
-          </div>
+          <div className={page.scoreRing} title="Profile match score: skills, experience and location">{score}%</div>
         )}
         <div className={page.jobActions}>
           <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>
