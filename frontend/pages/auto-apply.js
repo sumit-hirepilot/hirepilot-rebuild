@@ -6,6 +6,7 @@ import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/AutoApply.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { parsedOr } from '../lib/renderState';
 
 /*
  * Auto Apply.
@@ -369,7 +370,10 @@ export default function AutoApply() {
                   <span className={page.matchScore}>{Math.round((m.overall_score || 0) * 100)}%</span>
                 </div>
                 <div className={page.matchCo}>
-                  {m.company_name}{m.location ? ` · ${m.location}` : ''}
+                  {/* A2c: a job ingested with company_name = "name" rendered as
+                      `name · Philippines`. A field that is its own column name
+                      did not parse, and must not be shown as an employer. */}
+                  {parsedOr(m.company_name, 'Company not stated')}{m.location ? ` · ${m.location}` : ''}
                 </div>
               </div>
             ))}
@@ -391,7 +395,7 @@ export default function AutoApply() {
             {submitted.slice(0, 6).map((s) => (
               <div key={s.id} className={page.proof}>
                 <div className={page.proofTitle}>{s.title}</div>
-                <div className={page.matchCo}>{s.company_name}</div>
+                <div className={page.matchCo}>{parsedOr(s.company_name, 'Company not stated')}</div>
                 {s.confirmationExcerpt && (
                   <div className={page.proofQuote}>“{s.confirmationExcerpt.slice(0, 110)}”</div>
                 )}

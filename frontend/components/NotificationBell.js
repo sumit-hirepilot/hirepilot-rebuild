@@ -14,7 +14,10 @@ function timeAgo(dateStr) {
 export default function NotificationBell({ token, base }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // A2c: null means "not fetched yet". The badge already renders only on a
+  // positive count, so this changes no pixels - it stops the component
+  // *claiming* zero unread when it simply has not asked.
+  const [unreadCount, setUnreadCount] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const ref = useRef(null);
 
@@ -25,7 +28,7 @@ export default function NotificationBell({ token, base }) {
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
+        setUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : null);
       }
     } finally {
       setLoaded(true);
@@ -51,7 +54,7 @@ export default function NotificationBell({ token, base }) {
   const handleMarkAllRead = async () => {
     await fetch(`${base}/api/notifications/read-all`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } });
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
+    setUnreadCount(0); // real-zero: everything was just marked read
   };
 
   const handleItemClick = async (n) => {

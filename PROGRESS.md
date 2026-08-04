@@ -228,7 +228,19 @@ Evidence:
     as a literal with no submitted_at, confirmation or employer response.
   - ALL-USER AUDIT RAN on production via GET /api/applications/integrity:
     applied_total 0, applied_false 0, users_affected 0, submitted_total 1.
-    Zero false rows across every user. Nothing to NOTIFY.
+  - **What that number does and does not prove.** The audit ran AFTER the
+    boot-time corrective UPDATE had already executed twice in that session -
+    it runs on every deploy, and I deployed twice. So it proves the CURRENT
+    state is clean. It does NOT prove no user was ever affected.
+    Rows matching exactly that description were observed in production earlier
+    the same day, one of them rendering the label "Recorded as applied by an
+    earlier build that created tracker rows without submitting to the employer.
+    Never sent - re-queue it to apply for real."
+    If that corrector silently rewrote real users' rows on some earlier boot,
+    those users were never told, and the evidence of who they were is gone -
+    the UPDATE overwrites in place and keeps no record of what it touched.
+    Treat "0 affected" as "0 affected now", not as "nobody was ever affected".
+    See NOTIFY.
   - constraintPresent TRUE, read from pg_constraint - not inferred from a clean
     boot, per the standing rule.
   - D10 honoured: COALESCE(is_manual, FALSE) = TRUE is exempt, so honest manual
@@ -430,7 +442,57 @@ second is uncomfortable:
 - **G0.7 — reconcile all submission copy.** The FAQ was corrected in G0.3; other
   surfaces were not audited. Copy matching product has to be complete.
 
+## NOTIFY
+
+- **Unknown, and now unknowable from the data: users whose tracker rows were
+  silently rewritten by the boot-time corrective UPDATE.** That statement has
+  been converting `status='applied'` rows with no confirmation into `'failed'`
+  on every single boot since it shipped, in place, keeping no record of which
+  rows or whose. A1's audit reads 0 because the corrector had already run.
+  Anyone affected saw an application they believed was sent turn into a failure
+  with an explanatory label, and was never notified that it had happened.
+  Operator decision: whether to tell them, and there is no list to tell.
+  Preventing a recurrence is done - the constraint stops the rows being created
+  - but the historical question is open and cannot be answered from the DB.
+
+## A2c — component inventory (counts, statuses, parsed fields)
+
+Measured, not guessed: every file under pages/ and components/ scanned for
+(a) count-like state initialised to 0, (b) `x.y || 0` coercion of a response
+field, (c) a literal 0 written to a count, (d) rendering a count at all.
+
+| Component | Was it wrong | State now |
+|---|---|---|
+| pages/jobs.js | YES - `useState(0)` for total, `data.total \|\| 0`, and `setTotal(0)` in the FAILURE branch. Rendered "0 results" against 23,949 jobs on first paint and after any failed search | FIXED - null-initialised, countText() renders loading / failed / real-zero distinctly; relatedTotal and excludedUnknownDateCount converted too |
+| components/NotificationBell.js | PARTLY - `useState(0)` + `unreadCount \|\| 0`; badge is gated on `> 0` so no pixels lied, but the state claimed zero unread before asking | FIXED - null-initialised. The one literal `setUnreadCount(0)` is a REAL zero (everything just marked read) and is annotated `real-zero:` |
+| pages/applications.js | YES - fixed earlier in #45: `if (res.ok)` with no else printed "0 total applications" for a failed load | ALREADY CORRECT - countKnown distinguishes null from 0 |
+| pages/auto-apply.js | YES - a total load failure rendered defaults ("0 queued to send", "10/day") as the user's settings | ALREADY CORRECT - stated banner; company_name now via parsedOr |
+| pages/index.js | YES - fixed in G0.1: hero counters rendered placeholders; /api/jobs/stats returns 503 rather than a zeroed body | ALREADY CORRECT |
+| components/NeedsYouDrawer.js | NO - `if (!res.ok)` sets an explicit empty shape, and the empty state is worded, not a bare 0 | CORRECT, unconverted |
+| pages/analytics.js, agents.js, agents/[id].js, applications/[id].js, apply-queue.js, resume.js, settings.js, tracker.js, DashboardLayout.js | Render counts but none initialise a count to 0 or coerce with `\|\| 0` (scan clean) | NOT CONVERTED - no instance of the class found; guarded by the repo-wide test |
+
+Parsed fields: `company_name` rendered the literal string `name` (a job whose
+company failed to parse at ingestion) on Auto Apply's Next-up panel and in three
+places on jobs.js. All four now go through `parsedOr`. The underlying ingestion
+bug that stored "name" is NOT fixed - see A2c-ingest.
+
+WEAKENED: the per-component pinning is one repo-wide source guard
+(`__tests__/noFabricatedZero.test.js`) plus unit tests on the primitive, not a
+rendered test per page. Rendering every page needs each page's full mock
+surface; the guard catches the class in any component including ones never
+touched, which is how this defect spread. Confirmed to fail deliberately by
+reintroducing the bug in jobs.js and by removing the `real-zero:` annotation.
+
 ## Standing rules
+- **Assert on the argument that actually carries the value.** A test that
+  checked `query.mock.calls[n][1]` (the bound parameters) for an event name
+  that is a literal inside the SQL string passed cleanly against the broken
+  file. The assertion ran, the suite was green, and nothing was tested.
+  This is the THIRD distinct way a test has silently tested nothing here:
+  (1) an assertion satisfied by an unrelated earlier occurrence in the file,
+  (2) jest exiting with no executed tests and empty output read as a pass,
+  (3) this one - right test, wrong argument.
+  Confirm every new test fails deliberately at least once before trusting it.
 - **A migration runner that logs failures instead of halting turns every failed
   statement into a silent no-op.** `services/migrations.js` wraps each statement
   in try/catch, `console.error`s the failure, and continues - then prints
@@ -461,7 +523,12 @@ second is uncomfortable:
 
 ## Follow-ups
 
-- **A2c — the Jobs feed renders "0 results" before its data lands.** Caught at
+- **A2c-ingest — a job is stored with `company_name` set to the literal string
+  "name".** Render is now guarded by `parsedOr`, so users see "Company not
+  stated" instead, but the row is still wrong in the database and the ingestion
+  path that wrote it is unidentified. Find which source produced it and whether
+  other fields are affected.
+- ~~A2c — the Jobs feed renders "0 results" before its data lands.** Caught at
   375px on production as a new user: the page showed "Jobs - 0 results" while
   the API held 23,949, then read "23949 results" on reload. A confident zero
   during a wait state is a fabricated number (Constraint 1) and fails A2's

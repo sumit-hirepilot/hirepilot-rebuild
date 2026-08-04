@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { countText, parsedOr } from '../lib/renderState';
 
 const PAGE_SIZE = 20;
 
@@ -289,7 +290,13 @@ export default function Jobs() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [jobs, setJobs] = useState([]);
-  const [total, setTotal] = useState(0);
+  /*
+   * A2c — null is "not asked yet", 0 is "the server said none".
+   * This was useState(0), so the first paint rendered "0 results" against a
+   * database of 23,949 jobs, and a failed search rendered the same thing.
+   */
+  const [total, setTotal] = useState(null);
+  const [jobsError, setJobsError] = useState(null);
   const [page_, setPage] = useState(1);
   const [keywords, setKeywords] = useState([]);
   const [excludeTerms, setExcludeTerms] = useState([]);
@@ -319,8 +326,8 @@ export default function Jobs() {
   const [includeRelated, setIncludeRelated] = useState(false);
   const [noExactMatches, setNoExactMatches] = useState(false);
   const [relatedJobs, setRelatedJobs] = useState([]);
-  const [relatedTotal, setRelatedTotal] = useState(0);
-  const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(0);
+  const [relatedTotal, setRelatedTotal] = useState(null);
+  const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(null);
 
   const base = API_BASE;
 
@@ -389,19 +396,23 @@ export default function Jobs() {
         const data = await jobsRes.json();
         setJobs(data.jobs || []);
         loadAtsScores(data.jobs || [], authToken);
-        setTotal(data.total || 0);
+        setJobsError(null);
+        // `|| 0` would turn a missing total into a confident zero.
+        setTotal(typeof data.total === 'number' ? data.total : null);
         setNoExactMatches(!!data.noExactMatches);
         setRelatedJobs(data.relatedJobs || []);
-        setRelatedTotal(data.relatedTotal || 0);
-        setExcludedUnknownDateCount(data.excludedUnknownDateCount || 0);
+        setRelatedTotal(typeof data.relatedTotal === 'number' ? data.relatedTotal : null);
+        setExcludedUnknownDateCount(typeof data.excludedUnknownDateCount === 'number' ? data.excludedUnknownDateCount : null);
       } else {
         // Never silently keep showing a stale/previous result set on
         // failure - that reads as "search is broken and ignoring me".
         setJobs([]);
-        setTotal(0);
+        // Not 0: the count is unknown after a failure, not zero.
+        setTotal(null);
+        setJobsError(`The job search did not answer (${jobsRes.status}).`);
         setNoExactMatches(false);
         setRelatedJobs([]);
-        setExcludedUnknownDateCount(0);
+        setExcludedUnknownDateCount(null);
         setMessage('Failed to load jobs. Please try your search again.');
       }
 
@@ -711,7 +722,7 @@ export default function Jobs() {
         <div className={page.avatar}>{job.company_name?.charAt(0) || '?'}</div>
         <div className={page.jobInfo} onClick={() => setSelectedJob(job)}>
           <p className={page.jobTitle}>{job.title}</p>
-          <p className={page.jobSubtitle}>{job.company_name}</p>
+          <p className={page.jobSubtitle}>{parsedOr(job.company_name, 'Company not stated')}</p>
           <p className={page.jobMeta}>
             {job.location || 'Remote'}
             {job.salary_min ? ` · ${formatSalary(job)}` : ''}
@@ -907,7 +918,18 @@ export default function Jobs() {
 
         <div className={page.headerRow}>
           <h1 className={styles.greeting} style={{ margin: 0 }}>Jobs</h1>
-          <span className={page.resultsCount}>{showSavedOnly ? savedIds.size : total} results</span>
+          <span className={page.resultsCount}>
+            {showSavedOnly
+              ? countText({ value: savedIds.size, unit: 'saved', zeroText: 'No saved jobs' }).text
+              : countText({
+                  value: total,
+                  loading,
+                  error: jobsError,
+                  unit: 'results',
+                  zeroText: 'No jobs match these filters',
+                  errorText: 'Result count unavailable',
+                }).text}
+          </span>
           {!showSavedOnly && datePosted && excludedUnknownDateCount > 0 && (
             <span className={page.unknownDateNote} title="These jobs' sources don't expose a reliable original-publish date, so we can't confirm they fall in this window - shown separately rather than guessing.">
               +{excludedUnknownDateCount} more with unknown publish date (excluded from this filter)
@@ -1154,7 +1176,7 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
             <h2 className={styles.drawerTitle}>{job.title}</h2>
             <p className={styles.drawerSubtitle}>
               <span className={styles.drawerAvatar}>{job.company_name?.charAt(0) || '?'}</span>
-              {job.company_name}
+              {parsedOr(job.company_name, 'Company not stated')}
             </p>
             {/* ATS coverage belongs to one posting you are considering, not to a
                 list you are scanning. It measures how much of THIS posting's
@@ -1197,7 +1219,7 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
         </div>
 
         <dl className={styles.metaList}>
-          <div className={styles.metaRow}><dt>Company</dt><dd>{job.company_name}</dd></div>
+          <div className={styles.metaRow}><dt>Company</dt><dd>{parsedOr(job.company_name, 'Company not stated')}</dd></div>
           <div className={styles.metaRow}><dt>Location</dt><dd>{job.location || 'Not specified'}</dd></div>
           <div className={styles.metaRow}><dt>Region</dt><dd>{region}</dd></div>
           <div className={styles.metaRow}>
