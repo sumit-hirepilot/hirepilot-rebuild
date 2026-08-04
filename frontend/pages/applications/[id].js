@@ -208,6 +208,26 @@ export default function ApplicationDetail() {
 
       {notice && <div className={page.notice} onClick={() => setNotice(null)}>{notice}</div>}
 
+      {/*
+        * These answers are current profile state, not a record of what was sent.
+        * screening_answers is rewritten by every later discovery run, so on a
+        * submitted application this shows what WOULD be sent now - which is not
+        * necessarily what went out. Saying so is the interim fix; an immutable
+        * submission record is the real one (G0.6).
+        *
+        * A user's only defence against a bad automated submission is being able
+        * to see what left. Letting this page imply it is that record would be
+        * the same failure as a fabricated counter, with worse consequences.
+        */}
+      {item.status === 'submitted' && (
+        <div className={page.failure}>
+          These answers are your current profile values, not a copy of what was
+          submitted. HirePilot does not yet keep an immutable record of the exact
+          fields sent, so anything you have changed since will read differently
+          here. The employer&apos;s confirmation below is the part that is fixed.
+        </div>
+      )}
+
       {item.failureReason && (
         <div className={page.failure}>
           {item.failureReason}

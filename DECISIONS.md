@@ -42,3 +42,15 @@ public/ had no image assets. An SVG og:image would satisfy "present" while
 rendering nowhere - Facebook, Twitter and Slack all reject it - which is a fake
 pass. Wrote a ~40-line PNG encoder using Node's built-in zlib to emit a real
 1200x630 card. No dependency added, and verified by reading the file's IHDR back.
+
+## D7 — Lever and Ashby disabled before closing the session
+Both were in SUPPORTED_ATS and had never been run against a live form. An
+application cannot be unsent; a wrong field mapping or the wrong file attached
+puts a user's name on it permanently and they learn about it from a rejection.
+Irreversibility outranks severity, so this preempted #45 - a page that will not
+load costs minutes.
+
+Disabled rather than deleted: the adapters are probably fine, they are simply
+unproven. Re-enable per-adapter alongside evidence of a verified live run.
+A test pins the list so re-enabling requires editing it, which is the moment
+someone has to produce that evidence.

@@ -63,9 +63,29 @@ const ATS_BY_URL = [
   [/successfactors|sapsf/i, 'successfactors'],
 ];
 
-// Adapters that actually exist in the extension. Anything else is prepared but
-// flagged manual, rather than queued as if automation will handle it.
-const SUPPORTED_ATS = new Set(['greenhouse', 'lever', 'ashby']);
+/*
+ * Adapters cleared to submit on a user's behalf.
+ *
+ * This is a whitelist of VERIFIED adapters, not of adapters that exist. Lever
+ * and Ashby were in this set while never having been run against a live form -
+ * one queued job away from submitting to a real employer through untested code.
+ * An application cannot be unsent: a wrong field mapping, a truncated answer or
+ * the wrong file attached puts the user's name on it permanently, and they find
+ * out from a rejection.
+ *
+ * Irreversibility outranks severity. A page that fails to load costs minutes; a
+ * bad submission is spent forever. So an adapter enters this set only after a
+ * verified live run, and the code existing is not evidence that it works.
+ *
+ * To re-enable: run the adapter against a live posting, confirm the employer's
+ * confirmation page is captured, then add it here in the same commit as the
+ * evidence.
+ */
+const SUPPORTED_ATS = new Set([
+  'greenhouse', // verified end to end; confirmation captured
+  // 'lever',   // adapter written, never run against a live form
+  // 'ashby',   // adapter written, never run against a live form
+]);
 
 function detectAts(job) {
   const bySource = ATS_BY_SOURCE[(job.source || '').toLowerCase()];

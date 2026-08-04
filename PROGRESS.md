@@ -4,6 +4,10 @@ Current wave: 0
 Current goal: #45 (health failure, preempts backlog)
 
 ## Next session order (revised)
+0. DONE THIS SESSION — kill switch. Lever and Ashby removed from SUPPORTED_ATS.
+   They were permitted to submit while never having been run against a live
+   form. Re-enable per-adapter only alongside evidence of a verified live run;
+   backend/__tests__/supportedAts.test.js makes that edit deliberate.
 1. #45 — Auto Apply / Applications never load their data. A health-check failure,
    so it preempts the backlog. It was run behind G0.1-G0.3 last session; that
    was wrong by the loop's own ASSESS rule.
@@ -185,6 +189,17 @@ second is uncomfortable:
   So the "platform response" half exists; the "fields sent / answers given /
   files attached" half does not. A user cannot today reconstruct exactly what
   was submitted on their behalf.
+
+  **This is a Constraint 1 violation, not only a missing feature.** The
+  application detail screen renders screening_answers where a user reads "what
+  was sent", and later discovery runs rewrite them - so on a submitted
+  application the page can show values that never went out. Same class as the
+  fabricated "180+", with worse consequences: seeing what left is a user's only
+  defence against a bad automated submission.
+  - Interim fix SHIPPED this session: submitted applications now carry a notice
+    saying these are current profile values, not a copy of what was sent.
+  - Real fix, inside G0.6: an immutable submission record - fields, answers,
+    file hash, full platform response - frozen at submit time.
 - **The mechanism is browser automation, not a public API.** Constraint 4 says
   browser automation against a third party's ATS is `deferred: ToS`. The shipped
   path is exactly that. G0.6 therefore is not only "which platforms may we add"
