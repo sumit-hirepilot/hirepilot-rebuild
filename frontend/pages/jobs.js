@@ -297,6 +297,10 @@ export default function Jobs() {
    */
   const [total, setTotal] = useState(null);
   const [jobsError, setJobsError] = useState(null);
+  // A7.1 — the floor and the ranking mode are the user's, and both are visible.
+  const [rankMode, setRankMode] = useState('score');
+  const [minScore, setMinScore] = useState(0.4);
+  const [ranking, setRanking] = useState(null);
   const [page_, setPage] = useState(1);
   const [keywords, setKeywords] = useState([]);
   const [excludeTerms, setExcludeTerms] = useState([]);
@@ -383,9 +387,15 @@ export default function Jobs() {
       sal.forEach((v) => v && qs.append('salary', v));
       rg.forEach((v) => v && qs.append('region', v));
       if (co) qs.set('company', co);
+      // Score ranking is the default; `recent` is the explicit unranked browse.
+      qs.set('sort', rankMode);
+      if (rankMode === 'score') qs.set('minScore', String(minScore));
 
       const [jobsRes, appsRes, matchesRes, sourcesRes, savedRes] = await Promise.all([
-        fetch(`${base}/api/jobs?${qs.toString()}`),
+        // A7.1: this call sent no Authorization header, so /api/jobs could not
+        // know whose feed it was building and fell back to posted_at DESC.
+        // That single omission is why "View all jobs" left the scored product.
+        fetch(`${base}/api/jobs?${qs.toString()}`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/applications`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/matches?limit=100`, { headers: { Authorization: `Bearer ${authToken}` } }),
         fetch(`${base}/api/jobs/sources`, { headers: { Authorization: `Bearer ${authToken}` } }),
@@ -397,6 +407,7 @@ export default function Jobs() {
         setJobs(data.jobs || []);
         loadAtsScores(data.jobs || [], authToken);
         setJobsError(null);
+        setRanking(data.ranking || null);
         // `|| 0` would turn a missing total into a confident zero.
         setTotal(typeof data.total === 'number' ? data.total : null);
         setNoExactMatches(!!data.noExactMatches);
@@ -709,8 +720,11 @@ export default function Jobs() {
   };
 
   const renderJobRow = (job) => {
+    // The ranked feed carries the score on the row itself; matchByJobId is the
+    // fallback for the unranked browse, where only the top-100 are annotated.
     const match = matchByJobId[job.id];
-    const score = match ? Math.round(match.overall_score * 100) : null;
+    const rawScore = job.overall_score ?? match?.overall_score ?? null;
+    const score = rawScore === null || rawScore === undefined ? null : Math.round(Number(rawScore) * 100);
     return (
       <div key={job.id} className={page.jobRow}>
         <input
@@ -913,6 +927,45 @@ export default function Jobs() {
             >
               Clear filters
             </button>
+          )}
+        </div>
+
+        {/*
+          * A7.1 — the ranking and its floor are stated, not silent. A user
+          * seeing 300 results out of 23,958 is entitled to know a filter is
+          * doing that, and to move it.
+          */}
+        <div className={page.rankBar}>
+          <div className={page.rankModes}>
+            <button
+              type="button"
+              className={rankMode === 'score' ? page.rankOn : page.rankOff}
+              onClick={() => { setRankMode('score'); setPage(1); }}
+            >
+              Best match first
+            </button>
+            <button
+              type="button"
+              className={rankMode === 'recent' ? page.rankOn : page.rankOff}
+              onClick={() => { setRankMode('recent'); setPage(1); }}
+            >
+              Everything, newest first
+            </button>
+          </div>
+          {rankMode === 'score' ? (
+            <label className={page.floorControl}>
+              <span>Only show matches above {Math.round(minScore * 100)}%</span>
+              <input
+                type="range"
+                min="0" max="0.9" step="0.05"
+                value={minScore}
+                onChange={(e) => { setMinScore(Number(e.target.value)); setPage(1); }}
+              />
+            </label>
+          ) : (
+            <span className={page.floorNote}>
+              Unranked. Every indexed job, newest first - not scored against your profile.
+            </span>
           )}
         </div>
 

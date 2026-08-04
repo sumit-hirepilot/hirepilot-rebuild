@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../db');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
@@ -416,13 +416,27 @@ router.get('/sources', async (req, res) => {
 const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, apply_url, location, work_arrangement,
               salary_min, salary_max, job_type, posted_at, created_at`;
 
-router.get('/', async (req, res) => {
+router.get('/', attachUserIfPresent, async (req, res) => {
   try {
     const {
       page = 1, limit = 20, search, source, location, experience, includeRelated,
       scope, datePosted, jobType, company,
     } = req.query;
     const offset = (page - 1) * limit;
+
+    /*
+     * A7.1 — score ranking is the DEFAULT for a signed-in user.
+     *
+     * `sort=recent` is the explicit opt-out into unranked chronological
+     * browse. Making that the default is what broke the promise: the
+     * differentiator is the score, so the place people browse has to show it.
+     * Anonymous callers cannot be scored, so they keep the chronological feed.
+     */
+    const userId = req.user?.id || null;
+    const sort = req.query.sort || (userId ? 'score' : 'recent');
+    const minScore = Number(req.query.minScore ?? 0.4);
+    const rankByScore = Boolean(userId) && sort === 'score' && Number.isFinite(minScore);
+    let ranking = { mode: 'recent', minScore: null, sourceDiversified: false };
 
     // Multiple keyword "chips" - accepts repeated ?keywords=X&keywords=Y, or
     // falls back to the single ?search= param for backward compatibility
@@ -584,6 +598,61 @@ router.get('/', async (req, res) => {
         );
         relatedJobs = relatedResult.rows;
       }
+    } else if (rankByScore) {
+      /*
+       * A7.1 — the browsable feed is the SAME product as the Dashboard.
+       *
+       * This branch exists because the two diverged: the Dashboard read
+       * /api/matches (authenticated, ORDER BY overall_score DESC) while this
+       * route was unauthenticated and ordered by posted_at, so "View all jobs"
+       * took a Principal Product Designer from 71-75% UX roles to a
+       * chronological dump containing a Hindi Voice Coach and an in-home nurse
+       * practitioner. Same user, same second, two unrelated products.
+       *
+       * Ranking, in order:
+       *   1. per-source interleave, so no single source can own a page. micro1
+       *      alone swamped every page of results; taking the best from each
+       *      source in turn keeps one prolific scraper from burying the rest.
+       *   2. score within that interleave.
+       *
+       * INNER JOIN, not LEFT: a floor of 0 still means "jobs scored against
+       * this user's profile". Unscored rows are not silently ranked last, they
+       * are a different question - answered by the explicit unranked browse.
+       */
+      const scoreParams = [...params, userId, minScore];
+      const userIdx = scoreParams.length - 1;
+      const scoreIdx = scoreParams.length;
+
+      // The jobs table stays unaliased so the shared filterClause - which
+      // references bare column names - resolves unchanged. job_matches carries
+      // none of those names, so nothing is ambiguous.
+      const rankedCte = `
+        WITH ranked AS (
+          SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
+                 jm.overall_score,
+                 jm.skills_match_score, jm.experience_match_score,
+                 jm.location_match_score, jm.salary_match_score,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY jobs.source ORDER BY jm.overall_score DESC, jobs.id
+                 ) AS source_rank
+            FROM jobs
+            JOIN job_matches jm ON jm.job_id = jobs.id AND jm.user_id = $${userIdx}
+           WHERE ${filterClause}${dateFilterSql}
+             AND jm.overall_score >= $${scoreIdx}
+        )`;
+
+      const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked`, scoreParams);
+      total = parseInt(countResult.rows[0].count, 10);
+
+      const result = await query(
+        `${rankedCte}
+         SELECT * FROM ranked
+          ORDER BY source_rank ASC, overall_score DESC
+          LIMIT $${scoreIdx + 1} OFFSET $${scoreIdx + 2}`,
+        [...scoreParams, limit, offset]
+      );
+      jobs = result.rows;
+      ranking = { mode: 'score', minScore, sourceDiversified: true };
     } else {
       const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}${dateFilterSql}`, params);
       total = parseInt(countResult.rows[0].count, 10);
@@ -596,6 +665,7 @@ router.get('/', async (req, res) => {
         [...params, limit, offset]
       );
       jobs = result.rows;
+      ranking = { mode: 'recent', minScore: null, sourceDiversified: false };
 
       if (datePosted) {
         const unknownDateResult = await query(
@@ -617,6 +687,10 @@ router.get('/', async (req, res) => {
       relatedJobs: decorate(relatedJobs),
       relatedTotal,
       excludedUnknownDateCount,
+      // A7.1 — state how this list was ranked. The floor must never be silent:
+      // a user seeing 300 results instead of 23,958 is entitled to know a
+      // filter is doing that, and to move it.
+      ranking,
     });
   } catch (err) {
     console.error('Get jobs error:', err);
