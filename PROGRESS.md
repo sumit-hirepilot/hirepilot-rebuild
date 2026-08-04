@@ -4,7 +4,14 @@ Current wave: 0
 Current goal: #45 (health failure, preempts backlog)
 
 ## Next session order (revised)
-0. DONE THIS SESSION — kill switch. Lever and Ashby removed from SUPPORTED_ATS.
+0. DONE THIS SESSION — kill switch, BOTH paths.
+   The extension resolves its adapter from the PAGE, not from the server, so the
+   server whitelist alone was not blocking. processOne gated on
+   automationSupported; the drawer's "Fill this form" did not - the same
+   application the queue refused to touch could be submitted by hand through an
+   unverified adapter. Both gate now, pinned by
+   backend/__tests__/extensionWhitelist.test.js.
+0b. Server-side kill switch. Lever and Ashby removed from SUPPORTED_ATS.
    They were permitted to submit while never having been run against a live
    form. Re-enable per-adapter only alongside evidence of a verified live run;
    backend/__tests__/supportedAts.test.js makes that edit deliberate.

@@ -19,3 +19,15 @@ the effect is scheduled at all.
 NO validation errors and no empty required fields, so it fails for a different
 reason. The phone value survives the runner's exact fill path on all three
 boards tested, so the original "blur clears it" hypothesis is disproven.
+
+## Environment gotcha — the API token does not survive a session boundary
+Verifying production behaviour needs a bearer token, and the scratchpad copy is
+gone on a cold start. ASSESS will hit this. Re-obtain with:
+
+    curl -s -X POST -H 'Content-Type: application/json' \
+      -d '{"email":"sumituxui@gmail.com","password":"1_Railway"}' \
+      https://hirepilot-production-e70d.up.railway.app/api/auth/login
+
+Also: run jest from inside backend/ or frontend/. `npx --prefix backend jest`
+silently produces no output rather than failing, which reads as a passing test
+suite if you only grep the result.

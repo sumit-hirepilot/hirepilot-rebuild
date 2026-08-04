@@ -863,6 +863,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
 
           // Not ready means an unanswered question, never a missing signature.
           // Hand those to the drawer to ask here rather than sending the user off.
+          /*
+           * The whitelist applies here too.
+           *
+           * The queue-run path checks item.automationSupported before executing
+           * (processOne, above). This one did not - it only checked that the
+           * server had marked the application ready. So a user sitting on a
+           * posting whose adapter has never been verified could press "Fill this
+           * form" and submit through it, even while the queue refused to touch
+           * the same application. Server-side blocking with a second, ungated
+           * entry point is not blocking.
+           *
+           * activeAdapter() resolves from the page, not from the server, so the
+           * adapter existing is exactly what makes this reachable.
+           */
+          if (!payload.automationSupported) {
+            sendToTab(tabId, { type: 'HP_DRAWER_STATE', payload: {
+              job: payload.job,
+              status: 'needs_user',
+              message: `HirePilot does not fill ${payload.atsPlatform || 'this'} forms yet — its adapter has not been verified against a live form. Fill this one yourself.`,
+            } }, 4000);
+            return respond({ ok: false, reason: 'adapter not verified' });
+          }
+
           if (payload.status !== 'approved') {
             const blocking = (payload.screeningQuestions || [])
               .filter((q) => q.required && !q.optional && (q.answer === null || q.answer === undefined || q.answer === ''));
