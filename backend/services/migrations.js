@@ -298,6 +298,50 @@ const STATEMENTS = [
   `ALTER TABLE applications ADD CONSTRAINT applications_applied_at_requires_submitted
      CHECK (applied_at IS NULL OR status = 'submitted')`,
 
+  /*
+   * A1 / D10a — an automatic "applied" must carry a submission record.
+   *
+   * The UPDATE above corrects the rows that exist; it does nothing about the
+   * next write. POST /api/applications wrote status='applied' as a literal, so
+   * every deploy re-corrected rows that the running app immediately recreated.
+   * The rule belongs in the table.
+   *
+   * is_manual rows are exempt BY DESIGN (D10). A user logging an application
+   * they sent themselves is honestly applied with no HirePilot submission
+   * record; treating those as false would relabel honest entries as failures,
+   * committing a Constraint 1 violation while enforcing Constraint 7.
+   * COALESCE because a CHECK passes on NULL, which would otherwise be a hole.
+   *
+   * The evidence set here is deliberately a SUPERSET of what the corrective
+   * UPDATE above leaves behind (it keeps rows with employer_confirmation_id or
+   * verified_at). If this were the narrower set, rows that survived the UPDATE
+   * could still violate the constraint, ADD CONSTRAINT would fail, and
+   * runMigrations would log-and-continue - leaving the hole open while the boot
+   * log read "Migrations complete".
+   *
+   * Guarded by a catalog lookup rather than a bare ADD, because Postgres has no
+   * ADD CONSTRAINT IF NOT EXISTS and a duplicate would throw on every boot.
+   */
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname = 'applications_applied_requires_submission'
+          AND conrelid = 'applications'::regclass
+     ) THEN
+       ALTER TABLE applications
+         ADD CONSTRAINT applications_applied_requires_submission
+         CHECK (
+           status <> 'applied'
+           OR COALESCE(is_manual, FALSE) = TRUE
+           OR submitted_at IS NOT NULL
+           OR confirmation_captured_at IS NOT NULL
+           OR employer_confirmation_id IS NOT NULL
+           OR verified_at IS NOT NULL
+         );
+     END IF;
+   END $$;`,
+
   `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
 
   /* ---------------------------------------------------------------- *

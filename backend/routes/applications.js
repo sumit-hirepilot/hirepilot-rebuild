@@ -86,6 +86,82 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // Create application
+/*
+ * A1 — the standing integrity check behind health item 8.
+ *
+ * Aggregates only. Counts and a distinct-user tally are facts about the
+ * database, not about any person, so this is safe for any authenticated
+ * caller; identifying WHICH users are affected is not, and is gated on
+ * ADMIN_EMAILS. With that unset the detail is omitted rather than the request
+ * failing - the counts are the part the health check needs.
+ *
+ * Exists because there is no other way to audit all users: the rest of the API
+ * is per-user by construction.
+ */
+router.get('/integrity', verifyToken, async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'applied')                    AS applied_total,
+         COUNT(*) FILTER (WHERE status = 'applied'
+                            AND COALESCE(is_manual, FALSE) = TRUE)     AS applied_manual,
+         COUNT(*) FILTER (WHERE status = 'applied'
+                            AND COALESCE(is_manual, FALSE) = FALSE
+                            AND submitted_at IS NULL
+                            AND confirmation_captured_at IS NULL
+                            AND employer_confirmation_id IS NULL
+                            AND verified_at IS NULL)                   AS applied_false,
+         COUNT(DISTINCT user_id) FILTER (WHERE status = 'applied'
+                            AND COALESCE(is_manual, FALSE) = FALSE
+                            AND submitted_at IS NULL
+                            AND confirmation_captured_at IS NULL
+                            AND employer_confirmation_id IS NULL
+                            AND verified_at IS NULL)                   AS users_affected,
+         COUNT(*) FILTER (WHERE status = 'submitted')                  AS submitted_total
+       FROM applications`
+    );
+    const counts = Object.fromEntries(
+      Object.entries(rows[0]).map(([k, v]) => [k, Number(v)])
+    );
+
+    // Confirm the constraint is really there, per the standing rule: a failed
+    // ADD CONSTRAINT is logged and skipped by runMigrations, so a clean boot
+    // proves nothing. Read the catalog instead.
+    const { rows: con } = await query(
+      `SELECT conname FROM pg_constraint
+        WHERE conrelid = 'applications'::regclass
+          AND conname = 'applications_applied_requires_submission'`
+    );
+
+    const admins = (process.env.ADMIN_EMAILS || '')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const isAdmin = admins.includes(String(req.user.email || '').toLowerCase());
+
+    let affected;
+    if (isAdmin) {
+      const { rows: who } = await query(
+        `SELECT user_id, COUNT(*)::int AS rows FROM applications
+          WHERE status = 'applied' AND COALESCE(is_manual, FALSE) = FALSE
+            AND submitted_at IS NULL AND confirmation_captured_at IS NULL
+            AND employer_confirmation_id IS NULL AND verified_at IS NULL
+          GROUP BY user_id ORDER BY user_id`
+      );
+      affected = who;
+    }
+
+    res.json({
+      counts,
+      constraintPresent: con.length > 0,
+      // Absent, not empty, when the caller is not an admin - so a reader cannot
+      // mistake "not shown to you" for "nobody affected".
+      ...(affected ? { affected } : { affectedDetail: 'requires ADMIN_EMAILS' }),
+    });
+  } catch (err) {
+    console.error('Integrity check error:', err);
+    res.status(500).json({ error: 'Failed to run integrity check' });
+  }
+});
+
 router.post('/', verifyToken, async (req, res) => {
   try {
     const { jobId, coverLetter } = req.body;
@@ -131,10 +207,21 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(201).json(failedResult.rows[0]);
     }
 
-    // Create application
+    /*
+     * A1 — this wrote status='applied' as a literal, with no submitted_at, no
+     * confirmation and no employer response. Nothing here sends anything: the
+     * extension submits, in the user's own browser, and recordEvidence is the
+     * only path to 'submitted'. So every row this created was a tracker entry
+     * claiming an application the employer never received - the exact defect
+     * A1 exists to close, and still reachable from the Search Agent flow.
+     *
+     * 'approved' is the real pre-submission state in the apply pipeline
+     * (approved -> submitting -> submitted). Queuing is what actually happened.
+     * The activity event follows the same correction: nothing was sent.
+     */
     const result = await query(
-      `INSERT INTO applications (user_id, job_id, status, cover_letter)
-       VALUES ($1, $2, 'applied', $3)
+      `INSERT INTO applications (user_id, job_id, status, cover_letter, is_manual)
+       VALUES ($1, $2, 'approved', $3, FALSE)
        RETURNING *`,
       [req.user.id, jobId, coverLetter || null]
     );
@@ -142,8 +229,8 @@ router.post('/', verifyToken, async (req, res) => {
     // Log activity
     await query(
       `INSERT INTO activity_log (user_id, event_type, job_id, metadata)
-       VALUES ($1, 'application_sent', $2, $3)`,
-      [req.user.id, jobId, JSON.stringify({ status: 'applied' })]
+       VALUES ($1, 'application_queued', $2, $3)`,
+      [req.user.id, jobId, JSON.stringify({ status: 'approved' })]
     );
 
     res.status(201).json(result.rows[0]);
