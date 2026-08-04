@@ -1,8 +1,10 @@
 # HirePilot — Progress
 
 Current wave: A (Master Prompt v2 adopted 2026-08-04)
-Current goal: A1 - false "applied" rows. DIAGNOSED, NOT STARTED.
-Blocked on: no DB access to HirePilot from this machine (see BLOCKED.md)
+Current goal: A2 - new-user path (scoring must run on resume upload).
+Then A1 - false "applied" rows (DIAGNOSED, at BUILD; see D10/D10a).
+Blocked on: A1's all-user audit needs DB access - VERIFY it at ASSESS, do not
+assume the railway link landed.
 
 Wave 0 goals map onto v2 as: G0.6 -> A4, G0.7 -> A5, G0.5 -> A6,
 H2/H3/H4/H6/H7/H8 -> A3. G0.4 (pricing) -> B3.
@@ -52,11 +54,20 @@ themselves is honestly "applied" with no HirePilot submission record. The rows
 A1 must correct are the ones written *automatically* without a send. Flattening
 that distinction would relabel honest user entries as failures.
 
-Proposed rule, to be confirmed against `is_manual`/`submitted_by` semantics
-before writing the migration:
-  a row may claim `status='applied'` with no evidence ONLY if it is a
-  user-entered manual record, and the UI must show it as user-entered rather
-  than as something HirePilot sent.
+**Confirmed rule (D10a) - encode it in the CHECK constraint, not only the
+corrective migration.** A migration fixes today's rows; only a constraint stops
+the next write path recreating the hole.
+
+    status = 'applied' AND is_manual = false
+      => submitted_at IS NOT NULL OR confirmation_captured_at IS NOT NULL
+
+`is_manual = true` rows are honestly applied and must pass untouched.
+
+Watch the ordering: ADD CONSTRAINT ... CHECK fails outright against existing
+violating rows, and services/migrations.js only logs a failed statement - so a
+constraint placed before the corrective UPDATE would never apply while looking
+like it had. Correct the rows first, or add NOT VALID then VALIDATE. Confirm
+the constraint exists afterwards rather than inferring it from a clean boot.
 
 **Why it was not started this session:** past the §3 session budget. A1 is a
 CHECK-constraint + migration + route change on the `applications` table, and

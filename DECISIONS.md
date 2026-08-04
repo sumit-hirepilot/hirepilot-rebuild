@@ -77,3 +77,33 @@ record is false". That is wrong here: the schema carries `is_manual` and
 is honestly applied with no HirePilot submission record. Only rows written
 *automatically* without a send are false. Flattening the distinction would
 relabel honest user entries as failures - itself a Constraint 1 violation.
+The fix would have committed the harm it was written to remove.
+
+**D10a — the distinction belongs in the CHECK constraint, not only the
+migration.** A migration corrects the rows that exist today; it does nothing
+about the next write path. Put the rule in the table constraint so any future
+insert is rejected at the database, and treat the route change as defence in
+depth rather than the enforcement.
+
+Rule to encode:
+    status = 'applied' AND is_manual = false
+      => at least one of submitted_at / confirmation_captured_at NOT NULL
+`is_manual = true` rows are honest with no evidence and must pass untouched.
+
+**Implementation order matters.** `ALTER TABLE ... ADD CONSTRAINT ... CHECK`
+fails outright if any existing row violates it, and migrations/STATEMENTS runs
+on boot with each failure only logged - so a constraint added before the
+corrective UPDATE would silently never apply and the hole would look closed
+while staying open. Either put the corrective UPDATE earlier in STATEMENTS than
+the ADD CONSTRAINT, or add it `NOT VALID` and `VALIDATE CONSTRAINT` after.
+Verify the constraint actually exists afterwards - do not infer it from the
+migration having run.
+
+## D11 — A2 runs before A1 this session
+A1 is the gate on anyone seeing a tracker and stays mandatory, but it needs an
+all-user audit that needs DB access, and it is a migration on real application
+records. A2 needs no migration and fixes what every new tester hits in their
+first thirty seconds: signup, resume upload, then an empty feed with no
+explanation, because scoring only runs on a manual
+POST /api/matches/recalculate. Operator decision, taken with the health data.
+A1 immediately after.
