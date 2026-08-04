@@ -878,3 +878,7 @@
   .rankBar { flex-direction: column; align-items: stretch; }
   .floorControl { justify-content: space-between; }
 }
+
+/* A7.1 — the score reads as a score, not a bare integer. */
+.scoreValue { display: block; font-weight: 700; line-height: 1.1; }
+.scoreLabel { display: block; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
