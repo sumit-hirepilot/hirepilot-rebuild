@@ -68,3 +68,33 @@ describe('landing page carries no invented figures', () => {
     expect(fromPage).toEqual(fromEngine);
   });
 });
+
+describe('G0.3 — meta and copy hygiene', () => {
+  const layout = fs.readFileSync(path.join(__dirname, '..', 'components', 'Layout.js'), 'utf8');
+
+  it('computes the copyright year rather than hardcoding it', () => {
+    expect(layout).toMatch(/getFullYear\(\)/);
+    // Any bare four-digit year in the footer line is a year that will go stale.
+    const footerLine = layout.split('\n').find((l) => /©|&copy;/.test(l)) || '';
+    expect(footerLine).not.toMatch(/\b(19|20)\d{2}\b/);
+  });
+
+  it('has OG and Twitter card tags', () => {
+    for (const tag of ['og:title', 'og:description', 'og:image', 'og:url', 'twitter:card', 'twitter:image']) {
+      expect(code).toContain(tag);
+    }
+    expect(code).toMatch(/twitter:card"\s+content="summary_large_image"/);
+  });
+
+  it('does not lead the homepage with what the product lacks', () => {
+    // The "NO FAKE AUTO-SUBMIT" block sat in the main scroll. Its substance
+    // moved to the FAQ; leading with a disclaimer is not a value proposition.
+    expect(code).not.toMatch(/NO FAKE AUTO-SUBMIT/i);
+  });
+
+  it('does not claim it cannot submit, which is no longer true', () => {
+    // The FAQ said "Not yet" after the extension had already submitted with a
+    // captured employer confirmation. Copy follows the product.
+    expect(code).not.toMatch(/does not currently submit/i);
+  });
+});

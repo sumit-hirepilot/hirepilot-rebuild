@@ -62,7 +62,11 @@ export default function Layout({ children }) {
       <footer className={styles.footer}>
         <div className="container">
           <p>HirePilot. Built for people who are good at their jobs, not job hunting.</p>
-          <p style={{ fontSize: '0.875rem' }}>© 2024 HirePilot. All rights reserved.</p>
+          {/* Computed, not typed. A stale year is a small lie on a page arguing
+              that none of its numbers are invented. */}
+          <p style={{ fontSize: '0.875rem' }}>
+            © {new Date().getFullYear()} HirePilot. All rights reserved.
+          </p>
         </div>
       </footer>
     </>

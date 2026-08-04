@@ -76,6 +76,24 @@ Learned: a caption does not make an invented number safe - a visitor reads 87%
   before they read "illustrative". Removing the number was the only fix.
 Follow-ups created: none
 
+## G0.3 — Footer, meta, and copy hygiene  [shipped 2026-08-04]
+Moat: M3
+Changed: frontend/components/Layout.js, frontend/pages/index.js,
+  frontend/public/og.png, frontend/__tests__/landingHonesty.test.js
+Evidence:
+  - Copyright computed: footer renders new Date().getFullYear(); test asserts no
+    bare four-digit year remains on that line
+  - Meta complete: og:title, og:description, og:image, og:url, og:image
+    dimensions, twitter:card=summary_large_image, twitter:image - 12 tags
+  - og.png is a real 1200x630 PNG, verified by reading its IHDR
+  - "NO FAKE AUTO-SUBMIT" section removed from the main scroll; its substance
+    moved into two new FAQ entries
+  - 4 new tests, all verified failing against the pre-change files
+Learned: the FAQ claimed the product cannot submit to employers, which stopped
+  being true. Copy that understates is still copy that does not match the
+  product. Worth re-reading marketing text whenever a capability lands.
+Follow-ups created: none
+
 ## Standing rules
 - Assert on properties, never on literals. G0.1 watched for "23,1xx" for ten
   minutes while the page already said 23,203.

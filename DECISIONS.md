@@ -27,3 +27,18 @@ lying about its own maths.
 ## D4 — jest added to the frontend workspace
 No test runner existed there. Needed for the landing-honesty regression guard.
 Test-only.
+
+## D5 — G0.3: the FAQ was understating the product, so the copy moved
+"Does HirePilot submit real applications to employers?" answered "Not yet." That
+stopped being true: the extension submits in the user's own browser and an
+application is only marked applied once the employer's confirmation page is
+captured. §7 says copy follows the product; the rule reads the same in both
+directions, so the answer was corrected rather than left modestly wrong.
+Coverage stated honestly: Greenhouse, Lever, Ashby automated; Workday, Taleo,
+iCIMS opened for the user.
+
+## D6 — OG image generated as a real PNG, no dependency
+public/ had no image assets. An SVG og:image would satisfy "present" while
+rendering nowhere - Facebook, Twitter and Slack all reject it - which is a fake
+pass. Wrote a ~40-line PNG encoder using Node's built-in zlib to emit a real
+1200x630 card. No dependency added, and verified by reading the file's IHDR back.

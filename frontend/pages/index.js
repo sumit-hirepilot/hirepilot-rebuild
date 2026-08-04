@@ -64,12 +64,20 @@ const TRACK_STATES = [
 
 const FAQS = [
   {
+    q: 'What does "applied" mean in the tracker?',
+    a: 'That the employer\u2019s own confirmation page was captured after submission \u2014 the stored text is the proof, and you can read it on the application. Nothing else sets that status. An application you entered by hand is labelled as your own record, kept visibly distinct from a verified submission, because they are different kinds of claim.',
+  },
+  {
+    q: 'How much control do I have over what gets sent?',
+    a: 'Auto Apply runs within limits you set: a daily cap, a minimum match score, and company rules. You can turn on "submits automatically" or leave it filling the form and stopping, and the drawer states which of the two is in force before you press anything. Consent checkboxes are never ticked for you at any setting.',
+  },
+  {
     q: 'How does HirePilot find jobs?',
     a: 'HirePilot polls a fixed list of real sources every 6 hours: general remote-job boards, plus a maintained, individually-verified list of companies whose own Greenhouse, Lever, or Ashby career page is queried directly through that platform’s public job API — the same mechanism the company’s own careers page uses. There is no "search every company" endpoint for any of these platforms, so coverage is a real but bounded list, not the entire internet.',
   },
   {
     q: 'Does HirePilot submit real applications to employers?',
-    a: 'Not yet. Every "applied" status you see is a real record in HirePilot’s own tracker — it has not submitted a form on Greenhouse, Workday, or any other external ATS on your behalf. Auto-Pilot can draft a tailored resume and cover letter and queue an application within the rules you set, and you can require your own approval before anything counts as applied.',
+    a: 'Yes, through the browser extension, which fills and submits the form in your own signed-in browser rather than from a server. An application is only marked applied once the employer’s own confirmation page has been captured — there is no code path that sets that status without it. It pauses and asks you when a form needs something only you can give: a login, a CAPTCHA, a consent tick, or a question your profile has never answered. Coverage today is Greenhouse, Lever and Ashby; Workday, Taleo and iCIMS are not automated and are opened for you to complete.',
   },
   {
     q: 'Is this powered by an LLM?',
@@ -155,8 +163,24 @@ export default function Home({ stats = null }) {
     <>
       <Head>
         <title>HirePilot - Job Search on Autopilot</title>
-        <meta name="description" content="Real jobs, scored against your real resume, tailored honestly - no invented AI, no fake automation." />
+        <meta name="description" content="Job search with the numbers shown. Every match score breaks down into its four weights, every resume edit is checked against your own material, and an application only counts as applied once the employer confirms it." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        {/* Accurate to the product as built. Nothing here claims a capability
+            the app does not have - the copy moves to match the product, never
+            the other way round. */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="HirePilot" />
+        <meta property="og:title" content="HirePilot — job search with the numbers shown" />
+        <meta property="og:description" content="Match scores that break down into their weights. Resume tailoring that cannot invent experience. Applied means the employer confirmed it." />
+        <meta property="og:url" content="https://hirepilot-rebuild-production.up.railway.app" />
+        <meta property="og:image" content="https://hirepilot-rebuild-production.up.railway.app/og.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="HirePilot — job search with the numbers shown" />
+        <meta name="twitter:description" content="Match scores that break down into their weights. Resume tailoring that cannot invent experience. Applied means the employer confirmed it." />
+        <meta name="twitter:image" content="https://hirepilot-rebuild-production.up.railway.app/og.png" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -366,43 +390,6 @@ export default function Home({ stats = null }) {
           </div>
         </section>
 
-        {/* Honesty section */}
-        <section className={styles.honest}>
-          <div className="container">
-            <p className={styles.label} style={{ textAlign: 'center' }}>NO FAKE AUTO-SUBMIT</p>
-            <h2 style={{ textAlign: 'center' }}>What &quot;applied&quot; actually means here.</h2>
-            <div className={styles.honestGrid}>
-              <div className={styles.honestCard}>
-                <h4>Tracked, first</h4>
-                <p>
-                  Every apply — manual or automated — creates a real record in your own tracker,
-                  so you always know exactly where you stand with every company.
-                </p>
-              </div>
-              <div className={styles.honestCard}>
-                <h4>Auto-Pilot, within your rules</h4>
-                <p>
-                  Turn it on and it finds matches, drafts a tailored resume and cover letter, and
-                  applies within the daily limit, minimum score, and company rules you set.
-                </p>
-              </div>
-              <div className={styles.honestCard}>
-                <h4>Review before it counts</h4>
-                <p>
-                  Turn on &quot;review before submit&quot; and nothing Auto-Pilot drafts is
-                  marked applied until you personally approve it.
-                </p>
-              </div>
-            </div>
-            <p className={styles.honestDisclaimer}>
-              HirePilot does not currently submit forms on external ATS platforms (Greenhouse,
-              Workday, and the rest) on your behalf. Every &quot;applied&quot; status reflects a
-              real record in your own tracker, not a live submission to the employer&apos;s
-              system — we&apos;d rather tell you that plainly than let a dashboard number imply
-              otherwise.
-            </p>
-          </div>
-        </section>
 
         {/* FAQ */}
         <section className={styles.faq}>
