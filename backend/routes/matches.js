@@ -48,10 +48,46 @@ function breakdownFor(row) {
   };
 }
 
+/*
+ * Score on read when a user has a profile but no stored matches.
+ *
+ * Scoring used to depend on which page the user came through. onboarding.js
+ * recalculates only on its FINAL step, so anyone who abandoned it midway was
+ * never scored; resume.js applies parsed skills and never recalculates at all,
+ * so uploading a resume from the Resume page - the obvious place to do it -
+ * left the feed empty with no explanation. A new user's first impression of
+ * the product was an empty feed and no reason for it.
+ *
+ * Putting it here means no page can forget: any path that gives a user skills
+ * results in a scored feed the next time they read it. Returns whether it ran
+ * so the caller can say so rather than silently appearing slow.
+ */
+async function scoreIfNeverScored(userId) {
+  const [{ rows: matchRows }, { rows: skillRows }] = await Promise.all([
+    query('SELECT 1 FROM job_matches WHERE user_id = $1 LIMIT 1', [userId]),
+    query('SELECT 1 FROM user_skills WHERE user_id = $1 LIMIT 1', [userId]),
+  ]);
+  // Only when there is something to score against. A user with no skills gets
+  // the empty state with a reason, not a pointless full-table scan per load.
+  if (matchRows.length > 0 || skillRows.length === 0) return false;
+
+  await calculateMatchesForUser(userId);
+  return true;
+}
+
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 20, minScore = 0.3 } = req.query;
     const offset = (page - 1) * limit;
+
+    let scoredOnRead = false;
+    try {
+      scoredOnRead = await scoreIfNeverScored(req.user.id);
+    } catch (err) {
+      // A scoring failure must not blank the feed - fall through and serve
+      // whatever is stored, with the flag telling the client it is incomplete.
+      console.error('Score-on-read failed:', err.message);
+    }
 
     // Get count
     const countResult = await query(
@@ -78,6 +114,9 @@ router.get('/', verifyToken, async (req, res) => {
       total: parseInt(countResult.rows[0].count),
       page: parseInt(page),
       limit: parseInt(limit),
+      // True only when this request itself produced the scores, so the feed can
+      // explain a first load that took a moment instead of just being slow.
+      scoredOnRead,
       matches: result.rows.map((m) => ({
         ...m,
         title: fixMojibake(m.title),

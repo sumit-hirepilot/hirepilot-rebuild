@@ -5,6 +5,7 @@ const { verifyToken } = require('../middleware/auth');
 const { checkAts, buildAtsGuide } = require('../services/atsChecker');
 const { extractTextFromFile } = require('../services/fileTextExtractor');
 const { parseResume } = require('../services/resumeParser');
+const { calculateMatchesForUser } = require('../services/matchingEngine');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../services/resumeTailorEngine');
@@ -183,7 +184,31 @@ router.post('/apply-parsed', async (req, res) => {
 
     await query('UPDATE users SET onboarding_completed_at = COALESCE(onboarding_completed_at, CURRENT_TIMESTAMP) WHERE id = $1', [req.user.id]);
 
-    res.json({ message: 'Profile updated from resume', skillsAdded: skills.length, experienceAdded: experience.length });
+    /*
+     * Score straight away rather than leaving it to the next feed read.
+     * Applying a parsed resume is the moment a user's profile becomes
+     * scoreable, and it is the last step of the Resume page - which never
+     * recalculated, so that page produced a profile and a stale feed. A full
+     * recalculation measured 1.6s against 23k live jobs, which is affordable
+     * inside this request; the read path still covers every other route in.
+     *
+     * A scoring failure must not fail the profile update - the skills really
+     * were saved - so it is reported rather than thrown.
+     */
+    let scored = false;
+    try {
+      await calculateMatchesForUser(req.user.id);
+      scored = true;
+    } catch (err) {
+      console.error('Scoring after apply-parsed failed:', err.message);
+    }
+
+    res.json({
+      message: 'Profile updated from resume',
+      skillsAdded: skills.length,
+      experienceAdded: experience.length,
+      scored,
+    });
   } catch (err) {
     console.error('Apply parsed resume error:', err);
     res.status(500).json({ error: 'Failed to update profile' });
