@@ -142,10 +142,49 @@ confirmation page. One submission is verified end to end (Scale AI, Greenhouse).
 This shipped without the §3 Constraint 4 assessment. Two things follow, and the
 second is uncomfortable:
 
-- **G0.6 — audit live submission behaviour.** Which platforms, by what
-  mechanism, and does each permit it? Known today: Greenhouse verified, Lever
-  and Ashby adapters exist but are unverified against a live form; Workday,
-  Taleo and iCIMS are not automated.
+- **G0.6 — audit live submission behaviour.**
+
+  **Platform list, established by reading the code (G0.6 starts from this, not
+  from a cold survey):**
+  - `SUPPORTED_ATS` in backend/routes/apply.js is exactly
+    `{greenhouse, lever, ashby}` — the only three the backend will let the
+    extension execute.
+  - extension/content/adapters/ holds exactly those three files.
+  - Greenhouse: verified end to end on a live form, one confirmed submission.
+  - Lever, Ashby: adapters exist, never verified against a live form. They are
+    permitted by SUPPORTED_ATS, so they can execute today untested.
+  - Workday, Taleo, iCIMS, SmartRecruiters, SuccessFactors: detected by
+    detectAts() but excluded from SUPPORTED_ATS. Opened for the user, never
+    automated.
+
+  **Mechanism:** browser automation in the user's own signed-in session. No
+  credentials are held by HirePilot; the action is user-initiated; the user is
+  authenticated as themselves. That is a different posture from server-side
+  automation and the terms may read differently for it — some ATS terms prohibit
+  automated access regardless of who owns the session, others only prohibit
+  unauthorised access. Per-platform, and a legal reading rather than an
+  engineering one. G0.6 must NOT conclude this itself.
+
+  **G0.6 has two outputs.** (1) Findable here: the list above, plus what each
+  platform's terms actually say. (2) Not findable here: whether that reading is
+  correct. Needs counsel, and needs it before Wave 3 scales the capability, not
+  after. Where it lands, take the compliant branch per §7 — keep the cleared
+  platforms, `deferred: ToS` the rest, reconcile the copy either way.
+
+- **Receipt requirement is only half met — this is a G0.6 finding, not a Wave 3
+  feature.** Constraint 4 asks for a receipt of "fields sent, answers given,
+  files attached, platform response". What is stored today:
+  - Stored and user-reviewable: the employer's confirmation text and reference
+    id, submitted_at, verified_at (recordEvidence, surfaced on the application
+    detail screen and in /api/apply/submitted).
+  - NOT stored as a receipt: what was actually sent. screening_answers holds the
+    answers as resolved at fill time, but it is mutated by later discovery runs,
+    so it is current state rather than an immutable record of that submission.
+    Which file was attached, and the platform's own response beyond the
+    confirmation page, are not recorded at all.
+  So the "platform response" half exists; the "fields sent / answers given /
+  files attached" half does not. A user cannot today reconstruct exactly what
+  was submitted on their behalf.
 - **The mechanism is browser automation, not a public API.** Constraint 4 says
   browser automation against a third party's ATS is `deferred: ToS`. The shipped
   path is exactly that. G0.6 therefore is not only "which platforms may we add"
