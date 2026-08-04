@@ -96,8 +96,13 @@ on boot with each failure only logged - so a constraint added before the
 corrective UPDATE would silently never apply and the hole would look closed
 while staying open. Either put the corrective UPDATE earlier in STATEMENTS than
 the ADD CONSTRAINT, or add it `NOT VALID` and `VALIDATE CONSTRAINT` after.
-Verify the constraint actually exists afterwards - do not infer it from the
-migration having run.
+Verify the constraint actually exists afterwards by querying the catalog:
+
+    SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+     WHERE conrelid = 'applications'::regclass;
+
+Do not infer it from the migration having run, and do not infer it from the
+absence of an error in the boot log - the runner cannot produce one.
 
 ## D11 — A2 runs before A1 this session
 A1 is the gate on anyone seeing a tracker and stays mandatory, but it needs an

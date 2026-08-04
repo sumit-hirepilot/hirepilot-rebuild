@@ -383,6 +383,17 @@ second is uncomfortable:
   surfaces were not audited. Copy matching product has to be complete.
 
 ## Standing rules
+- **A migration runner that logs failures instead of halting turns every failed
+  statement into a silent no-op.** `services/migrations.js` wraps each statement
+  in try/catch, `console.error`s the failure, and continues - then prints
+  "Migrations complete" regardless. A statement that never applied is
+  indistinguishable, from the outside, from one that did. Either make the runner
+  halt, or verify each statement's effect afterwards. Verify by querying the
+  catalog (`pg_constraint`, `information_schema.columns`, `pg_indexes`), never
+  by inferring from a clean boot. Same family as the empty jest output and the
+  200-with-corrupt-bytes: absence of an error read as evidence of success.
+  This uncertainty attaches retroactively to EVERY migration run so far, not
+  only to the A1 constraint - see follow-up H9.
 - Assert on properties, never on literals. G0.1 watched for "23,1xx" for ten
   minutes while the page already said 23,203.
 - Read every grep hit before counting it as evidence. "Illustrative example"
@@ -402,6 +413,14 @@ second is uncomfortable:
 
 ## Follow-ups
 
+- **H9 — audit which migration statements actually took effect.** Every
+  statement in `services/migrations.js` has run under a catch-and-continue
+  runner, so any that failed did so silently while the boot log still read
+  "Migrations complete". Unknown how many, if any, never applied. Needs DB
+  access: enumerate expected columns, constraints and indexes from STATEMENTS
+  and diff against `information_schema` / `pg_constraint` / `pg_indexes`.
+  Do this alongside A1, since A1 is the first goal to depend on a constraint
+  actually existing. Created 2026-08-04 by the A1 write-up.
 - H1 — `/api/jobs/sources` returns no `last_fetched`, so poller freshness cannot
   be checked from outside. Needed by the health check itself. Created by ASSESS.
 - **H2 — SSR/client mismatch in `Layout.js` on every page that uses it.** The
