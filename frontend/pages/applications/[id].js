@@ -5,6 +5,8 @@ import DashboardLayout from '../../components/DashboardLayout';
 import styles from '../../styles/Dashboard.module.css';
 import page from '../../styles/ApplicationDetail.module.css';
 import { API_BASE } from '../../lib/apiBase';
+import { formatDateTime } from '../../lib/format';
+import Link from 'next/link';
 
 /*
  * Application detail (PRD 3.10).
@@ -245,7 +247,7 @@ export default function ApplicationDetail() {
           )}
           <div className={page.evidenceMeta}>
             {item.evidence.confirmationId && <span>Reference {item.evidence.confirmationId}</span>}
-            {item.evidence.verifiedAt && <span>Verified {new Date(item.evidence.verifiedAt).toLocaleString()}</span>}
+            {item.evidence.verifiedAt && <span>Verified {formatDateTime(item.evidence.verifiedAt)}</span>}
           </div>
         </div>
       )}
@@ -256,7 +258,7 @@ export default function ApplicationDetail() {
             <h2 className={page.cardTitle}>Personal information</h2>
             <p className={page.cardHint}>
               From your profile. Editing these on the{' '}
-              <a href="/profile">Profile page</a> changes them for every
+              <Link href="/profile">Profile page</Link> changes them for every
               application, rather than just this one.
             </p>
             {(item.standardFields || []).map((f) => row(f, true))}

@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/ApplyQueue.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDateTime } from '../lib/format';
 
 /*
  * The approval gate.
@@ -352,7 +353,7 @@ export default function ApplyQueue() {
                   {detail.evidence.confirmationId && (
                     <p><strong>Reference:</strong> {detail.evidence.confirmationId}</p>
                   )}
-                  <p><strong>Submitted:</strong> {new Date(detail.evidence.submittedAt).toLocaleString()}</p>
+                  <p><strong>Submitted:</strong> {formatDateTime(detail.evidence.submittedAt)}</p>
                   <pre className={page.letter}>{detail.evidence.confirmationText}</pre>
                 </section>
               )}

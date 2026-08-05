@@ -1313,3 +1313,51 @@
 .drawerSaved { color: var(--text-secondary); }
 .drawerSaved:hover { color: var(--primary); border-color: var(--primary); }
 .drawerSavedOn { color: var(--primary); border-color: var(--primary); background: var(--bg-subtle); }
+
+/*
+ * A3 / H4 — classes six pages referenced that were never defined.
+ *
+ * CSS Modules resolve a missing class to undefined and React drops it
+ * silently, so Tracker, Inbox, Profile, Apply Queue, Auto Apply and the
+ * application detail page have been rendering their headers unstyled. Matches
+ * the existing .greeting / .dateLabel scale rather than inventing a new one.
+ */
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.pageTitle {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+
+.pageSubtitle {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 60ch;
+}
+
+/* The button label; the "Download " half is hidden on narrow viewports so the
+   control stays a sensible width rather than wrapping. */
+.extensionCtaLabel {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.extensionCtaLabelLong { display: inline; }
+
+@media (max-width: 640px) {
+  .extensionCtaLabelLong { display: none; }
+}

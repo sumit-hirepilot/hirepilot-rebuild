@@ -341,13 +341,13 @@ export default function DashboardLayout({ children, title, user }) {
             </button>
           )}
           {mounted && credits && (
-            <a
+            <Link
               href="/settings?tab=Plans"
               className={credits.nearLimit ? styles.creditsPillLow : styles.creditsPill}
               title={`${credits.remaining} of ${credits.total} applications left on ${credits.tierName}. One credit is spent per application the employer confirms.`}
             >
               <span className={styles.creditsNum}>{credits.remaining}</span> left
-            </a>
+            </Link>
           )}
           <NotificationBell token={token} base={base} />
           <button

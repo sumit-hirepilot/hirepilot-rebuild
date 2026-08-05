@@ -1,13 +1,34 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './Layout.module.css';
 
 export default function Layout({ children }) {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
+  /*
+   * A3 / H2 — the auth-dependent nav may not be decided during the first
+   * render.
+   *
+   * This read localStorage inline, so the server rendered "Features / Sign In"
+   * and the client rendered "Dashboard / Applications" for the same markup.
+   * React 18 discards the server HTML on that mismatch and re-renders the
+   * whole tree, which is why no page hydrated cleanly and the dev environment
+   * could not verify anything.
+   *
+   * The first client render must match the server's exactly, so it renders the
+   * signed-out shell - what the server always produces - and swaps after mount.
+   */
+  const [mounted, setMounted] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    setHasToken(!!localStorage.getItem('token'));
+    setMounted(true);
+  }, []);
+
+  const isAuthenticated = mounted && hasToken;
 
   const handleLogout = () => {
     localStorage.removeItem('token');

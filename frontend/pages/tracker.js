@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Tracker.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDate } from '../lib/format';
 
 /*
  * Tracker (PRD 3.5).
@@ -208,7 +209,7 @@ export default function Tracker() {
                     )}
                     {c.submitted_at && (
                       <span className={page.cardDate}>
-                        {new Date(c.submitted_at).toLocaleDateString()}
+                        {formatDate(c.submitted_at)}
                       </span>
                     )}
                   </div>

@@ -6,6 +6,8 @@ import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
 import { API_BASE } from '../lib/apiBase';
 import { countText, parsedOr } from '../lib/renderState';
+import { formatDate, formatNumber } from '../lib/format';
+import Link from 'next/link';
 
 const PAGE_SIZE = 20;
 
@@ -127,7 +129,7 @@ function FilterPanel({ label, options, selected, onApply, searchable = false, hi
                 onClick={() => setDraft([])}
               >
                 <span className={page.filterOptionLabel}>{allOption.label}</span>
-                <span className={page.filterOptionCount}>{allOption.count.toLocaleString()}</span>
+                <span className={page.filterOptionCount}>{formatNumber(allOption.count)}</span>
               </button>
             )}
             {visible.map((o) => (
@@ -138,7 +140,7 @@ function FilterPanel({ label, options, selected, onApply, searchable = false, hi
                   onChange={() => toggle(o.value)}
                 />
                 <span className={page.filterOptionLabel}>{o.label}</span>
-                <span className={page.filterOptionCount}>({o.count.toLocaleString()})</span>
+                <span className={page.filterOptionCount}>({formatNumber(o.count)})</span>
               </label>
             ))}
           </div>
@@ -1318,7 +1320,7 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
             <dt>Posted</dt>
             <dd>
               {job.posted_at
-                ? new Date(job.posted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatDate(job.posted_at)
                 : 'Publication date unavailable'}
             </dd>
           </div>
@@ -1376,7 +1378,7 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
             <span className={page.metaLabel}>Posted</span>
             <span className={page.metaValue}>
               {job.posted_at
-                ? new Date(job.posted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatDate(job.posted_at)
                 : 'Not published by source'}
             </span>
           </div>
@@ -1548,9 +1550,9 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
                 : 'Your resume already covers everything this job is looking for - no changes needed.'}
             </p>
             <p className={styles.tailorScore}>ATS score: {tailorResult.atsScore}</p>
-            <a href="/resume" className={styles.secondaryBtn} style={{ display: 'inline-block', marginTop: '0.5rem' }}>
+            <Link href="/resume" className={styles.secondaryBtn} style={{ display: 'inline-block', marginTop: '0.5rem' }}>
               Review full diff &amp; download on Resume page
-            </a>
+            </Link>
           </div>
         )}
         {tailorResult?.error && <p className={styles.errorText}>{tailorResult.error}</p>}

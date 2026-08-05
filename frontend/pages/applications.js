@@ -6,6 +6,7 @@ import NeedsYouDrawer from '../components/NeedsYouDrawer';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Applications.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDate, formatDateShort } from '../lib/format';
 
 const COLUMNS = [
   { key: 'applied', label: 'Applied' },
@@ -372,7 +373,7 @@ export default function Applications() {
                         </select>
                       )}
                     </td>
-                    <td>{new Date(app.applied_at).toLocaleDateString()}</td>
+                    <td>{formatDate(app.applied_at)}</td>
                   </tr>
                 ))}
                 {allApps.length === 0 && (
@@ -404,7 +405,7 @@ export default function Applications() {
                           </p>
                           <p className={page.cardSubtitle}>{app.company_name}</p>
                           <p className={page.cardMeta}>
-                            {new Date(app.applied_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                            {formatDateShort(app.applied_at)}
                           </p>
                           {app.status === 'failed' ? (
                             <>

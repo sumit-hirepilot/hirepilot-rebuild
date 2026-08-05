@@ -265,3 +265,11 @@
   font-weight: 500;
   cursor: pointer;
 }
+
+/* A3 / H4 — referenced by network.js, never defined. */
+.searchNote {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem;
+}

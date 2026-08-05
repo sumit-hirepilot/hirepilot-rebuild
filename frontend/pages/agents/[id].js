@@ -5,6 +5,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import styles from '../../styles/Dashboard.module.css';
 import page from '../../styles/AgentMatches.module.css';
 import { API_BASE } from '../../lib/apiBase';
+import Link from 'next/link';
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -93,7 +94,7 @@ export default function AgentMatches() {
       </Head>
 
       <DashboardLayout title="Search Agents" user={user}>
-        <a href="/agents" className={page.backLink}>&larr; All search agents</a>
+        <Link href="/agents" className={page.backLink}>&larr; All search agents</Link>
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatNumber } from '../lib/format';
+import Link from 'next/link';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -123,7 +125,7 @@ export default function Dashboard() {
               <p className={styles.setupBannerTitle}>Finish setting up your profile</p>
               <p className={styles.setupBannerText}>Add your skills so HirePilot can start matching and scoring jobs for you.</p>
             </div>
-            <a href="/settings" className={styles.setupBannerButton}>Complete setup</a>
+            <Link href="/settings" className={styles.setupBannerButton}>Complete setup</Link>
           </div>
         )}
 
@@ -139,7 +141,7 @@ export default function Dashboard() {
               </div>
             </div>
             {!autoApplyEnabled && (
-              <a href="/settings" className={styles.autopilotEnableLink}>Turn on in Settings &rarr;</a>
+              <Link href="/settings" className={styles.autopilotEnableLink}>Turn on in Settings &rarr;</Link>
             )}
           </div>
           <div className={styles.progressWrap}>
@@ -172,7 +174,7 @@ export default function Dashboard() {
               straight from the indexed job pool. */}
           <div className={styles.statCard}>
             <p className={styles.statLabel}>Jobs Indexed</p>
-            <p className={styles.statValue}>{scannedToday.toLocaleString()}</p>
+            <p className={styles.statValue}>{formatNumber(scannedToday)}</p>
           </div>
         </div>
 
@@ -180,7 +182,7 @@ export default function Dashboard() {
           <div className={styles.card} style={{ marginBottom: 0 }}>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Today&apos;s matches</h2>
-              <a href="/jobs" className={styles.sectionLink}>View all jobs</a>
+              <Link href="/jobs" className={styles.sectionLink}>View all jobs</Link>
             </div>
 
             {loading ? (
@@ -225,15 +227,15 @@ export default function Dashboard() {
 
         <h2 className={styles.sectionTitle} style={{ margin: '1.5rem 0 1rem' }}>Quick actions</h2>
         <div className={styles.quickActions}>
-          <a href="/jobs" className={styles.quickActionCard}>
+          <Link href="/jobs" className={styles.quickActionCard}>
             Find Jobs Now <span className={styles.quickActionArrow}>&rarr;</span>
-          </a>
-          <a href="/agents" className={styles.quickActionCard}>
+          </Link>
+          <Link href="/agents" className={styles.quickActionCard}>
             Create Search Agent <span className={styles.quickActionArrow}>&rarr;</span>
-          </a>
-          <a href="/resume" className={styles.quickActionCard}>
+          </Link>
+          <Link href="/resume" className={styles.quickActionCard}>
             Tailor Resume <span className={styles.quickActionArrow}>&rarr;</span>
-          </a>
+          </Link>
         </div>
       </DashboardLayout>
     </>

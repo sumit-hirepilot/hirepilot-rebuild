@@ -41,10 +41,22 @@ const QUALITY = [
 // Which platforms the extension can actually drive, and - just as importantly -
 // which it cannot. Claiming coverage we do not have is how a queue silently
 // fills with applications that were never sent.
+/*
+ * A3 / H6 — the status signal must agree with what the server will actually
+ * execute.
+ *
+ * Lever and Ashby rendered a GREEN dot beside honest text saying they were
+ * never verified. Colour is read faster than prose, so the page said
+ * "available" and "unavailable" at the same time, and the colour won. They are
+ * disabled in SUPPORTED_ATS (D7); the dot has to say so.
+ *
+ * `atsKey` binds each row to the server's whitelist, and a test asserts the
+ * two cannot drift - see __tests__/adapterStatus.test.js.
+ */
 const COVERAGE = [
-  { name: 'Greenhouse', state: 'full', note: 'Verified end to end on a live posting' },
-  { name: 'Lever', state: 'full', note: 'Adapter built; not yet verified on a live form' },
-  { name: 'Ashby', state: 'full', note: 'Adapter built; not yet verified on a live form' },
+  { name: 'Greenhouse', atsKey: 'greenhouse', state: 'full', note: 'Verified end to end on a live posting' },
+  { name: 'Lever', atsKey: 'lever', state: 'none', note: 'Adapter built, never verified on a live form - disabled until it is' },
+  { name: 'Ashby', atsKey: 'ashby', state: 'none', note: 'Adapter built, never verified on a live form - disabled until it is' },
   { name: 'Company career pages', state: 'partial', note: 'Works where the page embeds one of the above' },
   { name: 'Workday, Taleo, iCIMS', state: 'none', note: 'No adapter yet - queued and opened for you, never auto-submitted' },
 ];

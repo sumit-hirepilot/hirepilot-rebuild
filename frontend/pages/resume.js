@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Resume.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDate } from '../lib/format';
 
 const TABS = ['Resume Manager', 'Tailor for a Job', 'Cover Letters', 'Screening Answers', 'ATS Checker'];
 
@@ -375,7 +376,7 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
               <div className={page.scoreFill} style={{ width: `${t.ats_score}%` }} />
             </div>
             <p className={page.scoreNum}>{t.ats_score}</p>
-            <p className={page.tailoredDate}>{new Date(t.created_at).toLocaleDateString()}</p>
+            <p className={page.tailoredDate}>{formatDate(t.created_at)}</p>
             <div className={page.resumeActions}>
               {t.confirmed_at && (
                 <button

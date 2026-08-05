@@ -5,6 +5,8 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Settings.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatNumber } from '../lib/format';
+import Link from 'next/link';
 
 const TABS = ['Account', 'Apply', 'Memory', 'Portfolio', 'Plans', 'Referrals', 'Email',
   'Apply Profile', 'Preferences', 'Auto-Pilot', 'Integrations', 'Profile'];
@@ -440,7 +442,7 @@ export default function Settings() {
               );
             })}
             <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
-              Full editing lives on the <a href="/profile">Profile</a> page.
+              Full editing lives on the <Link href="/profile">Profile</Link> page.
             </p>
           </div>
         ) : tab === 'Portfolio' ? (
@@ -475,7 +477,7 @@ export default function Settings() {
                   <div className={page.planName}>
                     {t.name}{t.popular && <span className={page.planTag}>Most popular</span>}
                   </div>
-                  <div className={page.planApps}>{t.applicationsPerMonth.toLocaleString()}<small> applications / month</small></div>
+                  <div className={page.planApps}>{formatNumber(t.applicationsPerMonth)}<small> applications / month</small></div>
                   <ul className={page.planFeatures}>
                     {t.features.map((f) => <li key={f}>{f}</li>)}
                     <li>{t.autoApply ? 'Auto Apply included' : 'Auto Apply not included'}</li>
@@ -545,7 +547,7 @@ export default function Settings() {
               />
             </div>
             <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
-              Recruiter mail is handled on the <a href="/inbox">Inbox</a> page,
+              Recruiter mail is handled on the <Link href="/inbox">Inbox</Link> page,
               which has your forwarding address.
             </p>
           </div>
@@ -882,7 +884,7 @@ export default function Settings() {
             ))}
             <p className={page.masterSubtitle} style={{ marginTop: 12 }}>
               Recruiter mail works today through your HirePilot address on the{' '}
-              <a href="/inbox">Inbox</a> page. Connecting your own mailbox needs
+              <Link href="/inbox">Inbox</Link> page. Connecting your own mailbox needs
               third-party sign-in, which is not built yet.
             </p>
           </div>

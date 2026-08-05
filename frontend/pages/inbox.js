@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Inbox.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDateTime } from '../lib/format';
 
 /*
  * Inbox (PRD 3.4).
@@ -173,7 +174,7 @@ export default function Inbox() {
               {m.job_title && <div className={page.itemJob}>{m.job_title}</div>}
               {m.otp_code && <div className={page.itemOtp}>Code {m.otp_code}</div>}
               <div className={page.itemDate}>
-                {m.received_at ? new Date(m.received_at).toLocaleString() : ''}
+                {m.received_at ? formatDateTime(m.received_at) : ''}
               </div>
             </button>
           ))}
@@ -190,7 +191,7 @@ export default function Inbox() {
               <div className={page.readerMeta}>
                 <span className={`${page.cat} ${page[TONE[selected.category] || 'neutral']}`}>{selected.category}</span>
                 {selected.job_title && <span>{selected.job_title} · {selected.job_company}</span>}
-                {selected.received_at && <span>{new Date(selected.received_at).toLocaleString()}</span>}
+                {selected.received_at && <span>{formatDateTime(selected.received_at)}</span>}
               </div>
               {selected.otp_code && (
                 <div className={page.otpBox}>

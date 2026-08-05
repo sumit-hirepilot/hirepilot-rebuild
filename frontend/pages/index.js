@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import styles from '../styles/Home.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatDateTime, formatNumber } from '../lib/format';
 
 const SOURCE_LABELS = {
   remoteok: 'RemoteOK',
@@ -155,7 +156,7 @@ export default function Home({ stats = null }) {
   // "180+", shown whenever any direct-ATS source existed.
   const directCompanyCount = stats?.directCompanies ?? null;
   const lastSynced = stats?.lastSyncedAt
-    ? new Date(stats.lastSyncedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    ? formatDateTime(stats.lastSyncedAt)
     : null;
   const activeTicker = sources[tickerIndex];
 
@@ -234,7 +235,7 @@ export default function Home({ stats = null }) {
                   <div className={styles.statStrip}>
                     <div className={styles.statCell}>
                       <span className={styles.statNumber}>
-                        {totalJobs ? totalJobs.toLocaleString() : <span className={styles.statUnknown}>unavailable</span>}
+                        {totalJobs ? formatNumber(totalJobs) : <span className={styles.statUnknown}>unavailable</span>}
                       </span>
                       <span>active jobs indexed</span>
                     </div>
@@ -246,7 +247,7 @@ export default function Home({ stats = null }) {
                     </div>
                     <div className={styles.statCell}>
                       <span className={styles.statNumber}>
-                        {directCompanyCount ? directCompanyCount.toLocaleString() : <span className={styles.statUnknown}>unavailable</span>}
+                        {directCompanyCount ? formatNumber(directCompanyCount) : <span className={styles.statUnknown}>unavailable</span>}
                       </span>
                       <span>companies watched directly</span>
                     </div>
@@ -297,7 +298,7 @@ export default function Home({ stats = null }) {
                       <p className={styles.terminalLine}>
                         <span className={styles.terminalPrompt}>&gt;</span>{' '}
                         {stats
-                          ? `${stats.jobs.toLocaleString()} jobs across ${stats.sources} sources`
+                          ? `${formatNumber(stats.jobs)} jobs across ${stats.sources} sources`
                           : 'per-board counts unavailable right now'}
                       </p>
                     )}

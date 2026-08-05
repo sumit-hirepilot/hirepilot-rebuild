@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import page from '../styles/ResumeEditor.module.css';
 import { API_BASE } from '../lib/apiBase';
+import Link from 'next/link';
 
 /*
  * Resume editor: instruction panel left, live document right.
@@ -431,7 +432,7 @@ export default function ResumeEditor() {
             <div className={page.previewWrap}>
               <div className={page.coverPlaceholder}>
                 Cover letters are generated per application, from the job you are
-                applying to. Open one from the <a href="/apply-queue">apply queue</a>{' '}
+                applying to. Open one from the <Link href="/apply-queue">apply queue</Link>{' '}
                 to see and edit it there.
               </div>
             </div>

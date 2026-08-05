@@ -148,8 +148,17 @@ export default function NeedsYouDrawer({ runId = null, title, emptyText, onResol
 
             {isOpen && b.kind === 'question' && (
               <div className={styles.body}>
-                {b.questions.map((q) => {
-                  const key = `${b.applicationId}::${q.question}`;
+                {b.questions.map((q, qi) => {
+                  /*
+                   * A3 — the index is part of the key because employers reuse
+                   * wording. Twilio's form asks "Acknowledge" twice, so keying
+                   * on the question text alone collided, and React may omit a
+                   * duplicate-keyed child - which would silently drop one of
+                   * the questions blocking an application from this drawer.
+                   * The answer payload is keyed by q.question separately; this
+                   * key is only React's identity for the row.
+                   */
+                  const key = `${b.applicationId}::${qi}::${q.question}`;
                   return (
                     <label className={styles.field} key={key}>
                       {/* The employer's own wording, not an internal field name. */}
