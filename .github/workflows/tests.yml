@@ -28,9 +28,10 @@ jobs:
       - name: Install
         working-directory: backend
         run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
+      # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        working-directory: backend
-        run: npx jest --ci
+        run: node tools/run-suite.js backend 42
 
   frontend:
     runs-on: ubuntu-latest
@@ -46,8 +47,7 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        working-directory: frontend
-        run: npx jest --ci
+        run: node tools/run-suite.js frontend 60
 
       # Mutates a file, runs one guard, requires it to go RED, reverts. Fails
       # the build if any guard cannot detect its own violation.

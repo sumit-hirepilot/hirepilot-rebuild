@@ -144,3 +144,22 @@ until counsel answers that flag. See SUBMISSION_AUDIT.md §4.
 Filed as an A7-style backlog item with acceptance criteria (BACKLOG_MOBILE.md).
 E2 stays what it is: surfacing store links on the site. Building a mobile app
 is not in the current queue and must not be started as a side effect of E2.
+
+## D15 — no tsconfig checkJs; JSDoc on API shapes instead, deferred
+A3-c offered tsconfig with allowJs + checkJs, or a recorded reason not to.
+Recorded reason: turning on checkJs across a codebase this size surfaces
+hundreds of pre-existing implicit-any and possibly-undefined errors at once.
+The only ways through are a blanket ignore list, which makes the typecheck a
+rubber stamp, or a large refactor - and §BUILD forbids adjacent refactors.
+Either would trade a real guard for a green tick.
+
+What is being done instead, and it is not nothing: the concrete failure
+typechecking would have caught here is API request/response shape drift, and
+that is already guarded behaviourally - jobsRanking pins the ranking contract,
+submissionReceipt pins the receipt shape, scoreOnRead pins the scoring
+contract, adapterStatus pins the coverage vocabulary in both directions. Those
+catch drift a structural typecheck would not, because they assert on what the
+query actually produces.
+
+Revisit if a shape bug reaches production that JSDoc + checkJs would have
+caught. Until then this is deliberate, not an omission.
