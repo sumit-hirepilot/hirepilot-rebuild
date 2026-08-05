@@ -60,31 +60,57 @@ marketing site both live and functional.
 
 ---
 
+## Status
 
+Wave A CLOSED: A1-A6 plus A3-a/b/c. Verified on production, CI green.
+Suites: frontend 60, backend 42. Guard audit 26/26. Floors enforced in CI.
 
-## Just finished — A6, hardcoded figure sweep [shipped + VERIFIED 2026-08-05]
+## Just closed — A3-c [shipped + VERIFIED 2026-08-05]
 
-Layer L1. Changed `frontend/__tests__/noFabricatedZero.test.js`,
-`frontend/components/NotificationBell.js`, `frontend/scripts/prove-guards-red.js`.
+- Anchored every superstring-satisfiable assertion in BOTH suites. Out of
+  scope, per D12: `not.toMatch` (a superstring makes a negative assertion more
+  likely to fire) and rendered user copy (containment is the intent there).
+- `tools/run-suite.js`: exit 0 is also what jest returns when it ran NOTHING.
+  Runs jest, parses the JSON summary, fails unless a committed floor actually
+  executed, and refuses to call it a pass if the summary is unreadable. CI
+  calls it for both suites instead of jest directly. Proven by EXIT CODE both
+  directions, not by reading stdout.
+- D15: no tsconfig checkJs. Enabling it surfaces hundreds of pre-existing
+  errors; the ways through are a blanket ignore list (rubber stamp) or a
+  refactor §BUILD forbids. API shape drift is guarded behaviourally instead.
+- D13: submissions stay in the user's own browser, own session, user-initiated.
+  No remote control of the extension. Constraint 4 stays deferred: ToS until
+  counsel answers A5's flag.
+- D14 + BACKLOG_MOBILE.md: mobile app filed as a scoped item, NOT built. E2
+  stays link-surfacing.
 
-**Verified.** Frontend 60, backend 42, CI green, guard audit 26/26.
-Four new assertions, each proven red individually.
+Learned, and it cost a red CI: `--outputFile=/dev/stdout` worked locally and
+failed on the runner. Also `$?` after a pipeline reads the LAST command's
+status - I read `tail`'s exit code and nearly recorded a floor violation as
+passing, inside the goal about exit codes not being evidence.
 
-**Nothing fabricated was found in the product.** Every hit was read, not
-counted: `"$25K"` is inside a comment describing an already-fixed bug;
-"every 6 hours" matches `cron.schedule('0 */6 * * *')`; the credits pill is
-fetched and gated on presence; tier figures 600/1500/4500 are server-side in
-`plans.js` and ARE the enforced limits.
+## Next goal — A7.2, no parse failure reaches the UI (executable cold)
 
-**The real gap was coverage, not content.** `landingHonesty` guarded index.js
-only - the page that shipped "180+" while the truth was 153 - and nothing
-guarded the other twenty-odd surfaces. The three checks now run repo-wide.
+- A job row rendered company as literally "name". Any row whose company, title
+  or location failed to parse is repaired or withheld, never rendered with the
+  placeholder visible. Constraint 1.
+- Audit how many indexed jobs carry unparsed fields; report the count.
+- **A2c covered the RENDER side; this covers INGESTION.** Users currently see
+  "Company not stated"; the DATABASE row is still wrong.
 
-`'9+'` in the notification badge is DERIVED from a real count, so it is
-permitted with a `derived-figure:` note (mirroring `real-zero:`). The marker is
-load-bearing: removing it turns the guard red, and the audit carries that case.
-
----
+Start from this, do not re-derive:
+- `frontend/lib/renderState.js` exports `isParsed`/`parsedOr` and owns the
+  `NOT_PARSED` placeholder list. Reuse it server-side rather than writing a
+  second list that can drift.
+- Unknown, needs a real query: which source wrote `company_name = 'name'`, how
+  many rows, whether title/location are affected too.
+  `GET /api/applications/integrity` is the established pattern for reporting a
+  count from production without local DB access - extend it or add a sibling.
+- Ingestion lives in `backend/services/apis/`; poller runs every 6 hours.
+- Do NOT delete rows. Additive/corrective only, and any corrective migration
+  writes an audit row BEFORE it mutates.
+- After A7.2: A7.3 dates, A7.4 activity feed copy, A7.5 CTA sweep, A7.6 jobs
+  checkboxes, then A7.8-A7.10, then B1-B5.
 
 ## Next goal — A7.2, no parse failure reaches the UI (executable cold)
 
