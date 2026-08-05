@@ -98,3 +98,67 @@ describe('A2c — no component may represent "unknown" as zero', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/*
+ * A6 — the hardcoded-figure sweep, as a guard rather than a one-off pass.
+ *
+ * landingHonesty.test.js has guarded index.js against invented figures since
+ * G0.2, and index.js is the page that shipped "180+" while the truth was 153.
+ * But nothing guarded the other twenty-odd surfaces, so the same defect could
+ * land anywhere else and nobody would know until a user read it.
+ *
+ * Same rules, every page. Requires the match to sit inside a quoted string or
+ * JSX text so CSS values, unicode-range and animation timings are not dragged
+ * in - three separate false positives this project has already produced from
+ * looser patterns.
+ */
+describe('A6 — no page renders an invented figure', () => {
+  it('has pages to check', () => {
+    expect(FILES.length).toBeGreaterThan(10);
+  });
+
+  it('renders no hardcoded count with a + or k suffix', () => {
+    /*
+     * The shape of a figure someone rounded up rather than counted - "180+"
+     * shipped this way while the truth was 153.
+     *
+     * But not every suffixed literal is invented: a notification badge capped
+     * at "9+" is DERIVED from a real count and is true. So, as with the
+     * `real-zero:` marker, the literal is permitted where the line carries a
+     * `derived-figure:` note saying what it is derived from. The burden stays
+     * on the writer to say why it is not a guess.
+     */
+    const offenders = [];
+    for (const { file } of FILES) {
+      const raw = fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n');
+      raw.forEach((line, i) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('*') || trimmed.startsWith('//')) return;
+        if (!/['"`]\s*\d[\d,.]*\s*[+kKmM]\+?\s*['"`]/.test(line)) return;
+        if (/derived-figure:/.test(line)) return;
+        offenders.push(`${file}:${i + 1} ${trimmed}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('renders no hardcoded percentage as a display string', () => {
+    const offenders = [];
+    for (const { file, code } of FILES) {
+      const hits = code.match(/['"`]\s*\d{1,3}\s*%\s*['"`]/g) || [];
+      if (hits.length) offenders.push(`${file}: ${hits.join(', ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('declares no example/mock/sample/fake data constant', () => {
+    // How the fabricated 87% Figma match got onto the landing page: a constant
+    // that looked like data.
+    const offenders = [];
+    for (const { file, code } of FILES) {
+      const hits = code.match(/const\s+\w*(EXAMPLE|MOCK|SAMPLE|FAKE|DUMMY|PLACEHOLDER)\w*\s*=/gi) || [];
+      if (hits.length) offenders.push(`${file}: ${hits.join(', ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

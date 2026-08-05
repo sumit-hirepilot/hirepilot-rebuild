@@ -72,6 +72,18 @@ const CASES = [
     file: 'pages/applications.js', mutate: (s) => s.replace('export default function Applications() {',
       'export default function Applications() {\n  if (true) return null;') },
 
+  /* ---- A6: invented figures, every page not just the landing page ---- */
+  { suite: 'noFabricatedZero', test: 'renders no hardcoded count with a + or k suffix',
+    file: 'pages/tracker.js', mutate: (s) => s + "\nconst __v = '180+';\n" },
+  { suite: 'noFabricatedZero', test: 'renders no hardcoded percentage as a display string',
+    file: 'pages/tracker.js', mutate: (s) => s + "\nconst __v = '87%';\n" },
+  { suite: 'noFabricatedZero', test: 'declares no example/mock/sample/fake data constant',
+    file: 'pages/tracker.js', mutate: (s) => s + '\nconst MATCH_EXAMPLE = {};\n' },
+  // The justification marker must be load-bearing, not decorative.
+  { suite: 'noFabricatedZero', test: 'renders no hardcoded count with a + or k suffix',
+    file: 'components/NotificationBell.js',
+    mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
+
   /* ---- A3-c: superstring mutations ----
    * Each renames an identifier to a SUPERSTRING of itself. An unanchored
    * assertion (`toContain('og:image')`, `/HP_EXECUTE/`) stays green against
