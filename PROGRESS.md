@@ -88,6 +88,36 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.6 — CLOSED, but not the defect it was filed as.
+
+Filed as "checkboxes with no bulk action". Stale: the bulk pipeline landed, and
+driving it on production gives "1 job selected" -> "Prepare 1 application" ->
+Clear -> 0 checked. Closed by clicking it.
+
+The real defect, found only by clicking: the checkbox had NO accessible name -
+no id, no label element, no aria-label, no title. Twenty rows announced as
+"checkbox, unchecked" with nothing to distinguish them. Fully usable by sight,
+unusable otherwise. Name now built from the same title and company the row
+shows, through the same parsedOr, so spoken and visible cannot drift.
+Production: 20 labelled, e.g. "Select Product Designer at Sierra".
+
+THE FINDING THAT MATTERS MORE THAN THE FIX: @testing-library/user-event was
+never installed. There was no way to write a test that clicks anything. That is
+the mechanical answer to "thirty-four green frontend tests that don't click
+anything is a false floor" - it was not an oversight of discipline, the tool
+was absent. Installed. jobsBulkSelect.test.js drives real clicks, and uses
+getByRole with a name, which is the assistive-technology view: a control with
+no name cannot be found by the test either, so the two defects guard each other.
+
+This unblocks A7.10 (interaction coverage) - that goal was previously
+unbuildable and nobody had said so.
+
+FILED, NOT BUILT — A7.18, select-all. A full page is twenty clicks. It is a
+feature sitting next to an apply pipeline, not a defect, so it gets its own
+goal rather than being slipped in here.
+
+74 frontend / 88 backend, 48/48 guards proven red.
+
 ## A7.14 — CLOSED, a source that is not running is not a source with no jobs.
 
 The panel showed "We Work Remotely (0 · Publication date unavailable)" under a
@@ -240,7 +270,7 @@ identical response SHAPE every time, `ranking` always present.
   `frontend/scripts/prove-guards-red.js`.
 - Verified locally AND on production.
 
-Then: A7.14, A7.5, A7.6, A7.8-A7.10, then B1-B5.
+Then: A7.5, A7.8-A7.10, A7.18, A7.11, then B1-B5. (A7.14, A7.6 CLOSED.)
 
 ## Next goal — A7.13, search returns nothing against a live index (cold)
 
