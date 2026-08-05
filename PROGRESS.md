@@ -2,6 +2,7 @@
 
 Current wave: A (Master Prompt v2)
 Current goal: A3. Then A4, A5, A6, then A7.2-A7.6.
+A7.7 shipped and verified 2026-08-05.
 A7.1 shipped and verified 2026-08-05 (priority override).
 Blocked on: nothing hard. ADMIN_EMAILS would add identities to the A1 audit,
 but the audit itself already ran and found zero affected users.
@@ -193,6 +194,33 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## A7.7 — every list has an explicit, deterministic sort  [shipped + VERIFIED 2026-08-05]
+Layer: L1
+Changed: backend/routes/jobs.js, matches.js, applications.js, apply.js,
+  tracker.js, agents.js, backend/__tests__/jobsRanking.test.js,
+  frontend/pages/jobs.js
+Evidence (production, signed-in Principal Product Designer account):
+  - 24h filter: ranking.sort flips to "recent"; rows strictly descending by
+    recency, verified True over the returned set.
+  - Best match: score DESC True; 3 equal-score groups all breaking by recency
+    DESC with undated last; row ids byte-identical across two reloads
+    (determinism, which was the actual complaint).
+  - UI states the active order - "Best match first, ties broken by newest" /
+    "Newest first, then best match" - so it is never inferred from the data.
+  - Clicking Newest first genuinely reorders: 75/undated-first became
+    4d/4d/4d/6d/7d with score as the secondary key. orderActuallyChanged True.
+Root cause: my own A7.1 tie-break. `ORDER BY overall_score DESC, id` is
+  deterministic but orders ties by insertion, which reads as no order at all.
+Latent elsewhere, all fixed: Dashboard matches had NO tie-break; Applications,
+  Apply Queue, submitted list, Tracker board, Tracker export, Search Agents and
+  agent matches all sorted on a timestamp with no unique final key. Postgres
+  also defaults DESC to NULLS FIRST, so `ORDER BY posted_at DESC` was leading
+  the "newest" list with jobs that have no date.
+Learned: `sort` and `ranked` were one field, so choosing "newest" silently
+  abandoned the personalised set and dropped every score. Two different
+  questions - what order, and which set - must not share a parameter.
+Follow-ups: none
 
 ## A7.1 — Jobs is the same product as the Dashboard  [shipped + VERIFIED 2026-08-05]
 Layer: L1
@@ -557,6 +585,22 @@ reintroducing the bug in jobs.js and by removing the `real-zero:` annotation.
   and kept no record, so A1 could prove the current state is clean but could
   never answer who had been affected. That information is gone. Any future
   corrective statement records what it is about to change, first.
+- **Presence is not function.** The A7.7 sort control rendered with the right
+  label, the right active styling and the right stated order - and did nothing,
+  because on that page state alone never refetches and the button called only
+  its setter. Every DOM assertion passed. Clicking it and observing the order
+  was the only thing that caught it. Assert on the EFFECT of a control, never
+  on its existence.
+- **A visual change needs a visual or geometric check.** The A7.1 score badge
+  overflowed its ring and overlapped the actions on every row while every text
+  assertion stayed green - innerText is identical whether an element sits
+  inside its container or spills across the one beside it. Check geometry
+  (scrollWidth vs clientWidth, bounding boxes) or look at the render.
+- **A reload to the same path is not a fresh document.** Measuring after
+  `location.href = '/jobs'` while already on /jobs returned the PREVIOUS
+  bundle's behaviour and produced a contradictory reading - unranked copy
+  beside ranked data. Use location.replace with a cache-busting param when
+  verifying a fresh deploy.
 - **Assert on the argument that actually carries the value.** A test that
   checked `query.mock.calls[n][1]` (the bound parameters) for an event name
   that is a literal inside the SQL string passed cleanly against the broken
