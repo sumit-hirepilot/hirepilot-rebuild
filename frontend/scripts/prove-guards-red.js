@@ -106,10 +106,10 @@ const CASES = [
 
   /* ---- A7.13: the empty state names a cause and stops contradicting itself ---- */
   { suite: 'emptyStateCause', dir: 'backend', base: true,
-    test: 'names the single filter that recovers the most, not just any of them',
+    test: 'names the filter it is most reasonable to relax, not the largest recovery',
     file: 'backend/routes/jobs.js',
-    mutate: (s) => s.replace('b.withoutIt > (a ? a.withoutIt : 0)',
-      'b.withoutIt < (a ? a.withoutIt : Infinity)') },
+    mutate: (s) => s.replace('(a.relaxOrder - b.relaxOrder) || (b.withoutIt - a.withoutIt)',
+      '(b.withoutIt - a.withoutIt)') },
   { suite: 'emptyStateCause', dir: 'backend', base: true,
     test: 'does not run the diagnosis when there is nothing to diagnose',
     file: 'backend/routes/jobs.js',

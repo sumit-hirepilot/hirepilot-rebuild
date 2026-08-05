@@ -642,6 +642,28 @@ router.get('/sources', async (req, res) => {
   }
 });
 
+/*
+ * A7.13 — how readily each filter should be given up.
+ *
+ * 1 is a refinement the user is likely indifferent to, 2 is a deliberate
+ * choice, 3 is the intent itself. Suggesting someone drop their search term
+ * because it recovers the most results is arithmetically correct and useless.
+ */
+const RELAX_ORDER = {
+  minScore: 1,
+  datePosted: 1,
+  salary: 2,
+  workArrangement: 2,
+  jobType: 2,
+  experience: 2,
+  region: 2,
+  location: 2,
+  exclude: 2,
+  source: 2,
+  company: 3,
+  keywords: 3,
+};
+
 // Get all active jobs with pagination and filters
 const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, apply_url, location, work_arrangement,
               salary_min, salary_max, job_type, posted_at, created_at`;
@@ -729,7 +751,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      */
     const filterSpecs = [];
     const addFilter = (key, label, build, indexFilter = true) =>
-      filterSpecs.push({ key, label, build, indexFilter });
+      filterSpecs.push({ key, label, build, indexFilter, relaxOrder: RELAX_ORDER[key] ?? 2 });
 
     const asArray = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).filter(Boolean);
 
@@ -1005,10 +1027,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      */
     if (total === 0) {
       const candidates = [
-        ...filterSpecs.map((f) => ({ key: f.key, label: f.label })),
-        ...(hasKeywords ? [{ key: 'keywords', label: `Search: ${keywords.join(', ')}` }] : []),
+        ...filterSpecs.map((f) => ({ key: f.key, label: f.label, relaxOrder: f.relaxOrder })),
+        ...(hasKeywords
+          ? [{ key: 'keywords', label: `Search: ${keywords.join(', ')}`, relaxOrder: RELAX_ORDER.keywords }]
+          : []),
         ...(rankByScore && minScore > 0
-          ? [{ key: 'minScore', label: `Match score above ${Math.round(minScore * 100)}%` }]
+          ? [{ key: 'minScore', label: `Match score above ${Math.round(minScore * 100)}%`, relaxOrder: RELAX_ORDER.minScore }]
           : []),
       ];
 
@@ -1023,13 +1047,28 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         measured.push({ ...c, withoutIt: parseInt(r.rows[0]?.count ?? 0, 10) });
       }
 
-      // The one that recovers the most, and null when none of them does -
-      // "no single filter is responsible" is a real answer, and naming the
-      // first candidate anyway would be a fabricated cause.
-      const best = measured.reduce((a, b) => (b.withoutIt > (a ? a.withoutIt : 0) ? b : a), null);
+      /*
+       * NOT simply the largest recovery. Measured on production for
+       * figma + Past 24 hours: dropping the keyword recovers 579, dropping the
+       * date recovers 11. "Your search term is what emptied this" is true and
+       * useless - the user typed figma on purpose, and the advice amounts to
+       * telling them to stop looking for the job they want.
+       *
+       * So candidates are ranked by how reasonable they are to relax first:
+       * a score floor or a date window is a refinement, a facet is a choice,
+       * and the search term is the intent itself. Largest recovery only breaks
+       * ties within the same tier.
+       *
+       * null when nothing recovers anything - "no single filter is
+       * responsible" is a real answer, and naming one anyway would be a
+       * fabricated cause.
+       */
+      const best = measured
+        .filter((m) => m.withoutIt > 0)
+        .sort((a, b) => (a.relaxOrder - b.relaxOrder) || (b.withoutIt - a.withoutIt))[0] || null;
       emptyReason = {
         filters: measured,
-        primary: best && best.withoutIt > 0 ? best.key : null,
+        primary: best ? best.key : null,
       };
     }
 

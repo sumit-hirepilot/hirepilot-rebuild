@@ -277,3 +277,27 @@ resolve this - p50 was 0.391s before and 0.405s after, and p95 moved in both
 directions across runs, because round-trip and serialising twenty descriptions
 dominate a 42ms query. Measuring the right quantity mattered more than
 measuring carefully.
+
+
+## D21 — suggest the filter it is reasonable to relax, not the one that recovers most
+
+The empty-state diagnosis first ranked filters by how many results dropping
+each one recovers. Production said, for figma + Past 24 hours:
+
+    drop the keyword    -> 579
+    drop the date       -> 11
+    drop the 40% floor  -> 0
+
+Largest recovery names the keyword. That is arithmetically correct and useless:
+the user typed figma on purpose, and the advice reduces to "stop looking for
+the job you want". The useful answer is the date - 11 figma roles exist outside
+the window, and the user's intent survives.
+
+So candidates carry a relax order: 1 for refinements the user is likely
+indifferent to (score floor, date window), 2 for deliberate choices (facets,
+location, employment type), 3 for the intent itself (the search term, the
+company). Size only breaks ties inside a tier.
+
+Found by running the feature against real data rather than the fixture written
+for it - the fixture agreed with the wrong rule because its largest recovery
+was also its first candidate.

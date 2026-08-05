@@ -66,14 +66,16 @@ describe('A7.13 — the empty state names a cause, with a number behind it', () 
     }
   });
 
-  it('names the single filter that recovers the most, not just any of them', async () => {
+  it('names the filter it is most reasonable to relax, not the largest recovery', async () => {
     /*
-     * The winner is deliberately NOT the first candidate. With [11, 0, 0] the
-     * date filter is both first in the list and the largest recovery, so
-     * "take the maximum" and "take the first" agree and the test cannot tell
-     * them apart - which is how the first version of this passed against a
-     * mutation that took measured[0]. Here dropping the keyword recovers 25
-     * and dropping the date recovers 3, so only the maximum is correct.
+     * Measured on production for figma + Past 24 hours: dropping the keyword
+     * recovers 579, dropping the date recovers 11. "Largest recovery" would
+     * name the keyword - arithmetically correct and useless, because the user
+     * typed figma on purpose and the advice reduces to "stop looking for the
+     * job you want".
+     *
+     * So this fixture makes the keyword the biggest recovery by far (25 vs 3)
+     * and still expects the date. Size only breaks ties within a tier.
      */
     mockCounts([0, 0, 3, 25, 0]);
     const res = await request(app())
@@ -83,7 +85,20 @@ describe('A7.13 — the empty state names a cause, with a number behind it', () 
     const byKey = Object.fromEntries(res.body.emptyReason.filters.map((f) => [f.key, f.withoutIt]));
     expect(byKey.datePosted).toBe(3);
     expect(byKey.keywords).toBe(25);
-    expect(res.body.emptyReason.primary).toBe('keywords');
+    expect(res.body.emptyReason.primary).toBe('datePosted');
+  });
+
+  it('breaks ties within a tier by how much is recovered', async () => {
+    // Two refinements, both droppable: the bigger recovery wins. Without this
+    // the ordering could be positional and nobody would notice.
+    mockCounts([0, 0, 2, 40, 0]);
+    const res = await request(app())
+      .get('/api/jobs?limit=20&datePosted=24h&minScore=0.9&location=remote')
+      .set('Authorization', `Bearer ${token}`);
+
+    const keys = res.body.emptyReason.filters.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['location', 'datePosted', 'minScore']));
+    expect(['datePosted', 'minScore']).toContain(res.body.emptyReason.primary);
   });
 
   it('says so plainly when no single filter explains it', async () => {
