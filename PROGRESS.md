@@ -1,7 +1,8 @@
 # HirePilot — Progress
 
 Current wave: A (Master Prompt v2)
-Current goal: A3. Then A4, A5, A6, then A7.2-A7.6.
+Current goal: A4. Then A5, A6, A7.2-A7.6, A7.8-A7.10.
+A3 shipped and verified 2026-08-05.
 A7.7 shipped and verified 2026-08-05.
 A7.1 shipped and verified 2026-08-05 (priority override).
 Blocked on: nothing hard. ADMIN_EMAILS would add identities to the A1 audit,
@@ -22,9 +23,9 @@ H2/H3/H4/H6/H7/H8 -> A3. G0.4 (pricing) -> B3.
       FIXED by A2 and re-verified 2026-08-05 on a brand-new production
       account with no manual recalculate: total 500, top score 0.70.
 [x] Latest Railway deploy green
-[ ] Zero console errors on landing, dashboard, applications, auto-apply
-      /applications and /auto-apply verified clean on production (#45).
-      Landing and dashboard NOT re-checked this cycle -> A3.
+[x] Zero console errors on landing, dashboard, applications, auto-apply
+      FIXED by A3. Zero errors on /, /applications and /auto-apply, verified
+      BOTH locally (fresh tab, empty console buffer) and on production.
 [x] No tracker row carries "applied" without a submission record
       FIXED by A1 and audited across ALL users 2026-08-05:
       applied_false 0, users_affected 0, constraintPresent true
@@ -194,6 +195,46 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## A3 — hydration, CSS resolution and status integrity, guarded  [shipped + VERIFIED 2026-08-05]
+Layer: L1
+Changed: frontend/components/Layout.js, lib/format.js, .eslintrc.json,
+  jest.setup.js, 4 new test files, styles/Dashboard+Network+AutoApply.module.css,
+  15 formatting call sites, 14 <a>-to-<Link> conversions, NeedsYouDrawer.js,
+  pages/auto-apply.js
+Evidence:
+  - LOCAL, the point of the goal: /, /applications and /auto-apply all attach a
+    React root and render real content (3,403 / 8,737 / 6,747 chars), with ZERO
+    console errors, read in a FRESH tab so the buffer could not be stale.
+    Before A3, local /applications rendered nothing at all - no root, no
+    request. H5 closed.
+  - Production: same three pages, root attached, zero console errors.
+  - H6 measured by computed style, not by eye: Greenhouse rgb(16,185,129),
+    Lever and Ashby rgb(91,107,132) at 0.45 opacity, career pages amber.
+  - Guards each confirmed to FAIL deliberately: hydration (both assertions red
+    against the old Layout), CSS resolution (21 real misses), adapter binding
+    (red when Lever is set back to green), lint (fires with its message).
+  - Suites: frontend 46, backend 34. Build compiles with lint now enforced.
+Learned:
+  - H4 as filed was a FALSE POSITIVE from my own earlier checker. .proof and
+    .proofTitle ARE defined, in grouped selectors (`.match, .proof {`) that a
+    line-anchored regex cannot see. I had already hit that exact mode on
+    .locInput, noticed it, and filed a defect from the same checker anyway.
+  - The proper parser then found 21 genuine misses the ad-hoc grep never would
+    have: six pages rendering their headers unstyled.
+  - H3 was 15 call sites, not one, and included NUMBER formatting - 23,958 in
+    en-US is 23.958 in de-DE, equally server-rendered and equally wrong.
+  - Adding an eslint config enabled linting during `next build` for the FIRST
+    time and immediately failed it on 14 real defects. There had been no lint
+    gate at all.
+  - Fixing hydration made a second bug audible: duplicate React keys in the
+    Needs You drawer, because Twilio asks "Acknowledge" twice. Noise had been
+    hiding it. Removing noise is how you find the next defect.
+  - I twice measured the wrong thing: getComputedStyle(...).color on a dot
+    styled with `background`, and a console buffer retained across a reload.
+    Both looked like product defects and were not.
+Follow-ups: A3-a (guard blind spot: computed CSS access like
+  page[`state_${x}`] and page[`s_${status}`] in apply-queue.js is unchecked)
 
 ## A7.7 — every list has an explicit, deterministic sort  [shipped + VERIFIED 2026-08-05]
 Layer: L1
