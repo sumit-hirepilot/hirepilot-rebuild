@@ -585,6 +585,14 @@ reintroducing the bug in jobs.js and by removing the `real-zero:` annotation.
   and kept no record, so A1 could prove the current state is clean but could
   never answer who had been affected. That information is gone. Any future
   corrective statement records what it is about to change, first.
+- **Count what a test suite actually exercises, not how many tests it has.**
+  Audited after A7.7: of 34 green frontend tests, exactly ONE drives an
+  interaction, and it asserts a re-mount rather than a click-triggered
+  refetch. 21 of the 34 never render a component at all - 12 are pure function
+  tests on renderState, 13 are source-text scans. All three kinds are
+  legitimate and none should be deleted, but only 9 are evidence about
+  rendering and ~0 about behaviour. "34 tests green" was quoted as a floor it
+  does not provide. State the composition, not the total.
 - **Presence is not function.** The A7.7 sort control rendered with the right
   label, the right active styling and the right stated order - and did nothing,
   because on that page state alone never refetches and the button called only
@@ -639,6 +647,25 @@ reintroducing the bug in jobs.js and by removing the `real-zero:` annotation.
   a comment saying "keep these in sync" would not.
 
 ## Follow-ups
+
+- **A7.8 — one shared ordering helper.** A7.7 fixed eight surfaces that each
+  wrote their own ORDER BY with no unique final key; the ninth list added will
+  reintroduce it. Build `orderFor(list)` that always appends a unique final key
+  and states NULLS LAST explicitly, and route every list query through it, so
+  the property is inherited rather than remembered. Operator-raised at the
+  A7.7 boundary.
+- **A7.9 — audit every parameter carrying two meanings.** `sort`/`ranked` was
+  one field answering "what order" AND "which set", which is why choosing
+  newest silently dropped the scores. `/api/jobs` vs `/api/matches` was the
+  same category error one level up. Check the filters specifically: does
+  changing a filter also change the ranking SOURCE, silently? Operator-raised
+  at the A7.7 boundary.
+- **A7.10 — the frontend suite tests render, not behaviour.** See the standing
+  rule above for the measured composition. Add interaction coverage where a
+  control's whole job is to cause a refetch: the A7.7 sort buttons, the score
+  floor, the ranked/all toggle, the Applications retry. Each must assert the
+  REQUEST that results, not the button's existence - that is precisely the gap
+  that let a dead sort control ship.
 
 - **A2c-ingest — a job is stored with `company_name` set to the literal string
   "name".** Render is now guarded by `parsedOr`, so users see "Company not
