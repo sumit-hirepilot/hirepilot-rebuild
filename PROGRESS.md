@@ -88,6 +88,51 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.14 — CLOSED, a source that is not running is not a source with no jobs.
+
+The panel showed "We Work Remotely (0 · Publication date unavailable)" under a
+heading reading "⚡ Live sources". Four separate untruths in one line, and the
+diagnosis came from production before any code moved: weworkremotely reports
+lastRunSuccess null with ZERO ingestion runs. It was never failing. It was
+never running. Their v3 API also 404s now, but that is downstream of a decision
+already taken - the aggregator deliberately does not fetch this board.
+
+Fixed:
+- "Live sources" -> "Sources". One member of the row was not live.
+- "(0 · ...)" -> "(not connected)". Nothing counted it, so there is no number
+  to print. Same class as A2c: an unmeasured thing rendering as a measured zero.
+- "Publication date unavailable" was A7.3's vocabulary for a JOB's missing
+  publish date, printed about a SOURCE's last fetch. Split relativeTime (the
+  arithmetic, returns null) from timeAgo / fetchedAgo (the vocabulary). One
+  calculation, two words for null, so they cannot drift.
+- The dot keyed off `count > 0`, wrong in BOTH directions: a source that died
+  overnight still has yesterday's rows and read as active, a wired source that
+  matched nothing read as dead. Status is derived once server-side now -
+  not_connected / never_run / failing / live.
+- Then the dot was red for not_connected, which is the same defect one level
+  down: red is a call to action and a deliberate non-fetch needs none. Neutral
+  for not_connected and never_run; red reserved for failing.
+- N+1 in the same endpoint: success rates ran `await query()` inside a loop
+  over every source. 13 sequential round trips, growing per source added.
+  Measured against production /api/jobs/sources did not return inside 180s.
+  One windowed query: 180s+ -> 0.33s.
+
+VERIFIED ON PRODUCTION: dot rgb(156,163,175) neutral vs rgb(4,120,87) live,
+read off backgroundColor (the property that carries the value, per the rule
+that cost us a session); tooltip carries the reason; "Publication date
+unavailable" now appears ONLY on job cards that genuinely lack a posted_at.
+375 / 768 / 1440, no horizontal overflow, no console errors.
+
+NOT DONE, deliberately: WWR's RSS feed returns 200 locally with pubDate on
+100/100 items, and robots.txt disallows only account paths. Not sufficient to
+re-enable - a 200 from a residential IP says nothing about Railway's egress,
+and finding out means probing their bot protection from the server, which is
+the thing the original decision refused. D19 records the terms for revisiting:
+a positive signal (a supported API, or permission), not the absence of a
+negative one.
+
+88 backend / 70 frontend, 45/45 guards proven red.
+
 ## A7.17 — CLOSED, one ranking path. Verified local + production.
 
 Six ranking implementations existed; three inside GET /api/jobs alone. Collapsed
