@@ -162,3 +162,47 @@ describe('A6 — no page renders an invented figure', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/*
+ * A7.3 — one relative-time formatter, one string for "no date".
+ *
+ * Four copies of timeAgo existed (dashboard, jobs, agents/[id],
+ * NotificationBell) and two strings described the same state: "date
+ * unavailable" and "Publication date unavailable". Two strings for one state
+ * is two states to whoever is reading the screen, and four copies is four
+ * places for the next fix to miss.
+ */
+describe('A7.3 — dates are formatted in one place', () => {
+  it('defines timeAgo exactly once, in lib/format.js', () => {
+    const offenders = [];
+    for (const { file, code } of FILES) {
+      if (/function timeAgo\s*\(|const timeAgo\s*=\s*\(/.test(code)) offenders.push(file);
+    }
+    // FILES covers pages/ and components/ - lib/ is deliberately excluded, so
+    // the canonical definition is not itself flagged.
+    expect(offenders).toEqual([]);
+  });
+
+  it('uses one string for a missing publication date', () => {
+    // 'date unavailable' was the second wording. Anchored so the canonical
+    // 'Publication date unavailable' does not match its own guard.
+    const offenders = [];
+    for (const { file, code } of FILES) {
+      if (/['"`]date unavailable['"`]/i.test(code)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('never labels a capped list as a time-bounded count', () => {
+    /*
+     * "Today's Matches" rendered `matches.length` from /api/matches?limit=5 -
+     * neither today's nor a count of matches, just how many rows a limit-5
+     * request returned, capped at 5.
+     */
+    const offenders = [];
+    for (const { file, code } of FILES) {
+      if (/Today&apos;s Matches|Today's Matches/.test(code)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

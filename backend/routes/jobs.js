@@ -349,7 +349,31 @@ router.get('/field-integrity', async (req, res) => {
         GROUP BY source ORDER BY bad DESC`,
       [placeholders]
     );
-    res.json({ ...rows[0], badCompanyBySource: bySource });
+    /*
+     * A7.3 — publication-date coverage per source. D4 (the timing signal) is
+     * impossible without a trustworthy posted_at, so knowing WHICH sources
+     * supply one is a wedge prerequisite, not a curiosity.
+     */
+    const { rows: dates } = await query(
+      `SELECT source,
+              COUNT(*)::int                                    AS total,
+              COUNT(*) FILTER (WHERE posted_at IS NULL)::int    AS undated
+         FROM jobs WHERE is_active = true
+        GROUP BY source ORDER BY undated DESC`
+    );
+    const undatedTotal = dates.reduce((n, r) => n + r.undated, 0);
+    const grandTotal = dates.reduce((n, r) => n + r.total, 0);
+
+    res.json({
+      ...rows[0],
+      badCompanyBySource: bySource,
+      dateCoverage: {
+        undated: undatedTotal,
+        total: grandTotal,
+        // Stated as a fraction the caller can check, not a pre-rounded percent.
+        bySource: dates,
+      },
+    });
   } catch (err) {
     console.error('Field integrity error:', err);
     res.status(500).json({ error: 'Failed to run the field integrity check' });

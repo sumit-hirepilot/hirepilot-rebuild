@@ -84,6 +84,15 @@ const CASES = [
     file: 'components/NotificationBell.js',
     mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
 
+  /* ---- A7.3: one date formatter, one no-date string, no fake time window ---- */
+  { suite: 'noFabricatedZero', test: 'defines timeAgo exactly once, in lib/format.js',
+    file: 'pages/tracker.js',
+    mutate: (s) => s + '\nfunction timeAgo(dateStr) { return dateStr; }\n' },
+  { suite: 'noFabricatedZero', test: 'uses one string for a missing publication date',
+    file: 'pages/tracker.js', mutate: (s) => s + "\nconst __v = 'date unavailable';\n" },
+  { suite: 'noFabricatedZero', test: 'never labels a capped list as a time-bounded count',
+    file: 'pages/tracker.js', mutate: (s) => s + "\nconst __v = <p>Today's Matches</p>;\n" },
+
   /* ---- A7.2: a field that did not parse must not be stored ---- */
   { suite: 'parsedField', dir: 'backend', base: true,
     test: 'gates on isParsed, not on truthiness',

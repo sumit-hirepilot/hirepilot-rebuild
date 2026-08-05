@@ -11,6 +11,16 @@
         "selector": "CallExpression[callee.property.name=/^toLocale(String|DateString|TimeString)$/][arguments.0.type='Identifier'][arguments.0.name='undefined']",
         "message": "A3/H3: passing `undefined` as the locale is the same as passing nothing - the host decides. Use lib/format.js."
       }
-    ]
+    ],
+    "no-undef": "error"
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
   }
 }

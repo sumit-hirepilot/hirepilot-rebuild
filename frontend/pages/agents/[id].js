@@ -6,17 +6,8 @@ import styles from '../../styles/Dashboard.module.css';
 import page from '../../styles/AgentMatches.module.css';
 import { API_BASE } from '../../lib/apiBase';
 import Link from 'next/link';
+import { timeAgo } from '../../lib/format';
 
-function timeAgo(dateStr) {
-  if (!dateStr) return '';
-  const diffMs = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 export default function AgentMatches() {
   const router = useRouter();

@@ -6,19 +6,11 @@ import styles from '../styles/Dashboard.module.css';
 import { API_BASE } from '../lib/apiBase';
 import { formatNumber } from '../lib/format';
 import Link from 'next/link';
+import { timeAgo } from '../lib/format';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function timeAgo(dateStr) {
-  const diffMs = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -31,6 +23,8 @@ export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [matches, setMatches] = useState([]);
+  // null = not loaded. Never 0, which would assert "no matches" before asking.
+  const [matchTotalRaw, setMatchTotalRaw] = useState(null);
   const [appStats, setAppStats] = useState(null);
   const [activity, setActivity] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -62,6 +56,7 @@ export default function Dashboard() {
         if (matchesRes.ok) {
           const data = await matchesRes.json();
           setMatches(data.matches || []);
+          setMatchTotalRaw(typeof data.total === 'number' ? data.total : null);
         }
 
         if (statsRes.ok) {
@@ -101,7 +96,15 @@ export default function Dashboard() {
   const applicationsSent = appStats ? parseInt(appStats.total_applications || 0) : 0;
   const interviews = appStats ? parseInt(appStats.interviews || 0) : 0;
   const scannedToday = appStats ? parseInt(appStats.scanned_today || 0) : 0;
-  const todaysMatches = matches.length;
+  /*
+   * A7.3 — this was `matches.length` from /api/matches?limit=5, labelled
+   * "Today's Matches". It was neither today's nor a count of matches: it was
+   * how many rows a limit-5 request happened to return, capped at 5. The
+   * label named something the number was not.
+   *
+   * `total` is the real count the same response already carries.
+   */
+  const matchTotal = matchTotalRaw;
   const prefs = profile?.preferences;
   const autoApplyEnabled = !!prefs?.auto_apply_enabled;
   const dailyLimit = prefs?.auto_apply_limit_per_day || 10;
@@ -136,7 +139,7 @@ export default function Dashboard() {
               <div>
                 <p className={styles.autopilotTitle}>{autoApplyEnabled ? 'Auto-Pilot Active' : 'Auto-Pilot Paused'}</p>
                 <p className={styles.autopilotSubtitle}>
-                  {scannedToday} jobs scanned &middot; {applicationsSent} tracked &middot; {todaysMatches} matches found
+                  {scannedToday} jobs scanned &middot; {applicationsSent} tracked &middot; {matchTotal === null ? '—' : formatNumber(matchTotal)} matches found
                 </p>
               </div>
             </div>
@@ -157,8 +160,8 @@ export default function Dashboard() {
 
         <div className={styles.statsGrid}>
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Today&apos;s Matches</p>
-            <p className={styles.statValue}>{todaysMatches}</p>
+            <p className={styles.statLabel}>Matches above your bar</p>
+            <p className={styles.statValue}>{matchTotal === null ? '—' : formatNumber(matchTotal)}</p>
           </div>
           <div className={styles.statCard}>
             <p className={styles.statLabel}>Applications Tracked</p>
@@ -200,7 +203,7 @@ export default function Dashboard() {
                     <p className={styles.matchSubtitle}>
                       {m.company_name} &middot; {m.location}
                       {' · '}
-                      {m.posted_at ? timeAgo(m.posted_at) : 'date unavailable'}
+                      {timeAgo(m.posted_at)}
                     </p>
                   </div>
                 </div>

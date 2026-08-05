@@ -6,7 +6,7 @@ import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
 import { API_BASE } from '../lib/apiBase';
 import { countText, parsedOr } from '../lib/renderState';
-import { formatDate, formatNumber } from '../lib/format';
+import { formatDate, formatNumber, timeAgo, NO_DATE } from '../lib/format';
 import Link from 'next/link';
 
 const PAGE_SIZE = 20;
@@ -267,25 +267,13 @@ function formatSalary(job) {
   return `${cur} ${range}${per}`;
 }
 
-function timeAgo(dateStr) {
-  if (!dateStr) return 'never';
-  const diffMs = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 // Some sources don't expose a trustworthy original-publish-date field (or
 // only expose a "last synced/updated" timestamp that isn't the same thing) -
 // posted_at is left null rather than backend fabricating a fake recent date,
 // so this must say so plainly instead of computing a misleading "Xh ago".
-function postedTimeAgo(dateStr) {
-  if (!dateStr) return 'Publication date unavailable';
-  return timeAgo(dateStr);
-}
+// A7.3: timeAgo already returns the one canonical NO_DATE string.
+const postedTimeAgo = timeAgo;
 
 export default function Jobs() {
   const router = useRouter();
@@ -1319,9 +1307,8 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
           <div className={styles.metaRow}>
             <dt>Posted</dt>
             <dd>
-              {job.posted_at
-                ? formatDate(job.posted_at)
-                : 'Publication date unavailable'}
+              {/* A7.3: NO_DATE is the one canonical string for this state. */}
+              {job.posted_at ? formatDate(job.posted_at) : NO_DATE}
             </dd>
           </div>
           <div className={styles.metaRow}><dt>Source</dt><dd>{sourceLabels[job.source] || job.source}</dd></div>
