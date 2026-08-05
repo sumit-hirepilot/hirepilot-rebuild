@@ -2,6 +2,7 @@
 
 Current wave: A (Master Prompt v2)
 Current goal: A4. Then A5, A6, A7.2-A7.6, A7.8-A7.10.
+A3-b shipped and verified 2026-08-05 (CI gate now live).
 A3 shipped and verified 2026-08-05.
 A7.7 shipped and verified 2026-08-05.
 A7.1 shipped and verified 2026-08-05 (priority override).
@@ -195,6 +196,45 @@ renders as either nothing or a confident lie.
   at all on either screen.
 
 ## Shipped
+
+## A3-b — every guard proven red; the push gate that never existed  [shipped + VERIFIED 2026-08-05]
+Layer: L1
+Changed: hirepilot-master-prompt.md, .github/workflows/tests.yml,
+  frontend/scripts/prove-guards-red.js, frontend/__tests__/dynamicClassBinding.test.js,
+  frontend/__tests__/landingHonesty.test.js, frontend/package.json
+Evidence:
+  - 18/18 guards proven RED on a violating input, by a committed script that
+    mutates one file, runs one guard, requires failure, and reverts in a
+    finally. Reproducible, not a one-time claim: `npm run test:guards`.
+  - First run was 16/18. Both false greens were in landingHonesty, the suite
+    defending the no-fabricated-numbers claim.
+  - CI verified by reading the run's STEPS, not just its conclusion: backend
+    Test, frontend Lint, Test, "Prove every guard red", and the tree-clean
+    check all completed success on run 30990324331.
+
+**What gates on push, stated plainly.** Before this: NOTHING but
+docker-build.yml, which builds the API image and boots it. No tests, no lint.
+frontend/package.json had no `test` script at all. `next build` skipped linting
+entirely because no eslint config existed until A3. So the suite ran only in
+sessions where someone remembered. Now: tests.yml runs backend jest, frontend
+lint, frontend jest, the guard audit, and fails if the audit leaves the tree
+dirty. There is still NO typecheck - the codebase is plain JS with no tsconfig.
+
+Learned:
+  - "has OG and Twitter card tags" was genuinely broken. `toContain('og:image')`
+    is satisfied by `og:imagex`, so every meta tag could be misspelled into
+    non-existence with the guard still green. Substring containment is not an
+    existence check. Now anchored on the quotes.
+  - The other false green was in MY AUDIT SCRIPT, not the guard. `jest -t` takes
+    a REGEX; the `+` in "with a + or k suffix" became a quantifier, matched no
+    test, ran ZERO tests and exited 0 - which the runner read as GREEN. The
+    instrument built to catch silent no-ops contained one. Test names are
+    escaped now, and the zero-executed check runs on the SUCCESS path too,
+    where it previously could not fire at all.
+  - A3-a was closed by binding to the enum in both directions rather than
+    teaching the regex to parse `page[\`state_${x}\`]`. Regex over source has
+    now produced both error directions in this project; the enum has neither.
+Follow-ups: none
 
 ## A3 — hydration, CSS resolution and status integrity, guarded  [shipped + VERIFIED 2026-08-05]
 Layer: L1
