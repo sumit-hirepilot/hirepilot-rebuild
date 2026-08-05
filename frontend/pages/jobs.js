@@ -6,7 +6,7 @@ import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Jobs.module.css';
 import { API_BASE } from '../lib/apiBase';
 import { countText, parsedOr } from '../lib/renderState';
-import { formatDate, formatNumber, timeAgo, NO_DATE } from '../lib/format';
+import { formatDate, formatNumber, timeAgo, fetchedAgo, NO_DATE } from '../lib/format';
 import Link from 'next/link';
 
 const PAGE_SIZE = 20;
@@ -1043,17 +1043,33 @@ export default function Jobs() {
         </div>
 
         <div className={page.sourcesBanner}>
-          <span className={page.liveLabel}>⚡ Live sources</span>
+          {/* A7.14 - not every source in this list is live, and calling the
+              whole row "Live sources" made the one that isn't unreadable. */}
+          <span className={page.liveLabel}>⚡ Sources</span>
           {sources.map((s) => {
-            const title = s.lastRunError
-              ? `Last run failed: ${s.lastRunError}`
-              : s.successRatePct != null
-                ? `${s.successRatePct}% success rate (last 20 runs)${s.lastRunDurationMs ? ` · ${Math.round(s.lastRunDurationMs / 1000)}s last run` : ''}`
-                : undefined;
+            /* The dot used to key off `count > 0`, which is wrong in both
+               directions: a source that died overnight still has yesterday's
+               rows and read as active, while a working source that matched
+               nothing read as dead. Status comes from the server now. */
+            const title = s.status === 'not_connected'
+              ? 'Not fetched: this board is behind bot protection, and we do not circumvent it. See SOURCES.md.'
+              : s.lastRunError
+                ? `Last run failed: ${s.lastRunError}`
+                : s.successRatePct != null
+                  ? `${s.successRatePct}% success rate (last 20 runs)${s.lastRunDurationMs ? ` · ${Math.round(s.lastRunDurationMs / 1000)}s last run` : ''}`
+                  : undefined;
+            const detail = s.status === 'not_connected'
+              // No count, because nothing counted it. "0" would read as measured.
+              ? 'not connected'
+              : s.status === 'never_run'
+                ? `${s.count} · never fetched`
+                : s.status === 'failing'
+                  ? `${s.count} · last fetch failed`
+                  : `${s.count} · ${fetchedAgo(s.lastFetched)}`;
             return (
               <span key={s.source} className={page.sourceItem} title={title}>
-                <span className={s.count > 0 ? page.sourceDotActive : page.sourceDotInactive} />
-                {sourceLabels[s.source] || s.source} ({s.count} &middot; {timeAgo(s.lastFetched)})
+                <span className={s.status === 'live' ? page.sourceDotActive : page.sourceDotInactive} />
+                {sourceLabels[s.source] || s.source} ({detail})
               </span>
             );
           })}

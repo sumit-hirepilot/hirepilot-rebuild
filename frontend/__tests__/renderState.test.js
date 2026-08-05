@@ -87,3 +87,58 @@ describe('A2c — a parsed field renders only if it parsed', () => {
     expect(parsedOr('  Twilio  ')).toBe('Twilio');
   });
 });
+
+describe('A7.14 — a fetch is not a publication', () => {
+  const { timeAgo, fetchedAgo, relativeTime, NO_DATE, NEVER_FETCHED } = require('../lib/format');
+
+  it('never describes a missing fetch time in publication vocabulary', () => {
+    /*
+     * The source panel called timeAgo(lastFetched), so a source that had never
+     * been fetched rendered "Publication date unavailable" - a statement about
+     * a job's publish date, made about a source. A7.3 fixed exactly this one
+     * level down and the fix did not reach here.
+     */
+    expect(fetchedAgo(null)).not.toBe(NO_DATE);
+    expect(fetchedAgo(null).toLowerCase()).not.toMatch(/publication/);
+    expect(fetchedAgo(undefined)).toBe(NEVER_FETCHED);
+    expect(fetchedAgo('not-a-date')).toBe(NEVER_FETCHED);
+  });
+
+  it('keeps the publication vocabulary for publication dates', () => {
+    expect(timeAgo(null)).toBe(NO_DATE);
+  });
+
+  it('shares the arithmetic, so the two can never drift apart', () => {
+    // The point of splitting was one calculation with two vocabularies, not
+    // two calculations that agree today.
+    const t = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    expect(relativeTime(t)).toBe('3h ago');
+    expect(timeAgo(t)).toBe(relativeTime(t));
+    expect(fetchedAgo(t)).toBe(relativeTime(t));
+  });
+});
+
+describe('A7.14 — the source dot reports the fetcher, not the leftovers', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'pages', 'jobs.js'), 'utf8');
+  const panel = src.slice(src.indexOf('sourcesBanner'), src.indexOf('sourcesBanner') + 2200);
+
+  it('does not infer liveness from the row count', () => {
+    // `count > 0` is wrong in both directions - stale rows from a dead source
+    // read as active, and a working source that matched nothing reads as dead.
+    expect(panel).not.toMatch(/count\s*>\s*0\s*\?\s*\w*\.?sourceDotActive/);
+    expect(panel).toMatch(/status === 'live'\s*\?\s*page\.sourceDotActive/);
+  });
+
+  it('does not print a count for a source nothing ever counted', () => {
+    // "0" next to a never-fetched source reads as a measurement. It isn't one.
+    const notConnected = panel.slice(panel.indexOf("=== 'not_connected'"));
+    expect(notConnected).toMatch(/'not connected'/);
+    expect(notConnected.slice(0, 200)).not.toMatch(/\$\{s\.count\}/);
+  });
+
+  it('does not label the whole row live while one member is not', () => {
+    expect(panel).not.toMatch(/⚡ Live sources/);
+  });
+});

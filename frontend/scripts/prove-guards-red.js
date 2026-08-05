@@ -104,6 +104,26 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.14: a fetch is not a publication; status is not row count ---- */
+  { suite: 'sourceStatus', dir: 'backend', base: true,
+    test: 'reports a deliberately unfetched source as not connected, never as live',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace("if (!FETCHED_SOURCES.has(key)) return 'not_connected';",
+      "if (!FETCHED_SOURCES.has(key)) return 'live';") },
+  { suite: 'sourceStatus', dir: 'backend', base: true,
+    test: 'does not call a source live just because rows exist',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace("return lastRun.success ? 'live' : 'failing';", "return 'live';") },
+  { suite: 'renderState',
+    test: 'never describes a missing fetch time in publication vocabulary',
+    file: 'lib/format.js',
+    mutate: (s) => s.replace('return relativeTime(value) ?? NEVER_FETCHED;',
+      'return relativeTime(value) ?? NO_DATE;') },
+  { suite: 'renderState',
+    test: 'does not infer liveness from the row count',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace("s.status === 'live' ? page.sourceDotActive", "s.count > 0 ? page.sourceDotActive") },
+
   /* ---- A7.12: non-job content must never be stored or made applyable ---- */
   { suite: 'notAJob', dir: 'backend', base: true,
     test: 'rejects a bio indexed as a job',

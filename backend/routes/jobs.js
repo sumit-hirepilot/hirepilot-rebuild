@@ -73,6 +73,25 @@ const ALL_SOURCES = [
   'weworkremotely', // intentionally not fetched - see SOURCES.md
 ];
 
+const FETCHED_SOURCES = new Set(SOURCES.map((s) => s.key));
+
+/*
+ * A7.14 - derived once, here, from whether a fetcher is wired and what the
+ * last run did. It was previously inferred in JSX from `count > 0`, which gets
+ * both directions wrong: a source that died last night still has rows and read
+ * as live, and a wired source that legitimately matched nothing read as dead.
+ *
+ *   not_connected - no fetcher wired. A deliberate decision, not an outage.
+ *   never_run     - wired, but nothing has run yet.
+ *   failing       - the last run errored, whatever rows may be left over.
+ *   live          - the last run succeeded.
+ */
+function sourceStatus(key, lastRun) {
+  if (!FETCHED_SOURCES.has(key)) return 'not_connected';
+  if (!lastRun) return 'never_run';
+  return lastRun.success ? 'live' : 'failing';
+}
+
 // Status + health of each live job source: active job count, last successful
 // fetch, and recent ingestion run metrics (latency, success rate, errors).
 // Canonical job_type values. Sources spell the same thing several ways
@@ -475,7 +494,7 @@ router.get('/stats', async (req, res) => {
 
 router.get('/sources', async (req, res) => {
   try {
-    const [countsResult, runsResult] = await Promise.all([
+    const [countsResult, runsResult, ratesResult] = await Promise.all([
       query(
         `SELECT source, COUNT(*) as count, MAX(fetched_at) as last_fetched
          FROM jobs WHERE is_active = true GROUP BY source`
@@ -485,6 +504,23 @@ router.get('/sources', async (req, res) => {
                 jobs_fetched, jobs_new, error_message
          FROM source_ingestion_runs
          ORDER BY source, created_at DESC`
+      ),
+      /*
+       * One query, not one per source. This was `await query(...)` inside a
+       * for-loop over every source - 13 sequential round trips before the
+       * panel could render, growing with each source added, and measured
+       * against production it did not return inside 180s.
+       */
+      query(
+        `SELECT source,
+                ROUND(100.0 * SUM(CASE WHEN success THEN 1 ELSE 0 END) / COUNT(*))::int AS pct
+           FROM (
+             SELECT source, success,
+                    ROW_NUMBER() OVER (PARTITION BY source ORDER BY created_at DESC) AS rn
+               FROM source_ingestion_runs
+           ) recent
+          WHERE rn <= 20
+          GROUP BY source`
       ),
     ]);
 
@@ -498,16 +534,9 @@ router.get('/sources', async (req, res) => {
       runsBySource[row.source] = row;
     }
 
-    // Success rate over the last 20 runs per source
     const successRates = {};
-    for (const key of SOURCES.map((s) => s.key)) {
-      const recentRuns = await query(
-        `SELECT success FROM source_ingestion_runs WHERE source = $1 ORDER BY created_at DESC LIMIT 20`,
-        [key]
-      );
-      const total = recentRuns.rows.length;
-      const succeeded = recentRuns.rows.filter((r) => r.success).length;
-      successRates[key] = total > 0 ? Math.round((succeeded / total) * 100) : null;
+    for (const row of ratesResult.rows) {
+      successRates[row.source] = row.pct === null || row.pct === undefined ? null : Number(row.pct);
     }
 
     const sources = ALL_SOURCES.map((key) => {
@@ -516,6 +545,7 @@ router.get('/sources', async (req, res) => {
         source: key,
         count: bySource[key]?.count || 0,
         lastFetched: bySource[key]?.lastFetched || null,
+        status: sourceStatus(key, lastRun),
         lastRunSuccess: lastRun ? lastRun.success : null,
         lastRunDurationMs: lastRun ? lastRun.duration_ms : null,
         lastRunError: lastRun && !lastRun.success ? lastRun.error_message : null,
