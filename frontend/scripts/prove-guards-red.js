@@ -134,6 +134,35 @@ function runTest(suite, test, dir = 'frontend') {
   return failed ? 'RED' : 'GREEN';
 }
 
+/*
+ * The audit spans BOTH trees, and CI runs it from the frontend job, which
+ * installs only frontend deps. Every backend case then came back DID_NOT_RUN
+ * and the step failed - the gate catching my own wiring, on its second commit.
+ *
+ * It installs what it needs rather than relying on the job's setup, so the
+ * audit is correct under any CI layout and on a fresh clone.
+ *
+ * Installing, never skipping. Skipping an uninstalled suite would silently
+ * narrow the audit to whichever tree happened to be present and report the
+ * smaller denominator as success - the exact "green means nothing" failure
+ * this script exists to prevent.
+ */
+function ensureRunnable() {
+  const needed = new Set(CASES.map((c) => c.dir || 'frontend'));
+  for (const name of needed) {
+    const dir = DIRS[name];
+    if (!dir) throw new Error(`unknown suite dir: ${name}`);
+    if (fs.existsSync(path.join(dir, 'node_modules', '.bin', 'jest'))) continue;
+    process.stdout.write(`installing ${name} dependencies so its guards can run...\n`);
+    execFileSync('npm', ['install', '--no-audit', '--no-fund'], { cwd: dir, stdio: 'inherit' });
+    if (!fs.existsSync(path.join(dir, 'node_modules', '.bin', 'jest'))) {
+      throw new Error(`${name}: jest still missing after install - refusing to run a partial audit`);
+    }
+  }
+}
+
+ensureRunnable();
+
 const results = [];
 for (const c of CASES) {
   const abs = path.isAbsolute(c.file) ? c.file : path.join(c.base ? REPO : ROOT, c.file);
