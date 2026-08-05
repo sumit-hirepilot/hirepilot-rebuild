@@ -34,8 +34,21 @@ const parseComment = (comment) => {
   const firstLine = rawText.split('\n')[0] || '';
   const segments = firstLine.split('|').map((s) => s.trim()).filter(Boolean);
 
-  const company = segments[0] || 'Company hiring via HN';
-  const title = segments[1] || firstLine.slice(0, 120) || 'Job posting';
+  /*
+   * A7.12 — the pipe convention IS the parse. Without it there is nothing to
+   * split on, and `segments[0]` became the entire first line: company_name
+   * turned into a paragraph and title into its first 120 characters. HN's
+   * paired "Who wants to be hired" thread reads exactly that way, which is how
+   * a person's bio reached the feed with an Apply button - but 16 of 200
+   * hiring posts hit it too, so this was never bio-specific.
+   *
+   * Returning null withholds the comment. A guessed employer is worse than a
+   * missing posting.
+   */
+  if (segments.length < 2) return null;
+
+  const company = segments[0];
+  const title = segments[1];
   const location = segments.slice(2).find((s) => s.length < 60) || 'See posting';
 
   const urlMatch = rawText.match(/https?:\/\/[^\s)]+/);
@@ -84,7 +97,11 @@ const fetchJobs = async () => {
 
     return comments
       .filter((c) => c && !c.deleted && !c.dead && c.text)
-      .map(parseComment);
+      .map(parseComment)
+      // parseComment returns null for a comment with no pipe convention -
+      // there is nothing to parse, so the posting is withheld rather than
+      // guessed at.
+      .filter(Boolean);
   } catch (err) {
     console.error('Hacker News API error:', err.message);
     throw err;

@@ -294,6 +294,47 @@ const STATEMENTS = [
      AND employer_confirmation_id IS NULL
      AND verified_at IS NULL`,
 
+  /*
+   * A7.12 — withhold rows that are not job postings.
+   *
+   * A candidate's own bio was indexed as a job with a working Apply Now, and
+   * four sibling rows resolved to greenhouse, the one enabled adapter, so they
+   * were reachable by automated apply with Auto-Pilot on. The ingest guard
+   * stops new ones; these are the rows already live.
+   *
+   * is_active = false, never DELETE: reversible, and the row is preserved so
+   * the count stays auditable. An audit row is written BEFORE the mutation,
+   * per the standing rule - the earlier corrective UPDATE overwrote in place
+   * and left no way to answer who had been affected.
+   */
+  `CREATE TABLE IF NOT EXISTS data_corrections (
+     id SERIAL PRIMARY KEY,
+     correction VARCHAR(120) NOT NULL,
+     table_name VARCHAR(120) NOT NULL,
+     row_count INTEGER,
+     detail JSONB,
+     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+
+  `INSERT INTO data_corrections (correction, table_name, row_count, detail)
+   SELECT 'a7.12-withhold-non-job-rows', 'jobs', COUNT(*),
+          jsonb_build_object('ids', COALESCE(jsonb_agg(id), '[]'::jsonb))
+     FROM jobs
+    WHERE is_active = true
+      AND (LENGTH(COALESCE(company_name, '')) > 80
+        OR company_name ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+        OR title ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+        OR COALESCE(apply_url, job_url, '') ~* 'linkedin\\.com/in/')
+      AND NOT EXISTS (SELECT 1 FROM data_corrections
+                       WHERE correction = 'a7.12-withhold-non-job-rows')`,
+
+  `UPDATE jobs SET is_active = false
+    WHERE is_active = true
+      AND (LENGTH(COALESCE(company_name, '')) > 80
+        OR company_name ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+        OR title ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+        OR COALESCE(apply_url, job_url, '') ~* 'linkedin\\.com/in/')`,
+
   `ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_applied_at_requires_submitted`,
   `ALTER TABLE applications ADD CONSTRAINT applications_applied_at_requires_submitted
      CHECK (applied_at IS NULL OR status = 'submitted')`,

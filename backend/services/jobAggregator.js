@@ -1,5 +1,5 @@
 const { query } = require('../db');
-const { isParsed } = require('./parsedField');
+const { isParsed, notAJobReason } = require('./parsedField');
 const remoteOKClient = require('./apis/remoteok');
 const motiveClient = require('./apis/remotive');
 const himalayasClient = require('./apis/himalayas');
@@ -236,8 +236,19 @@ const storeJobsFromSource = async (rawJobs, source, results) => {
      * one would be the very fabrication this guards against. Counted so the
      * drop is visible - a silent skip is how the first one went unnoticed.
      */
-    if (!isParsed(normalized.title) || !isParsed(normalized.company_name)) {
-      sourceStats.unparsed = (sourceStats.unparsed || 0) + 1;
+    /*
+     * A7.2 + A7.12 — withhold anything that is not a job posting.
+     *
+     * A7.2 caught fields that did not parse. A7.12 caught the worse case: a
+     * candidate's own bio indexed as a job with a working Apply button, and
+     * four siblings resolving to the one enabled ATS adapter. Applying to a
+     * person is a real submission that cannot be taken back, so this refuses
+     * the row entirely rather than storing it for a render guard to hide.
+     */
+    const rejection = notAJobReason(normalized);
+    if (rejection) {
+      sourceStats.notAJob = sourceStats.notAJob || {};
+      sourceStats.notAJob[rejection] = (sourceStats.notAJob[rejection] || 0) + 1;
       continue;
     }
 

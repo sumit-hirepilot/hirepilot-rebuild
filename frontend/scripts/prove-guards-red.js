@@ -84,6 +84,21 @@ const CASES = [
     file: 'components/NotificationBell.js',
     mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
 
+  /* ---- A7.12: non-job content must never be stored or made applyable ---- */
+  { suite: 'notAJob', dir: 'backend', base: true,
+    test: 'rejects a bio indexed as a job',
+    file: 'backend/services/parsedField.js',
+    mutate: (s) => s.replace('function notAJobReason({ title',
+      'function notAJobReason(__u) { return null; }\nfunction __disabled({ title') },
+  { suite: 'notAJob', dir: 'backend', base: true,
+    test: 'requires the pipe convention rather than guessing an employer',
+    file: 'backend/services/apis/hackernews.js',
+    mutate: (s) => s.replace('  if (segments.length < 2) return null;', '') },
+  { suite: 'notAJob', dir: 'backend', base: true,
+    test: 'calls notAJobReason before storing',
+    file: 'backend/services/jobAggregator.js',
+    mutate: (s) => s.replace('const rejection = notAJobReason(normalized);', 'const rejection = null;') },
+
   /* ---- A7.4: the activity feed is read by a person ---- */
   { suite: 'activityVocabulary', dir: 'backend', base: true,
     test: 'handles every written event type explicitly',
