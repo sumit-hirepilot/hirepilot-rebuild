@@ -181,3 +181,21 @@ That trades real user value for a cosmetic database state.
 
 No corrective migration, therefore no data risk. The ingestion gate stops the
 count growing; /api/jobs/field-integrity makes it visible if it ever does.
+
+## D17 — himalayas has no posted_at at all; filed as A7.11, not built
+A7.3's per-source report: 4,663 of 4,663 himalayas jobs carry no posted_at -
+100% of that source, 19% of the whole index. Every other source is at 0%
+undated.
+
+The consequence is not cosmetic. A7.7 sorts `posted_at DESC NULLS LAST`, which
+is correct for a handful of undated rows and wrong at this scale: under "Newest
+first" a fifth of the index sorts last permanently and is effectively
+unreachable. The sort is right; the data is the problem.
+
+Not fixed here, and deliberately not a quick default. Filling posted_at with
+the fetch time would fabricate freshness, which is what the aggregator's null
+exists to prevent - the fix has to recover a real date or admit the gap.
+Filed as A7.11 with both options costed. One source, one adapter: tractable.
+
+Also blocks D4 (timing signal) for that 19%, so A7.11 is a wedge prerequisite
+rather than tidying.

@@ -281,6 +281,23 @@ Operator-reported from production screenshots. All observed, not hypothetical.
   visible bulk action. Wire them to B1 batch-apply or remove them until B1
   ships. A control that does nothing is worse than no control.
 
+- **A7.11 — himalayas supplies no posted_at, for any job.** FILED, NOT BUILT.
+  4,663 of 4,663 (19% of the index); every other source is at 0% undated.
+  Under "Newest first" those jobs sort last permanently (A7.7's
+  `posted_at DESC NULLS LAST`) and are effectively unreachable. The sort is
+  correct; the data is not.
+  Two options, and NOT a third: filling posted_at with the fetch time
+  fabricates freshness, which is exactly what the aggregator's null prevents.
+  1. Backfill at ingest from the original posting URL - himalayas' API omits a
+     trustworthy date, so this means fetching the posting and reading the
+     published date off it. One source, one adapter.
+  2. State the exclusion in the UI - if "Newest first" cannot rank a fifth of
+     the index, say so where the sort is chosen rather than silently burying
+     them.
+  Acceptance either way: the per-source undated figure from
+  `GET /api/jobs/field-integrity` moves, or the UI states the gap and a test
+  binds that statement to the real number. Also unblocks D4 for that 19%.
+
 ### WAVE B — Core product
 
 **B1 — Batch apply flow** · L1
