@@ -99,6 +99,11 @@ const CASES = [
     mutate: (s) => s.replace('      unscoredInPage: unscored,\n    };',
       '    };\n    if (datePosted) ranking = undefined;') },
 
+  { suite: 'jobsRanking', dir: 'backend', base: true,
+    test: 'counts the universe without the diversity cap',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
+
   /* ---- A7.12: non-job content must never be stored or made applyable ---- */
   { suite: 'notAJob', dir: 'backend', base: true,
     test: 'rejects a bio indexed as a job',

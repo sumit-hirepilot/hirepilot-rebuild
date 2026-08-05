@@ -996,6 +996,19 @@ export default function Jobs() {
               Unranked. Every indexed job, newest first - not scored against your profile.
             </span>
           )}
+          {/* A7.17 - before the ranking paths were collapsed, a date filter ran
+              inside the 500-row match store, so every row it could return was
+              already scored and this state never existed. It now searches the
+              whole index, which surfaces jobs newer than the last scoring run.
+              Showing a page of cards with no score and no explanation reads as
+              a bug; the floor keeps them deliberately, so say that. */}
+          {rankMode === 'ranked' && ranking?.unscoredInPage > 0 && (
+            <span className={page.floorNote}>
+              {ranking.unscoredInPage} on this page {ranking.unscoredInPage === 1 ? 'is' : 'are'} not
+              scored yet - newer than your last match run. The {Math.round(minScore * 100)}% floor
+              cannot judge them, so they are kept rather than hidden.
+            </span>
+          )}
         </div>
 
         <div className={page.headerRow}>

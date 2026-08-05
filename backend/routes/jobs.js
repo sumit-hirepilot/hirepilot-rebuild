@@ -767,12 +767,20 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       ? ` AND source_rank <= GREATEST(3, CEIL((${Number(page) || 1}::numeric * ${Number(limit)}) / 4))`
       : '';
     const where = `WHERE ${tierFilter}${capSql}`;
+    /*
+     * The COUNT deliberately omits the cap. The cap scales with the page, so
+     * counting inside it made `total` grow as the user paged - 60 on page 1,
+     * 120 on page 2 - and a pagination control cannot render a moving target.
+     * Every capped row is reachable by paging, so the count over the filter is
+     * the honest number and the cap stays a per-page presentation device.
+     */
+    const countWhere = `WHERE ${tierFilter}`;
 
     const orderBySql = sort === 'recent'
       ? 'match_tier ASC, posted_at DESC NULLS LAST, overall_score DESC NULLS LAST, id DESC'
       : 'match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC';
 
-    const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${where}`, scoreParams);
+    const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
     total = parseInt(countResult.rows[0]?.count ?? 0, 10);
 
     const result = await query(
@@ -795,7 +803,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     if (datePosted) {
       const unknownDateResult = await query(
-        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${where} AND posted_at IS NULL`,
+        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere} AND posted_at IS NULL`,
         scoreParams
       );
       excludedUnknownDateCount = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);

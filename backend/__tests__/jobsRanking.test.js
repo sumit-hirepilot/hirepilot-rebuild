@@ -250,3 +250,35 @@ describe('A7.17 — filters apply to the index, not to the match store', () => {
     expect(src).toMatch(/overall_score >= \$\$\{scoreParams\.length\} OR jm\.overall_score IS NULL/);
   });
 });
+
+describe('A7.17 — the reported total is a property of the filter, not of the page', () => {
+  it('counts the universe without the diversity cap', async () => {
+    /*
+     * Found by measuring the acceptance criterion, not by a test: page 1
+     * reported total=60 and page 2 reported total=120, because the diversity
+     * cap scales with the page and the COUNT ran inside it. A pagination
+     * control reads that as "3 pages", then as "6 pages" one click later.
+     *
+     * The cap is a per-page presentation device - every capped row is still
+     * reachable by paging, since the cap relaxes as you go. So the honest
+     * total is the count over the FILTER, and only the page query caps.
+     */
+    mockRows();
+    await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
+
+    const countSql = query.mock.calls[0][0];
+    const pageSql = query.mock.calls[1][0];
+    expect(countSql).toMatch(/SELECT COUNT\(\*\)/);
+    expect(countSql).not.toMatch(/source_rank <=/);   // the count is uncapped
+    expect(pageSql).toMatch(/source_rank <=/);        // the page still is
+  });
+
+  it('does not let the page number reach the count query at all', async () => {
+    // Stronger than the totals matching on one fixture: if `page` cannot
+    // appear in the count SQL, the total cannot vary with it.
+    mockRows();
+    await request(app()).get('/api/jobs?limit=20&page=3').set('Authorization', `Bearer ${token}`);
+    const countSql = query.mock.calls[0][0];
+    expect(countSql).not.toMatch(/\bCEIL\(/);
+  });
+});
