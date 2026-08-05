@@ -6,53 +6,68 @@ move it back. Pre-A4 history is in HISTORY.md; this file is the cold-start
 handoff only.
 
 Current wave: A (Master Prompt v2)
-**Current goal: A5 — Submission audit.** Then A6 → A7.2-A7.6 → A7.8-A7.10.
-Blocked on: nothing.
+**Current goal: A6 — Hardcoded figure sweep.** Then A7.2-A7.6 → A7.8-A7.10.
+Blocked on: nothing engineering. But see NEEDS COUNSEL below - it gates any
+further submission work, not the current goal.
+
+## NEEDS COUNSEL (from A5, 2026-08-05) — read before touching submission
+The one enabled adapter is Greenhouse. Its candidate-facing agreement
+restricts "automated means, including spiders, robots, crawlers" and binds job
+seekers, the party HirePilot acts for. Full findings and the exact questions
+counsel must answer are in SUBMISSION_AUDIT.md; the holding pattern is in
+BLOCKED.md. Nothing new ships against any ATS until answered. Do NOT conclude
+this in an engineering pass, in either direction.
 
 ---
 
-## Just finished — A4, submission receipt, immutable [shipped + VERIFIED 2026-08-05]
+## Just finished — A5, submission audit [shipped + VERIFIED 2026-08-05]
 
-Layer L1. Changed: `backend/services/migrations.js`, `backend/routes/apply.js`,
-`backend/routes/applications.js`, `backend/__tests__/submissionReceipt.test.js`,
-`frontend/pages/applications/[id].js`, `frontend/styles/ApplicationDetail.module.css`.
+Layer L1. Added `SUBMISSION_AUDIT.md`; changed `frontend/pages/index.js`,
+`frontend/__tests__/adapterStatus.test.js`, `BLOCKED.md`.
 
-**Why it mattered.** `screening_answers` on the application row is CURRENT
-state - later discovery runs rewrite it. A screen rendering it as "what was
-sent" asserts something it cannot know. Filed as a Constraint 1 violation, not
-a missing feature: seeing what left is a user's only defence against a bad
-automated submission made under their name.
+**Verified.** Frontend 56, backend 42, build compiles, CI green.
+The copy guard was proven red in BOTH directions - it fails if the landing
+claim names a disabled adapter, and fails if it omits an enabled one.
 
-**How it was verified.**
-- Production `GET /api/applications/integrity` returns `receipts:
-  {table_present: true, immutable_trigger: true, one_per_application: true}`,
-  read from `pg_trigger` / `pg_tables` / `pg_indexes`. NOT inferred from a clean
-  deploy - `runMigrations` logs a failed `CREATE TRIGGER` and carries on.
-- Production `GET /api/apply/queue/1/receipt` returns 404 with the stated reason
-  "the current profile values are not a record of what was sent" - absence is a
-  fact, never a fallback to live values.
-- 8 tests, each verified failing individually against the pre-change files.
-- CI green, every step confirmed executed.
-
-**Design points a future session must not undo.**
-- Immutability is a TRIGGER (`trg_submission_receipts_immutable`, BEFORE UPDATE
-  OR DELETE, RAISE EXCEPTION). A rule living only in app code is one careless
-  UPDATE from being false.
-- `ON CONFLICT (application_id) DO NOTHING` + unique index: a re-submit must
-  never overwrite the first receipt's account of what went out.
-- Resume identified by sha256 of the bytes actually attached, hashed in Node.
-  Deliberately NOT pgcrypto `digest()` - a missing extension must not be the
-  reason a submission has no receipt.
-- A receipt failure never un-verifies a real submission; reported, never thrown.
-
-**Known gap, stated rather than hidden.** The receipt freezes what the SERVER
-knows at submit time: `screening_answers` as of that moment, the resume bytes,
-the platform response. It does NOT capture the literal field-by-field payload
-the extension typed into the employer's form. Closing that needs an extension
-change to post its filled payload to `/queue/:id/evidence`. Until then the
-receipt is honest about being a server-side copy, not a keystroke record.
+**What it found.**
+- Mechanism established from code: browser automation in the user's own
+  signed-in session, content scripts limited to the three ATS hosts, clicks the
+  employer's real submit button, holds no credentials, hard-stops on login /
+  MFA / CAPTCHA, never ticks consent or answers EEO.
+- MATERIAL: Greenhouse's My Greenhouse User Agreement restricts automated
+  means and binds job seekers. Fetched directly, not from a search summary.
+  Left unconcluded on purpose - see NEEDS COUNSEL above.
+- Landing FAQ overstated coverage as "Greenhouse, Lever and Ashby" while
+  SUPPORTED_ATS was greenhouse alone. Fixed and bound by test.
+- Lever/Ashby terms NOT researched - recorded as unresearched, not implied
+  checked. Both stay disabled.
+- A5-a logged: `host_permissions` is `<all_urls>` while content scripts match
+  only three hosts. Nothing uses the extra scope; narrow it.
 
 ---
+
+## Next goal — A6, Hardcoded figure sweep (executable cold)
+
+From the master prompt:
+- Every user-facing surface: counts, percentages, `+`/`k`/`M` suffixes, time
+  claims, status colours.
+- Each hit becomes a real query or is deleted.
+- **Read every matched line** - a grep hit is not a finding. This project has
+  produced false positives from font metadata, minified bundles, build output,
+  and its own comments describing a bug.
+
+**Start from this, do not re-derive it:**
+- `frontend/__tests__/landingHonesty.test.js` already guards the landing page
+  against `+`/`k` suffixed counts, display percentages, and mock constants. It
+  is proven red. A6 extends that discipline to every OTHER surface.
+- `frontend/__tests__/noFabricatedZero.test.js` guards counts repo-wide
+  (useState(0), `|| 0` coercion, literal 0 writes needing a `real-zero:` note).
+- `frontend/lib/renderState.js` is the primitive: `countText`, `parsedOr`,
+  `stateOf`. Anything showing a number should route through it.
+- Precedent: "180+" shipped gated on a boolean while the truth was 153 - an 18%
+  overstatement. Assume more exist.
+- Status colours are in scope: A3 found every coverage dot rendering the same
+  colour claim and Lever/Ashby green while disabled.
 
 ## Next goal — A5, Submission audit (executable cold)
 
