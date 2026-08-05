@@ -124,9 +124,10 @@ const CASES = [
 
   /* ---- A7.2: a field that did not parse must not be stored ---- */
   { suite: 'parsedField', dir: 'backend', base: true,
-    test: 'gates on isParsed, not on truthiness',
-    file: 'backend/services/jobAggregator.js',
-    mutate: (s) => s.replace(/isParsed\(normalized\.company_name\)/, 'Boolean(normalized.company_name)') },
+    test: 'withholds an unparsed row rather than storing it',
+    file: 'backend/services/parsedField.js',
+    // Drop 'name' from the placeholder list: the literal that started A7.2.
+    mutate: (s) => s.replace("'name', 'title',", "'title',") },
   { suite: 'parsedField', dir: 'backend', base: true,
     test: 'holds exactly the same placeholders on both sides',
     file: 'frontend/lib/renderState.js',
