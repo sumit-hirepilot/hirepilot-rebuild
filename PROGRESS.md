@@ -88,6 +88,50 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.13 — CLOSED. The empty state names a cause and stops contradicting itself.
+
+Reproduced on production first: keywords=figma + Past 24 hours rendered "No
+jobs match these filters" in the count line while a Datadog role sat on screen
+below it under "Related jobs". Two defects in one view.
+
+VERIFIED ON PRODUCTION, same URL, after:
+  count line : "No exact matches · 1 related"
+  empty state: "No exact matches. Past 24 hours is what emptied this - 11 jobs
+                match without it. Related jobs are below."
+  375 / 768 / 1440, no overflow, no console errors.
+
+The count line quoted `total` (exact matches) while the related list came from
+a different field, so the page denied the card underneath it. It now says which
+number it is quoting.
+
+The cause is measured, never guessed. GET /api/jobs returns emptyReason: every
+active filter, the real COUNT recovered by dropping it, and which one to relax.
+Null when total > 0, present always. One query per filter, only on an empty
+result.
+
+TO MAKE THAT POSSIBLE filters became DECLARATIVE. They were opaque SQL
+fragments appended to a string, so none could be removed individually, and the
+alternative was a second set of filter definitions written for the diagnosis -
+exactly how A7.17's three ranking paths drifted until they disagreed. Each
+filter is now one entry owning both the label the user reads and the SQL the
+query runs; compose({skip}) rebuilds the WHERE without one, params included,
+because Postgres binds by position. Behaviour-neutral: all 93 pre-existing
+backend tests passed unchanged against the refactor.
+
+THE PART PRODUCTION CORRECTED. The first version ranked by largest recovery.
+Real numbers: dropping the keyword recovers 580, the date 11, the floor 0. So
+it told a user who searched "figma" that their search term was the problem -
+true, and useless. Filters now carry a relax order (refinement < choice <
+intent) and size only breaks ties within a tier. D21. The fixture had agreed
+with the wrong rule because its largest recovery was also its first candidate;
+it now makes the keyword the biggest by 25 vs 3 and still expects the date.
+
+Two guards were themselves weak and were fixed: jobsRanking's floor test
+matched a source literal the refactor renamed, and is now asserted on emitted
+SQL.
+
+100 backend / 78 frontend, 55/55 guards proven red.
+
 ## A7.17 perf clause — CLOSED. One index, chosen by the planner.
 
 The spec said: measure p95 before and after, and if it degrades add indexes on
@@ -296,7 +340,8 @@ identical response SHAPE every time, `ranking` always present.
   `frontend/scripts/prove-guards-red.js`.
 - Verified locally AND on production.
 
-Then: A7.5, A7.8-A7.10, A7.18, A7.11, then B1-B5. (A7.14, A7.6 CLOSED.)
+Then: A7.11, A7.4, A7.5, A7.8-A7.10, A7.18, Wave C, then B1-B5.
+(A7.17, A7.13, A7.14, A7.6 CLOSED and verified on production.)
 
 ## Next goal — A7.13, search returns nothing against a live index (cold)
 
