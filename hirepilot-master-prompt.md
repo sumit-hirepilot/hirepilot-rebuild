@@ -339,6 +339,61 @@ Operator-reported from production screenshots. All observed, not hypothetical.
 
 **C1 — Naukri** · L2 — first-class source, same poll cadence and provenance labelling. Dedupe cross-posted roles by company + title + normalized JD hash.
 
+**C1a — Onboarding interaction layer** · L2
+Applies to C1. Conversational, not a form.
+
+- One question per screen, phrased as a question: "What kind of role are you
+  looking for?" not "Desired Role *".
+- Big tap targets. Chips and cards wherever the answer set is known; typing is
+  the fallback, never the default. Experience level, work type, location and
+  notice period are all tap-to-select.
+- **Live feedback after every answer, every number a real query.** Role ->
+  "1,240 Product Designer jobs in our index". City -> "312 of those are in
+  Bengaluru". Level -> "84 match your experience". Resume -> "We found 12
+  skills", shown as chips. Constraint 1 applies INSIDE onboarding: if a count
+  is 0, say so and offer to widen. Never invent an encouraging figure.
+  `renderState.countText` already distinguishes loading / failed / real-zero -
+  use it, do not hand-roll a second convention.
+- Micro-interactions: chip animates on select, progress bar advances, step
+  count visible. Resume upload shows REAL stages (uploading -> reading ->
+  found N skills) reflecting actual backend state, never a timed fake.
+- Inline validation under the field. Never an error modal.
+- **No blocking pop-ups.** Reveals expand inline; "why we ask" is tap-to-expand,
+  not a tooltip popover. The only permitted modal is a confirm before something
+  irreversible, and onboarding has none - so onboarding has no modals.
+- Completion shows the actual outcome from the real scoring run: "84 jobs match
+  you. Top match: 78%, Senior Product Designer at X." One primary button to the
+  feed.
+- First feed visit: a 3-step coach mark, skippable, shown once, stored per
+  user, never repeats. "Skip" as prominent as "Next".
+
+**C1b — Momentum and recovery** · L2
+
+- **Resume parse is the first wow.** The moment it is read, show what was found
+  as chips - skills, roles, years - tappable to remove anything wrong. Do not
+  bury it behind a Continue button; that is the first time the product proves
+  it did work.
+- **Time to first match.** Show one real matching job as soon as there is
+  enough to score, at step 4 or 5, BEFORE onboarding finishes: "Here's one we
+  found already: 76% Senior Product Designer at X." A real row from the real
+  query, never a sample.
+- **Abandonment recovery.** Leaving onboarding incomplete reopens on the step
+  left, with one line on what is already saved. No re-entry, no guilt copy, no
+  percentage-complete pressure bar.
+- **A failed parse is a designed path, not an error.** The fallback ("fill it
+  in") is one tap away on the same screen, not a restart. This is the single
+  most likely drop-off point in the flow.
+
+ACCEPTANCE for C1a+C1b:
+- Every live count verified against the API returning the SAME number - the
+  screen and the endpoint agree, checked, not assumed.
+- Completed end to end at 375px with one thumb.
+- Interaction tests that CLICK the controls and assert the resulting state and
+  network call. Presence is not function: A7.1's sort control rendered
+  perfectly, passed every DOM assertion, and did nothing.
+- Per-assertion red-green, non-zero executed count, and cases added to
+  `frontend/scripts/prove-guards-red.js`.
+
 **C2 — Instahyre, Wellfound India, Cutshort** · L2
 
 **C3 — Indian role taxonomy** · L2 — notice period, CTC vs in-hand, service vs product company, experience bands. Scoring accounts for them.
