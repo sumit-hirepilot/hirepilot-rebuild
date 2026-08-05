@@ -82,6 +82,8 @@ If a proposed change serves none of L1/L2/L3, do not build it. Log it to `BACKLO
 
 **Standing rule — constraint checks fire on cumulative capability, not on the diff.** Before every SHIP, ask what the system can now do that it could not before this wave started, and re-run §4 against that answer. Precedent: ATS submission was built incrementally across many turns, each too small to trigger the constraint, until a capability existed the constraint would have caught on day one.
 
+**Standing rule — an instrument gets a known-good and a known-bad reading before you trust it.** Any measurement that would change a decision is proven in both directions first, committed test or not. Ad-hoc measurements are where this fails: one session produced four instrument failures and zero product failures — a line-anchored regex that could not see grouped selectors (false positive), `getComputedStyle(dot).color` on a dot styled with `background` (false negative), a console buffer retained across a reload read as a live error, and `next build` clobbering `next dev`'s shared `.next` read as a broken page. "Prove it red first" was applied to the four committed guards and to none of these. Reading a property you have not confirmed carries the value is the same error as asserting `innerText` on an element whose text overflows its box.
+
 **Standing rule — a fix is not shipped until verified on production and its ticket closed.** Unclosed fixes cost more than unfixed bugs.
 
 ### SHIP

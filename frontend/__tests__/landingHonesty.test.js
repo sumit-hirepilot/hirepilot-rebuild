@@ -80,8 +80,16 @@ describe('G0.3 — meta and copy hygiene', () => {
   });
 
   it('has OG and Twitter card tags', () => {
+    /*
+     * Anchored on the closing quote, not toContain.
+     *
+     * `expect(code).toContain('og:image')` is satisfied by `og:imagex` - the
+     * substring is still there. The mutation audit caught this: renaming every
+     * og:image to og:imagex left this assertion green, so the tag could be
+     * misspelled into non-existence and the guard would not notice.
+     */
     for (const tag of ['og:title', 'og:description', 'og:image', 'og:url', 'twitter:card', 'twitter:image']) {
-      expect(code).toContain(tag);
+      expect(code).toMatch(new RegExp(`["']${tag.replace(':', ':')}["']`));
     }
     expect(code).toMatch(/twitter:card"\s+content="summary_large_image"/);
   });

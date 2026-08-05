@@ -1,0 +1,65 @@
+# A3-b — the gate that did not exist.
+#
+# Until this file, the ONLY thing running on push was docker-build.yml, which
+# builds the API image and boots it. It runs no tests and no lint. frontend had
+# no `test` script at all, and `next build` skipped linting entirely because
+# there was no eslint config until A3. So 80 tests protected only the sessions
+# where someone remembered to run them by hand.
+#
+# The guard audit runs here too, deliberately. A suite being green proves the
+# code is clean OR that the guards cannot detect anything, and those look
+# identical from the outside.
+
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install
+        working-directory: backend
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Test
+        working-directory: backend
+        run: npx jest --ci
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Lint
+        working-directory: frontend
+        run: npx next lint --dir pages --dir components --dir lib
+      - name: Test
+        working-directory: frontend
+        run: npx jest --ci
+
+      # Mutates a file, runs one guard, requires it to go RED, reverts. Fails
+      # the build if any guard cannot detect its own violation.
+      - name: Prove every guard red on a violating input
+        working-directory: frontend
+        run: node scripts/prove-guards-red.js
+
+      - name: Confirm the working tree is clean after the audit
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The guard audit did not revert every mutation:"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
