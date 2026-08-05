@@ -104,6 +104,23 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.6: the bulk control has a name, and it works when clicked ---- */
+  { suite: 'jobsBulkSelect',
+    test: 'gives every job checkbox an accessible name carrying that job',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace(
+      "          aria-label={`Select ${job.title} at ${parsedOr(job.company_name, 'Company not stated')}`}\n", '') },
+  { suite: 'jobsBulkSelect',
+    test: 'names the company too, so two roles at different companies are distinct',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace(
+      "`Select ${job.title} at ${parsedOr(job.company_name, 'Company not stated')}`", '`Select job`') },
+  { suite: 'jobsBulkSelect',
+    test: 'clearing deselects everything, not just the last one',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('onClick={() => setSelectedIds(new Set())}',
+      'onClick={() => setSelectedIds(new Set(Array.from(selectedIds).slice(1)))}') },
+
   /* ---- A7.14: a fetch is not a publication; status is not row count ---- */
   { suite: 'sourceStatus', dir: 'backend', base: true,
     test: 'reports a deliberately unfetched source as not connected, never as live',

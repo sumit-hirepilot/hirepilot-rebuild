@@ -731,11 +731,18 @@ export default function Jobs() {
     const score = rawScore === null || rawScore === undefined ? null : Math.round(Number(rawScore) * 100);
     return (
       <div key={job.id} className={page.jobRow}>
+        {/* A7.6 - this had no accessible name of any kind: no id, no label, no
+            aria-label, no title. Twenty rows announced as "checkbox, unchecked"
+            with nothing to tell them apart, so the bulk control was fully
+            usable by sight and unusable otherwise. The name is built from the
+            same two strings the row shows, through the same parsedOr, so the
+            spoken name and the visible one cannot drift. */}
         <input
           type="checkbox"
           checked={selectedIds.has(job.id)}
           onChange={() => toggleSelect(job.id)}
           className={page.checkbox}
+          aria-label={`Select ${job.title} at ${parsedOr(job.company_name, 'Company not stated')}`}
         />
         <div className={page.avatar}>{job.company_name?.charAt(0) || '?'}</div>
         <div className={page.jobInfo} onClick={() => setSelectedJob(job)}>
