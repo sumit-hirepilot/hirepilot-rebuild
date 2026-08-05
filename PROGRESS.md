@@ -62,32 +62,57 @@ marketing site both live and functional.
 
 ## Status
 
-Wave A CLOSED: A1-A6 plus A3-a/b/c. Verified on production, CI green.
-Suites: frontend 60, backend 42. Guard audit 26/26. Floors enforced in CI.
+Wave A CLOSED (A1-A6 + A3-a/b/c). A7.2 CLOSED.
+Suites: frontend 60, backend 49. Guard audit 28/28. CI floors: frontend 60,
+backend 49. All verified on production.
 
-## Just closed — A3-c [shipped + VERIFIED 2026-08-05]
+## Just closed — A7.2 [shipped + VERIFIED 2026-08-05]
 
-- Anchored every superstring-satisfiable assertion in BOTH suites. Out of
-  scope, per D12: `not.toMatch` (a superstring makes a negative assertion more
-  likely to fire) and rendered user copy (containment is the intent there).
-- `tools/run-suite.js`: exit 0 is also what jest returns when it ran NOTHING.
-  Runs jest, parses the JSON summary, fails unless a committed floor actually
-  executed, and refuses to call it a pass if the summary is unreadable. CI
-  calls it for both suites instead of jest directly. Proven by EXIT CODE both
-  directions, not by reading stdout.
-- D15: no tsconfig checkJs. Enabling it surfaces hundreds of pre-existing
-  errors; the ways through are a blanket ignore list (rubber stamp) or a
-  refactor §BUILD forbids. API shape drift is guarded behaviourally instead.
-- D13: submissions stay in the user's own browser, own session, user-initiated.
-  No remote control of the extension. Constraint 4 stays deferred: ToS until
-  counsel answers A5's flag.
-- D14 + BACKLOG_MOBILE.md: mobile app filed as a scoped item, NOT built. E2
-  stays link-surfacing.
+Ingestion side of the parse-failure defect. A2c stopped users SEEING `name`
+where an employer belongs; this stops it being written.
 
-Learned, and it cost a red CI: `--outputFile=/dev/stdout` worked locally and
-failed on the runner. Also `$?` after a pipeline reads the LAST command's
-status - I read `tail`'s exit code and nearly recorded a floor violation as
-passing, inside the goal about exit codes not being evidence.
+Traced to source, not guessed: **himalayas**. The live API returns a real
+`companyName`, so the current parser is CORRECT and the bad rows are legacy
+from an older shape. Fixing only rows would leave the class open, so the gate
+moved to the funnel every source normalises through (`jobAggregator`), whose
+old check tested truthiness - which the literal string 'name' satisfies.
+
+**Production count, from GET /api/jobs/field-integrity:**
+total 25,012 · bad_company 399 (all himalayas) · bad_title 0 · bad_location 24.
+
+D16: the 399 stay active. Repair is impossible (nothing to recover the employer
+from); `parsedOr` already withholds the placeholder at every render site, so the
+criterion is met without destroying 399 postings whose title, location and apply
+URL are intact. No corrective migration, no data risk.
+
+Verified: 7 tests, all proven red. The FIRST proof attempt was invalid -
+`git stash push` silently did nothing because an untracked file was in the path
+list, so the "pre-change" run tested the changed file and passed. Redone against
+a genuinely reverted file. Audit 28/28, CI green.
+
+## Next goal — A7.3, dates (executable cold)
+
+- "date unavailable" and "Publication date unavailable" are ONE state with two
+  strings. Unify.
+- Report what fraction of indexed jobs lack a publication date, PER SOURCE.
+  D4 (timing signal) is impossible without it, so this is a wedge blocker.
+- "Today's matches" currently includes a 98-day-old posting: either the label
+  or the query is wrong. Decide which and fix that one.
+
+Start from this, do not re-derive:
+- `GET /api/jobs/field-integrity` (added in A7.2, `backend/routes/jobs.js`) is
+  the established pattern for a per-source count from production without local
+  DB access. Extend it with a `posted_at IS NULL` breakdown rather than writing
+  a new endpoint.
+- `jobAggregator.js` deliberately leaves `posted_at` NULL when a source has no
+  trustworthy date - it must NOT fall back to "now", which would fabricate
+  freshness. Do not "fix" that by defaulting it.
+- Sorting already handles NULLs: `posted_at DESC NULLS LAST, id DESC` (A7.7).
+  Undated jobs sort last by design.
+- `frontend/lib/format.js` owns date formatting with an explicit locale AND
+  time zone. Any new date string goes through it or the H3 lint fires.
+- Then: A7.4 activity feed copy, A7.5 CTA sweep, A7.6 jobs checkboxes,
+  A7.8-A7.10, then B1-B5.
 
 ## Next goal — A7.2, no parse failure reaches the UI (executable cold)
 

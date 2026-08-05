@@ -163,3 +163,21 @@ query actually produces.
 
 Revisit if a shape bug reaches production that JSDoc + checkJs would have
 caught. Until then this is deliberate, not an omission.
+
+## D16 — the 399 legacy rows stay active; render withholds, ingestion blocks
+A7.2 requires an unparsed field to be "repaired or withheld, never rendered
+with the placeholder visible". Production carries 399 such rows (all himalayas,
+of 25,012 active) plus 24 unparsed locations.
+
+Repair is impossible: there is nothing to recover the employer FROM, and
+inventing one is the fabrication the goal exists to prevent.
+
+Withheld at RENDER rather than deactivated in the database. `parsedOr` already
+shows "Company not stated" everywhere company_name is rendered, so the
+placeholder never reaches a user - the criterion is met. Deactivating the rows
+would destroy 399 otherwise-usable postings whose title, location and apply URL
+are all intact and clickable, to fix a field the UI already handles honestly.
+That trades real user value for a cosmetic database state.
+
+No corrective migration, therefore no data risk. The ingestion gate stops the
+count growing; /api/jobs/field-integrity makes it visible if it ever does.
