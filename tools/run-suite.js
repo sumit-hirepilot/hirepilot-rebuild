@@ -14,6 +14,8 @@
  *   node tools/run-suite.js <dir> <minTests>
  */
 const { execFileSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const [dir, minRaw] = process.argv.slice(2);
@@ -24,21 +26,28 @@ if (!dir || !minRaw) {
 const min = Number(minRaw);
 const cwd = path.resolve(__dirname, '..', dir);
 
-let out = '';
+/*
+ * A real temp file, not --outputFile=/dev/stdout. That worked locally and
+ * failed on the CI runner, where the JSON never arrived intact - the exact
+ * shape of "green here, red there" this script exists to remove.
+ */
+const summaryFile = path.join(os.tmpdir(), `jest-summary-${process.pid}-${dir.replace(/\W/g, '')}.json`);
 let failed = false;
 try {
-  out = String(execFileSync('npx', ['jest', '--ci', '--json', '--outputFile=/dev/stdout'], {
-    cwd, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024,
-  }));
+  execFileSync('npx', ['jest', '--ci', '--json', `--outputFile=${summaryFile}`], {
+    cwd, stdio: 'inherit', maxBuffer: 64 * 1024 * 1024,
+  });
 } catch (err) {
   failed = true;
-  out = String(err.stdout || '') + String(err.stderr || '');
 }
 
-const m = out.match(/\{[\s\S]*"numTotalTests"[\s\S]*\}/);
+let raw = '';
+try { raw = fs.readFileSync(summaryFile, 'utf8'); } catch (e) { raw = ''; }
+try { fs.unlinkSync(summaryFile); } catch (e) { /* best effort */ }
+
+const m = raw.match(/\{[\s\S]*"numTotalTests"[\s\S]*\}/);
 if (!m) {
   console.error(`${dir}: could not read a JSON summary from jest - refusing to call this a pass`);
-  console.error(out.slice(-2000));
   process.exit(1);
 }
 
