@@ -67,6 +67,8 @@ export default function ApplicationDetail() {
   const [edits, setEdits] = useState({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  // null = no receipt (or not loaded). A4: never fall back to live values.
+  const [receipt, setReceipt] = useState(null);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async (t, appId) => {
@@ -83,7 +85,20 @@ export default function ApplicationDetail() {
     if (!t) { router.replace('/login'); return; }
     setToken(t);
     try { setUser(JSON.parse(localStorage.getItem('user') || 'null')); } catch { /* stale */ }
-    if (id) load(t, id);
+    if (id) {
+      load(t, id);
+      /*
+       * A4 — the frozen receipt, fetched separately so its absence is a fact
+       * rather than a fallback. 404 means none was recorded; it must never
+       * degrade into showing current profile values as history.
+       */
+      fetch(`${BASE}/api/apply/queue/${id}/receipt`, {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setReceipt(d?.receipt || null))
+        .catch(() => setReceipt(null));
+    }
   }, [router, id, load]);
 
   const saveEdits = async () => {
@@ -221,12 +236,59 @@ export default function ApplicationDetail() {
         * to see what left. Letting this page imply it is that record would be
         * the same failure as a fabricated counter, with worse consequences.
         */}
-      {item.status === 'submitted' && (
+      {item.status === 'submitted' && receipt === null && (
         <div className={page.failure}>
           These answers are your current profile values, not a copy of what was
-          submitted. HirePilot does not yet keep an immutable record of the exact
-          fields sent, so anything you have changed since will read differently
-          here. The employer&apos;s confirmation below is the part that is fixed.
+          submitted. No submission receipt was recorded for this application, so
+          anything you have changed since will read differently here. The
+          employer&apos;s confirmation below is the part that is fixed.
+        </div>
+      )}
+
+      {/*
+        * A4 — when a receipt exists, show the frozen copy instead of hedging
+        * about the live one. This is the record a user needs when disputing
+        * what went out under their name, so it says plainly that it cannot be
+        * edited, and by what.
+        */}
+      {receipt && (
+        <div className={page.receipt}>
+          <p className={page.receiptTitle}>What was actually sent</p>
+          <p className={page.receiptNote}>
+            Frozen when the employer confirmed receipt on{' '}
+            {formatDateTime(receipt.submitted_at)}. This copy cannot be edited -
+            the database refuses any change to it.
+          </p>
+          <dl className={page.receiptList}>
+            {Object.entries(receipt.answers_sent || {}).map(([q, a]) => (
+              <div key={q} className={page.receiptRow}>
+                <dt>{q}</dt>
+                <dd>{typeof a === 'string' ? a : JSON.stringify(a)}</dd>
+              </div>
+            ))}
+            {receipt.resume_filename && (
+              <div className={page.receiptRow}>
+                <dt>Resume attached</dt>
+                <dd>
+                  {receipt.resume_filename}
+                  {receipt.resume_sha256 && (
+                    <span className={page.receiptHash}> · sha256 {receipt.resume_sha256.slice(0, 16)}…</span>
+                  )}
+                </dd>
+              </div>
+            )}
+            {receipt.platform_confirmation_id && (
+              <div className={page.receiptRow}>
+                <dt>Employer reference</dt>
+                <dd>{receipt.platform_confirmation_id}</dd>
+              </div>
+            )}
+          </dl>
+          {!Object.keys(receipt.answers_sent || {}).length && (
+            <p className={page.receiptNote}>
+              No screening answers were recorded for this submission.
+            </p>
+          )}
         </div>
       )}
 
