@@ -229,6 +229,17 @@
   display: inline-block;
 }
 
+/* A7.14 - a source we deliberately do not fetch is not a source that broke.
+   Red is a call to action; this one needs no action. Same defect one level
+   down from the fix itself: two states sharing one presentation. */
+.sourceDotOff {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-muted, #9ca3af);
+  display: inline-block;
+}
+
 .message {
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;

@@ -122,7 +122,7 @@ const CASES = [
   { suite: 'renderState',
     test: 'does not infer liveness from the row count',
     file: 'pages/jobs.js',
-    mutate: (s) => s.replace("s.status === 'live' ? page.sourceDotActive", "s.count > 0 ? page.sourceDotActive") },
+    mutate: (s) => s.replace("s.status === 'live'", 's.count > 0') },
 
   /* ---- A7.12: non-job content must never be stored or made applyable ---- */
   { suite: 'notAJob', dir: 'backend', base: true,

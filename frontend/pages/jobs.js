@@ -1068,7 +1068,15 @@ export default function Jobs() {
                   : `${s.count} · ${fetchedAgo(s.lastFetched)}`;
             return (
               <span key={s.source} className={page.sourceItem} title={title}>
-                <span className={s.status === 'live' ? page.sourceDotActive : page.sourceDotInactive} />
+                <span
+                  className={
+                    s.status === 'live'
+                      ? page.sourceDotActive
+                      : s.status === 'failing'
+                        ? page.sourceDotInactive
+                        : page.sourceDotOff
+                  }
+                />
                 {sourceLabels[s.source] || s.source} ({detail})
               </span>
             );

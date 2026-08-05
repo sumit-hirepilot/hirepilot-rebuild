@@ -217,3 +217,33 @@ on page 2 - not a rounding difference, a number that means nothing.
 The general rule, since this will come up again: anything the user did not ask
 for may change the ORDER of a result set or what fits on one page. Only what the
 user did ask for may change its SIZE.
+
+
+## D19 — We Work Remotely stays unfetched; the reason moves out of a code comment
+
+Their v3 JSON API now returns 404, and the aggregator has not run this source
+at all - production reports lastRunSuccess null with zero ingestion runs, so it
+was never failing, it was never running. The reason existed only as a comment
+next to the SOURCES array: the site is behind bot protection and we will not
+circumvent it.
+
+Their RSS feed does currently return 200 to a plain unauthenticated request,
+carries pubDate on 100/100 items, and robots.txt disallows only account and
+admin paths. That is a real signal and it makes the comment's premise partly
+stale - but it is not sufficient to re-enable on:
+
+- A 200 from a residential IP says nothing about a datacentre IP. Railway
+  egress is exactly what bot protection challenges, so the local result does
+  not predict the production one. Testing that means probing their protection
+  from the server, which is the thing we said we would not do.
+- Whether a public feed is fetchable is a technical question; whether we should
+  fetch this one is a risk question, and the standing order resolves ambiguity
+  toward no legal or data risk.
+
+So: unchanged. What changes is that the product no longer misrepresents it. A
+deliberate non-fetch renders as "not connected" with the reason in the tooltip,
+not as "0 jobs" under a heading that says Live - and not with the red dot that
+means something broke, because nothing did.
+
+Revisit only with a positive signal, not the absence of a negative one: WWR
+publishing a supported API, or explicit permission. Not "the feed responded".

@@ -128,7 +128,14 @@ describe('A7.14 — the source dot reports the fetcher, not the leftovers', () =
     // `count > 0` is wrong in both directions - stale rows from a dead source
     // read as active, and a working source that matched nothing reads as dead.
     expect(panel).not.toMatch(/count\s*>\s*0\s*\?\s*\w*\.?sourceDotActive/);
-    expect(panel).toMatch(/status === 'live'\s*\?\s*page\.sourceDotActive/);
+    expect(panel).toMatch(/status === 'live'\s*\n?\s*\?\s*page\.sourceDotActive/);
+  });
+
+  it('reserves the error colour for things that actually failed', () => {
+    // Red is a call to action. A board we deliberately do not fetch needs no
+    // action, so it must not share a dot with one that broke overnight.
+    expect(panel).toMatch(/status === 'failing'\s*\n?\s*\?\s*page\.sourceDotInactive/);
+    expect(panel).toMatch(/page\.sourceDotOff/);
   });
 
   it('does not print a count for a source nothing ever counted', () => {
