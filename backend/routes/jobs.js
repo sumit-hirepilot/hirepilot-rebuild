@@ -493,13 +493,64 @@ router.get('/stats', async (req, res) => {
 });
 
 /*
+ * A7.17 - measuring the ranked feed with curl could not resolve whether the
+ * indexes were used: p50 was identical before and after (0.391s -> 0.405s) and
+ * p95 moved in both directions across runs, because network round-trip and
+ * serialising twenty descriptions dominate the query itself. An instrument
+ * that cannot see the thing it is pointed at is not evidence either way.
+ *
+ * This asks the database directly. It also answers the question that actually
+ * matters on a volume that has filled once already: an unused index is pure
+ * cost, so if the plan does not name it, it should not exist.
+ */
+async function feedPlan(userId) {
+  try {
+    const result = await query(
+      `EXPLAIN (ANALYZE, FORMAT JSON)
+       WITH ranked AS (
+         SELECT jobs.id, jobs.source, jobs.posted_at, jm.overall_score,
+                ROW_NUMBER() OVER (
+                  PARTITION BY jobs.source
+                  ORDER BY jm.overall_score DESC NULLS LAST, jobs.posted_at DESC NULLS LAST, jobs.id
+                ) AS source_rank
+           FROM jobs
+           LEFT JOIN job_matches jm ON jm.job_id = jobs.id AND jm.user_id = $1
+          WHERE is_active = true
+       )
+       SELECT * FROM ranked WHERE source_rank <= 5
+        ORDER BY overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC
+        LIMIT 20`,
+      [userId]
+    );
+    const plan = result.rows[0]['QUERY PLAN'][0];
+    const text = JSON.stringify(plan);
+    return {
+      executionMs: plan['Execution Time'],
+      planningMs: plan['Planning Time'],
+      // Named rather than dumped: the full plan is large and the only question
+      // is whether each index earns the disk it occupies.
+      indexesUsed: [
+        'idx_jobs_active_posted',
+        'idx_jobs_source',
+        'idx_job_matches_user_job',
+        'idx_job_matches_user_score',
+      ].filter((n) => text.includes(n)),
+      seqScans: (text.match(/"Node Type":"Seq Scan"/g) || []).length,
+    };
+  } catch (err) {
+    // A diagnostic must never be the reason the diagnostic endpoint 500s.
+    return { error: err.message };
+  }
+}
+
+/*
  * A7.17 - runMigrations logs a failed statement and carries on, then prints
  * "Migrations complete", so a CREATE INDEX that failed looks exactly like one
  * that worked. Declaring an index proves intent; this reads pg_indexes and
  * proves existence. Same reason A1's constraint guard reads pg_constraint:
  * containment is not existence.
  */
-router.get('/db-health', async (req, res) => {
+router.get('/db-health', verifyToken, async (req, res) => {
   try {
     const wanted = [
       'idx_jobs_active_posted',
@@ -516,6 +567,7 @@ router.get('/db-health', async (req, res) => {
       indexes: result.rows,
       expected: wanted.map((name) => ({ name, present: present.has(name) })),
       allPresent: wanted.every((name) => present.has(name)),
+      plan: await feedPlan(req.user.id),
     });
   } catch (err) {
     console.error('db-health error:', err);
