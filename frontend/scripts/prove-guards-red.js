@@ -84,6 +84,20 @@ const CASES = [
     file: 'components/NotificationBell.js',
     mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
 
+  /* ---- A7.4: the activity feed is read by a person ---- */
+  { suite: 'activityVocabulary', dir: 'backend', base: true,
+    test: 'handles every written event type explicitly',
+    file: 'backend/routes/activity.js',
+    mutate: (s) => s.replace("    case 'application_queued':", "    case '__gone':") },
+  { suite: 'activityVocabulary', dir: 'backend', base: true,
+    test: 'never falls back to the raw event key',
+    file: 'backend/routes/activity.js',
+    mutate: (s) => s.replace('      return `Activity on ${where(row, meta)}`;', '      return row.event_type;') },
+  { suite: 'activityVocabulary', dir: 'backend', base: true,
+    test: 'names the company on a retry',
+    file: 'backend/routes/activity.js',
+    mutate: (s) => s.replace('  if (title && company) return `${title} at ${company}`;', '  if (title && company) return title;') },
+
   /* ---- A7.3: one date formatter, one no-date string, no fake time window ---- */
   { suite: 'noFabricatedZero', test: 'defines timeAgo exactly once, in lib/format.js',
     file: 'pages/tracker.js',
