@@ -712,96 +712,157 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const rawExclude = req.query.exclude;
     const excludeTerms = rawExclude ? (Array.isArray(rawExclude) ? rawExclude : [rawExclude]) : [];
 
-    const params = [];
-    let filterClause = 'is_active = true';
+    /*
+     * A7.13 — every filter is DECLARED, not concatenated onto a string.
+     *
+     * The empty state has to name which filter emptied the result, and the
+     * only honest way to know is to count with that one removed. Filters
+     * appended as opaque SQL fragments cannot be removed individually, so the
+     * alternative was a second set of filter definitions written just for the
+     * diagnosis - which is exactly how A7.17's three ranking paths drifted
+     * apart until they disagreed. One definition each: the label the user
+     * reads and the SQL the query runs come from the same entry.
+     *
+     * `indexFilter` marks the ones that narrow the index (and so suppress the
+     * diversity cap). Experience and exclude deliberately do not - they refine
+     * a set rather than target one, which is the behaviour that shipped.
+     */
+    const filterSpecs = [];
+    const addFilter = (key, label, build, indexFilter = true) =>
+      filterSpecs.push({ key, label, build, indexFilter });
+
+    const asArray = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).filter(Boolean);
 
     if (source) {
-      hasIndexFilter = true;
-      params.push(source);
-      filterClause += ` AND source = $${params.length}`;
+      addFilter('source', `Source: ${source}`, (p) => { p.push(source); return `source = $${p.length}`; });
     }
 
     if (location) {
-      hasIndexFilter = true;
-      params.push(`%${location}%`);
-      filterClause += ` AND location ILIKE $${params.length}`;
+      addFilter('location', `Location: ${location}`, (p) => { p.push(`%${location}%`); return `location ILIKE $${p.length}`; });
     }
 
     if (company) {
-      hasIndexFilter = true;
-      params.push(`%${company}%`);
-      filterClause += ` AND company_name ILIKE $${params.length}`;
+      addFilter('company', `Company: ${company}`, (p) => { p.push(`%${company}%`); return `company_name ILIKE $${p.length}`; });
     }
 
     // Multi-select facets. Each accepts repeated params
     // (?jobType=full-time&jobType=contract) and OR's within a facet while
     // AND'ing across facets, which is the behaviour a checkbox filter panel
     // implies. Single values still work, so existing callers are unaffected.
-    const asArray = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).filter(Boolean);
-
     const jobTypes = asArray(jobType);
     if (jobTypes.length) {
-      hasIndexFilter = true;
-      // Compare against the normalised expression, not the raw column - the
-      // raw values are fragmented across several spellings per type.
-      const ph = jobTypes.map((t) => { params.push(t); return `$${params.length}`; });
-      filterClause += ` AND ${JOB_TYPE_SQL} IN (${ph.join(', ')})`;
+      addFilter('jobType', `Employment type: ${jobTypes.join(', ')}`, (p) => {
+        // Compare against the normalised expression, not the raw column - the
+        // raw values are fragmented across several spellings per type.
+        const ph = jobTypes.map((t) => { p.push(t); return `$${p.length}`; });
+        return `${JOB_TYPE_SQL} IN (${ph.join(', ')})`;
+      });
     }
 
     // Region: matched against the derived expression rather than a column,
     // because location is free text and jobs.country is mostly empty.
     const regions = asArray(req.query.region);
     if (regions.length) {
-      hasIndexFilter = true;
-      const ph = regions.map((r) => { params.push(r); return `$${params.length}`; });
-      filterClause += ` AND ${REGION_SQL} IN (${ph.join(', ')})`;
+      addFilter('region', `Location: ${regions.join(', ')}`, (p) => {
+        const ph = regions.map((r) => { p.push(r); return `$${p.length}`; });
+        return `${REGION_SQL} IN (${ph.join(', ')})`;
+      });
     }
 
     const workArrangements = asArray(req.query.workArrangement);
     if (workArrangements.length) {
-      hasIndexFilter = true;
-      const ph = workArrangements.map((w) => { params.push(w); return `$${params.length}`; });
-      filterClause += ` AND COALESCE(NULLIF(work_arrangement,''),'unknown') IN (${ph.join(', ')})`;
+      addFilter('workArrangement', `Workplace: ${workArrangements.join(', ')}`, (p) => {
+        const ph = workArrangements.map((w) => { p.push(w); return `$${p.length}`; });
+        return `COALESCE(NULLIF(work_arrangement,''),'unknown') IN (${ph.join(', ')})`;
+      });
     }
 
     // Salary bands are USD-equivalent (mixed source currencies converted with
     // static reference rates). Multiple bands OR together.
     const salaryBands = asArray(req.query.salary);
-    if (salaryBands.length) {
-      hasIndexFilter = true;
-      const conds = salaryBands
-        .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
-        .filter(Boolean);
-      if (conds.length) filterClause += ` AND (${conds.join(' OR ')})`;
+    const salaryConds = salaryBands
+      .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
+      .filter(Boolean);
+    if (salaryConds.length) {
+      addFilter('salary', `Salary: ${salaryBands.join(', ')}`, () => `(${salaryConds.join(' OR ')})`);
     }
 
-    // Kept separate from filterClause (rather than appended inline) so it
-    // can be applied at the same point results are read while still
-    // allowing a companion query for jobs with an unknown posted_at -
-    // `posted_at >= ...` is neither true nor false against NULL, so those
-    // jobs are silently dropped by this filter (correctly - we can't claim
-    // an unknown-date job falls in the window), but the count of how many
-    // were excluded for that reason needs to be surfaced, not silent.
-    let dateFilterSql = '';
-    if (datePosted) {
-      hasIndexFilter = true;
-      const intervalMap = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
-      const interval = intervalMap[datePosted];
-      if (interval) dateFilterSql = ` AND posted_at >= CURRENT_TIMESTAMP - INTERVAL '${interval}'`;
+    const EXPERIENCE_SQL = {
+      senior: `title ~* '(senior|sr\\.?|lead|head of)'`,
+      staff: `title ~* '(staff|principal|distinguished)'`,
+      entry: `title ~* '(junior|jr\\.?|entry|intern|graduate)'`,
+      mid: `title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`,
+    };
+    const EXPERIENCE_LABEL = {
+      senior: 'Senior', staff: 'Staff+', entry: 'Entry level', mid: 'Mid level',
+    };
+    if (EXPERIENCE_SQL[experience]) {
+      addFilter('experience', `Experience: ${EXPERIENCE_LABEL[experience]}`,
+        () => EXPERIENCE_SQL[experience], false);
     }
 
-    if (experience === 'senior') {
-      filterClause += ` AND title ~* '(senior|sr\\.?|lead|head of)'`;
-    } else if (experience === 'staff') {
-      filterClause += ` AND title ~* '(staff|principal|distinguished)'`;
-    } else if (experience === 'entry') {
-      filterClause += ` AND title ~* '(junior|jr\\.?|entry|intern|graduate)'`;
-    } else if (experience === 'mid') {
-      filterClause += ` AND title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`;
+    if (excludeTerms.length) {
+      addFilter('exclude', `Excluding: ${excludeTerms.join(', ')}`,
+        (p) => buildExcludeCondition(excludeTerms, p) || 'TRUE', false);
     }
 
-    const excludeCondition = buildExcludeCondition(excludeTerms, params);
-    if (excludeCondition) filterClause += ` AND ${excludeCondition}`;
+    /*
+     * Kept identifiable rather than folded into the clause: `posted_at >= ...`
+     * is neither true nor false against NULL, so undated jobs are silently
+     * dropped by this filter (correctly - we cannot claim an unknown-date job
+     * falls in the window), and the count of how many were excluded for that
+     * reason has to be surfaced, not silent.
+     */
+    const DATE_INTERVAL = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
+    const DATE_LABEL = {
+      '24h': 'Past 24 hours', '3d': 'Past 3 days', '7d': 'Past 7 days', '30d': 'Past 30 days',
+    };
+    if (datePosted && DATE_INTERVAL[datePosted]) {
+      addFilter('datePosted', DATE_LABEL[datePosted],
+        () => `posted_at >= CURRENT_TIMESTAMP - INTERVAL '${DATE_INTERVAL[datePosted]}'`);
+    }
+
+    const wantRelated = includeRelated === 'true';
+    const hasKeywords = keywords.some((k) => k && k.trim());
+
+    /*
+     * Rebuilds the whole WHERE from the specs, optionally omitting exactly
+     * one. Params are rebuilt with it, because Postgres binds by position and
+     * dropping a clause while keeping its parameter is a bind error, not a
+     * no-op.
+     */
+    const compose = ({ skip = null } = {}) => {
+      const p = [];
+      const parts = ['is_active = true'];
+      let dateSql = '';
+      for (const f of filterSpecs) {
+        if (f.key === skip) continue;
+        if (f.key === 'datePosted') { dateSql = ` AND ${f.build(p)}`; continue; }
+        parts.push(f.build(p));
+      }
+      // match_tier ranks exact title matches above title-word above
+      // title-or-description. With no keywords every row is tier 1, so the
+      // same expression serves the plain feed and the search.
+      const useKeywords = hasKeywords && skip !== 'keywords';
+      const tier = useKeywords
+        ? buildSearchTiering(keywords, p, { scope })
+        : { tierCaseExpr: '1' };
+      return {
+        clause: parts.join(' AND '),
+        dateSql,
+        tierCaseExpr: tier.tierCaseExpr,
+        tierFilter: useKeywords ? (wantRelated ? 'match_tier <= 3' : 'match_tier <= 2') : 'TRUE',
+        params: p,
+      };
+    };
+
+    const base = compose();
+    const params = base.params;
+    const filterClause = base.clause;
+    const dateFilterSql = base.dateSql;
+    const tiering = { tierCaseExpr: base.tierCaseExpr };
+    const tierFilter = base.tierFilter;
+    hasIndexFilter = filterSpecs.some((f) => f.indexFilter) || hasKeywords;
 
     let jobs = [];
     let total = 0;
@@ -809,6 +870,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     let relatedTotal = 0;
     let noExactMatches = false;
     let excludedUnknownDateCount = 0;
+    // Always present, null when it does not apply - A7.17's shape rule.
+    let emptyReason = null;
 
     /*
      * A7.17 — ONE ranking path.
@@ -830,20 +893,6 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * unscored row is ranked last, not excluded - we cannot judge it, which is
      * not the same as it being a bad match.
      */
-    const wantRelated = includeRelated === 'true';
-    const hasKeywords = keywords.some((k) => k && k.trim());
-
-    // match_tier ranks exact title matches above title-word above
-    // title-or-description. With no keywords every row is tier 1, so the same
-    // expression serves the plain feed and the search - one query, not two.
-    const tiering = hasKeywords
-      ? buildSearchTiering(keywords, params, { scope })
-      : { tierCaseExpr: '1' };
-    if (hasKeywords) hasIndexFilter = true;
-    const tierFilter = hasKeywords ? (wantRelated ? 'match_tier <= 3' : 'match_tier <= 2') : 'TRUE';
-
-    const scoreParams = [...params, userId];
-    const userIdx = scoreParams.length;
 
     /*
      * The floor filters SCORED rows only. Excluding unscored rows would
@@ -852,16 +901,27 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * no score at all - so the response reports how many are unscored and the
      * UI can say so.
      */
-    let floorSql = '';
-    if (rankByScore && minScore > 0) {
-      scoreParams.push(minScore);
-      floorSql = ` AND (jm.overall_score >= $${scoreParams.length} OR jm.overall_score IS NULL)`;
-    }
-
-    const rankedCte = `
+    /*
+     * One builder for the ranked CTE, used by the page query AND by the
+     * empty-state diagnosis. A diagnosis built from its own copy of this would
+     * answer a question about a query the user never ran.
+     */
+    const buildQuery = (v, { skipFloor = false } = {}) => {
+      const sp = [...v.params, userId];
+      const uIdx = sp.length;
+      let floor = '';
+      if (rankByScore && minScore > 0 && !skipFloor) {
+        sp.push(minScore);
+        floor = ` AND (jm.overall_score >= $${sp.length} OR jm.overall_score IS NULL)`;
+      }
+      return {
+        sp,
+        floor,
+        tierFilter: v.tierFilter,
+        cte: `
       WITH ranked AS (
         SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
-               ${tiering.tierCaseExpr} AS match_tier,
+               ${v.tierCaseExpr} AS match_tier,
                jm.overall_score, jm.skills_match_score, jm.experience_match_score,
                jm.location_match_score, jm.salary_match_score,
                ROW_NUMBER() OVER (
@@ -870,9 +930,15 @@ router.get('/', attachUserIfPresent, async (req, res) => {
                ) AS source_rank
           FROM jobs
           LEFT JOIN job_matches jm
-            ON jm.job_id = jobs.id AND jm.user_id = $${userIdx}
-         WHERE ${filterClause}${dateFilterSql}${floorSql}
-      )`;
+            ON jm.job_id = jobs.id AND jm.user_id = $${uIdx}
+         WHERE ${v.clause}${v.dateSql}${floor}
+      )`,
+      };
+    };
+
+    const mainQuery = buildQuery(base);
+    const rankedCte = mainQuery.cte;
+    const floorSql = mainQuery.floor;
 
     // Diversity cap only on the unfiltered feed - see hasIndexFilter above.
     const capSql = (!hasIndexFilter && rankByScore)
@@ -892,6 +958,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       ? 'match_tier ASC, posted_at DESC NULLS LAST, overall_score DESC NULLS LAST, id DESC'
       : 'match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC';
 
+    const scoreParams = mainQuery.sp;
     const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
     total = parseInt(countResult.rows[0]?.count ?? 0, 10);
 
@@ -921,6 +988,51 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       excludedUnknownDateCount = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);
     }
 
+    /*
+     * A7.13 — when the result is empty, name the filter that emptied it.
+     *
+     * "No jobs match these filters" is true and useless: it names every filter
+     * and blames none, so the only move left is to clear all of them. The
+     * server can simply count with each one dropped, and after A7.17 there is
+     * no 500-row cap left to explain the emptiness away.
+     *
+     * Every number is a real COUNT against the same builder the page query
+     * uses. A suggestion like "try widening the date range" with no count
+     * behind it is a guess wearing the clothes of a finding.
+     *
+     * Costs one query per active filter, and only ever runs on an empty
+     * result - the case where the user is stuck and has nothing else to read.
+     */
+    if (total === 0) {
+      const candidates = [
+        ...filterSpecs.map((f) => ({ key: f.key, label: f.label })),
+        ...(hasKeywords ? [{ key: 'keywords', label: `Search: ${keywords.join(', ')}` }] : []),
+        ...(rankByScore && minScore > 0
+          ? [{ key: 'minScore', label: `Match score above ${Math.round(minScore * 100)}%` }]
+          : []),
+      ];
+
+      const measured = [];
+      for (const c of candidates) {
+        const v = compose({ skip: c.key });
+        const q = buildQuery(v, { skipFloor: c.key === 'minScore' });
+        const r = await query(
+          `${q.cte} SELECT COUNT(*) as count FROM ranked WHERE ${q.tierFilter}`,
+          q.sp
+        );
+        measured.push({ ...c, withoutIt: parseInt(r.rows[0]?.count ?? 0, 10) });
+      }
+
+      // The one that recovers the most, and null when none of them does -
+      // "no single filter is responsible" is a real answer, and naming the
+      // first candidate anyway would be a fabricated cause.
+      const best = measured.reduce((a, b) => (b.withoutIt > (a ? a.withoutIt : 0) ? b : a), null);
+      emptyReason = {
+        filters: measured,
+        primary: best && best.withoutIt > 0 ? best.key : null,
+      };
+    }
+
     if (hasKeywords && !wantRelated && total === 0) {
       const relatedResult = await query(
         `${rankedCte} SELECT * FROM ranked WHERE match_tier = 3${capSql}
@@ -947,6 +1059,9 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       // a user seeing 300 results instead of 23,958 is entitled to know a
       // filter is doing that, and to move it.
       ranking,
+      // A7.13 — when total is 0, which filter did it and what it costs.
+      // Null when there is nothing to explain, never absent.
+      emptyReason,
     });
   } catch (err) {
     console.error('Get jobs error:', err);

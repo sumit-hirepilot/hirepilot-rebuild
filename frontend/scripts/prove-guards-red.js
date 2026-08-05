@@ -104,6 +104,27 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.13: the empty state names a cause and stops contradicting itself ---- */
+  { suite: 'emptyStateCause', dir: 'backend', base: true,
+    test: 'names the single filter that recovers the most, not just any of them',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('b.withoutIt > (a ? a.withoutIt : 0)',
+      'b.withoutIt < (a ? a.withoutIt : Infinity)') },
+  { suite: 'emptyStateCause', dir: 'backend', base: true,
+    test: 'does not run the diagnosis when there is nothing to diagnose',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('if (total === 0) {', 'if (true) {') },
+  { suite: 'emptyStateCopy',
+    test: 'never claims nothing matches while showing a related job',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('? `No exact matches \u00b7 ${relatedTotal} related`',
+      "? 'No jobs match these filters'") },
+  { suite: 'emptyStateCopy',
+    test: 'names the responsible filter and the count behind it',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('const cause = emptyReason?.primary',
+      'const cause = false && emptyReason?.primary') },
+
   /* ---- A7.17 perf: the index is the universe, so index it ---- */
   { suite: 'hotPathIndexes', dir: 'backend', base: true,
     test: 'indexes the selective path, which is the one A7.17 unlocked',

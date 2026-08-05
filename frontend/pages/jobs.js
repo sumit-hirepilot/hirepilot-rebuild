@@ -275,6 +275,40 @@ function formatSalary(job) {
 // A7.3: timeAgo already returns the one canonical NO_DATE string.
 const postedTimeAgo = timeAgo;
 
+/*
+ * A7.13 — say which filter emptied the result, and what relaxing it is worth.
+ *
+ * "No jobs match these filters" names every filter and blames none, so the
+ * only move it leaves is to clear all of them. The server counts with each one
+ * dropped and sends the real numbers; this turns them into a sentence.
+ *
+ * Every number here came from a COUNT. When the server found no single
+ * responsible filter it says so - naming one anyway would send the user to
+ * relax the wrong control, which is worse than the generic sentence it
+ * replaced.
+ */
+function emptyReasonText({ emptyReason, keywords, noExactMatches, relatedTotal }) {
+  const cause = emptyReason?.primary
+    ? (emptyReason.filters || []).find((f) => f.key === emptyReason.primary)
+    : null;
+
+  if (cause) {
+    const without = `${cause.label} is what emptied this - ${cause.withoutIt} ${cause.withoutIt === 1 ? 'job matches' : 'jobs match'} without it.`;
+    return noExactMatches && relatedTotal > 0
+      ? `No exact matches. ${without} Related jobs are below.`
+      : `No jobs match. ${without}`;
+  }
+
+  if (emptyReason && Array.isArray(emptyReason.filters) && emptyReason.filters.length > 0) {
+    return 'No jobs match, and no single filter explains it - the combination is what empties the result. Try removing two at once.';
+  }
+
+  if (noExactMatches) {
+    return `No exact matches for "${keywords.join(', ')}".${relatedTotal > 0 ? ' See related jobs below, or search a different title.' : ' Try a different search term.'}`;
+  }
+  return 'No jobs found. Try a different search term.';
+}
+
 export default function Jobs() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -322,6 +356,8 @@ export default function Jobs() {
   const [noExactMatches, setNoExactMatches] = useState(false);
   const [relatedJobs, setRelatedJobs] = useState([]);
   const [relatedTotal, setRelatedTotal] = useState(null);
+  // A7.13 — which filter emptied the result, with a real count per filter.
+  const [emptyReason, setEmptyReason] = useState(null);
   const [excludedUnknownDateCount, setExcludedUnknownDateCount] = useState(null);
 
   const base = API_BASE;
@@ -417,6 +453,7 @@ export default function Jobs() {
         setNoExactMatches(!!data.noExactMatches);
         setRelatedJobs(data.relatedJobs || []);
         setRelatedTotal(typeof data.relatedTotal === 'number' ? data.relatedTotal : null);
+        setEmptyReason(data.emptyReason || null);
         setExcludedUnknownDateCount(typeof data.excludedUnknownDateCount === 'number' ? data.excludedUnknownDateCount : null);
       } else {
         // Never silently keep showing a stale/previous result set on
@@ -426,6 +463,7 @@ export default function Jobs() {
         setTotal(null);
         setJobsError(`The job search did not answer (${jobsRes.status}).`);
         setNoExactMatches(false);
+        setEmptyReason(null);
         setRelatedJobs([]);
         setExcludedUnknownDateCount(null);
         setMessage('Failed to load jobs. Please try your search again.');
@@ -1028,7 +1066,16 @@ export default function Jobs() {
                   loading,
                   error: jobsError,
                   unit: 'results',
-                  zeroText: 'No jobs match these filters',
+                  /*
+                   * A7.13 — this said "No jobs match these filters" while a
+                   * related job was rendered directly below it. Both were on
+                   * screen at once and a reader can only believe one. `total`
+                   * counts exact matches; when related results are showing,
+                   * the line has to say which number it is quoting.
+                   */
+                  zeroText: relatedTotal > 0
+                    ? `No exact matches · ${relatedTotal} related`
+                    : 'No jobs match these filters',
                   errorText: 'Result count unavailable',
                 }).text}
           </span>
@@ -1134,9 +1181,7 @@ export default function Jobs() {
             <p className={styles.emptyState}>
               {showSavedOnly
                 ? 'No saved jobs yet. Click the star on any job to save it for later.'
-                : noExactMatches
-                  ? `No exact matches for "${keywords.join(', ')}".${relatedTotal > 0 ? ' See related jobs below, or search a different title.' : ' Try a different search term.'}`
-                  : 'No jobs found. Try a different search term.'}
+                : emptyReasonText({ emptyReason, keywords, noExactMatches, relatedTotal })}
             </p>
           ) : (
             <div className={page.list}>

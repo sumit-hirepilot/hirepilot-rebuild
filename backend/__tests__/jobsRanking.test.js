@@ -242,12 +242,24 @@ describe('A7.17 — filters apply to the index, not to the match store', () => {
     expect(src).toMatch(/!hasIndexFilter\s*&&\s*rankByScore/);
   });
 
-  it('applies the floor to scored rows without deleting unscored ones', () => {
-    // Excluding unscored rows would collapse the universe back to the 500.
-    const fs = require('fs');
-    const path = require('path');
-    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'jobs.js'), 'utf8');
-    expect(src).toMatch(/overall_score >= \$\$\{scoreParams\.length\} OR jm\.overall_score IS NULL/);
+  it('applies the floor to scored rows without deleting unscored ones', async () => {
+    /*
+     * Excluding unscored rows would collapse the universe back to the 500 this
+     * goal exists to escape.
+     *
+     * Rewritten from a source-text match on `$${scoreParams.length}`, which
+     * A7.13's refactor renamed - so the guard failed on a change that did not
+     * touch the behaviour it protects. Same lesson as A7.12: pin the property,
+     * in the SQL the endpoint actually emits, not the identifier that happened
+     * to build it.
+     */
+    mockRows();
+    await request(app()).get('/api/jobs?limit=20&minScore=0.6').set('Authorization', `Bearer ${token}`);
+
+    const sql = query.mock.calls[0][0];
+    expect(sql).toMatch(/overall_score >= \$\d+ OR jm\.overall_score IS NULL/);
+    // The OR is load-bearing: without it the floor deletes every unscored row.
+    expect(sql).not.toMatch(/overall_score >= \$\d+\s*\)/);
   });
 });
 
