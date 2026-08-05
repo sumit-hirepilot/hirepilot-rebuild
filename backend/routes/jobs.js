@@ -503,8 +503,11 @@ router.get('/stats', async (req, res) => {
  * matters on a volume that has filled once already: an unused index is pure
  * cost, so if the plan does not name it, it should not exist.
  */
-async function feedPlan(userId) {
+async function feedPlan(userId, { dateFilter = false } = {}) {
   try {
+    const where = dateFilter
+      ? "WHERE is_active = true AND posted_at >= NOW() - INTERVAL '24 hours'"
+      : 'WHERE is_active = true';
     const result = await query(
       `EXPLAIN (ANALYZE, FORMAT JSON)
        WITH ranked AS (
@@ -515,7 +518,7 @@ async function feedPlan(userId) {
                 ) AS source_rank
            FROM jobs
            LEFT JOIN job_matches jm ON jm.job_id = jobs.id AND jm.user_id = $1
-          WHERE is_active = true
+          ${where}
        )
        SELECT * FROM ranked WHERE source_rank <= 5
         ORDER BY overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC
@@ -568,6 +571,7 @@ router.get('/db-health', verifyToken, async (req, res) => {
       expected: wanted.map((name) => ({ name, present: present.has(name) })),
       allPresent: wanted.every((name) => present.has(name)),
       plan: await feedPlan(req.user.id),
+      planFiltered: await feedPlan(req.user.id, { dateFilter: true }),
     });
   } catch (err) {
     console.error('db-health error:', err);
