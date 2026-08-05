@@ -10,6 +10,9 @@ import { formatDate, formatNumber, timeAgo, fetchedAgo, NO_DATE } from '../lib/f
 import Link from 'next/link';
 
 const PAGE_SIZE = 20;
+// A7.9 — one definition, so the URL writer and the initial state cannot
+// disagree about what "unset" means.
+const DEFAULT_MIN_SCORE = 0.4;
 
 function ChipInput({ values, onChange, placeholder, className }) {
   const [draft, setDraft] = useState('');
@@ -324,7 +327,7 @@ export default function Jobs() {
   // A7.1 — the floor and the ranking mode are the user's, and both are visible.
   const [rankMode, setRankMode] = useState('ranked');
   const [sortBy, setSortBy] = useState(null); // null = follow the server default
-  const [minScore, setMinScore] = useState(0.4);
+  const [minScore, setMinScore] = useState(DEFAULT_MIN_SCORE);
   const [ranking, setRanking] = useState(null);
   const [page_, setPage] = useState(1);
   const [keywords, setKeywords] = useState([]);
@@ -569,6 +572,20 @@ export default function Jobs() {
     if (co) q.company = co;
     if (rel) q.includeRelated = 'true';
     if (saved) q.saved = 'true';
+    /*
+     * A7.9 — these three change the result set and were written by neither
+     * half of the URL sync, so /jobs?sort=recent produced the score-ranked
+     * feed and a shared link showed the recipient a different list than the
+     * sender saw. The score floor silently reset to 0.4 on every reload, which
+     * is the A7.1 class: a control whose visible position does not describe
+     * what the list was built from.
+     */
+    const srt = o.sortBy ?? sortBy;
+    const rm = o.rankMode ?? rankMode;
+    const ms = o.minScore ?? minScore;
+    if (srt) q.sort = srt;
+    if (rm === 'all') q.ranked = '0';
+    if (Number(ms) !== DEFAULT_MIN_SCORE) q.minScore = String(ms);
     return q;
   };
 
@@ -605,16 +622,24 @@ export default function Jobs() {
     const rel = q.includeRelated === 'true';
     const saved = q.saved === 'true';
 
+    // A7.9 — read back everything the builder writes. Unrecognised values fall
+    // to the default rather than being passed through to the API.
+    const srt = q.sort === 'recent' || q.sort === 'score' ? q.sort : null;
+    const rm = q.ranked === '0' ? 'all' : 'ranked';
+    const rawMs = Number(q.minScore);
+    const ms = Number.isFinite(rawMs) && rawMs >= 0 && rawMs <= 1 ? rawMs : DEFAULT_MIN_SCORE;
+
     setKeywords(kws); setExcludeTerms(excl); setJobTypes(jt);
     setWorkArrangements(wa); setSalary(sal); setRegions(rg);
     setPage(pg); setScope(scp); setExperience(exp); setLocation(loc);
     setDatePosted(dp); setCompany(co); setIncludeRelated(rel); setShowSavedOnly(saved);
+    setSortBy(srt); setRankMode(rm); setMinScore(ms);
 
     loadJobs(authToken, {
       page: pg, keywords: kws, excludeTerms: excl, jobTypes: jt,
       workArrangements: wa, salary: sal, regions: rg, scope: scp,
       experience: exp, location: loc, datePosted: dp, company: co,
-      includeRelated: rel,
+      includeRelated: rel, sortBy: srt, rankMode: rm, minScore: ms,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadJobs]);

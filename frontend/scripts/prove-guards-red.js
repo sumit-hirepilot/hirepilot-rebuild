@@ -103,6 +103,18 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.9: the URL is the state, in both directions ---- */
+  { suite: 'urlRoundTrip',
+    test: 'round-trips sort',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('    if (srt) q.sort = srt;\n', '') },
+  { suite: 'urlRoundTrip',
+    test: 'reads every key it writes, with nothing left over',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace(
+      "const srt = q.sort === 'recent' || q.sort === 'score' ? q.sort : null;",
+      'const srt = null;') },
+
   /* ---- A7.11: a fifth of the index sorts last; say so and make it reachable ---- */
   { suite: 'undatedJobs', dir: 'backend', base: true,
     test: 'accepts datePosted=unknown and asks for exactly the undated rows',
