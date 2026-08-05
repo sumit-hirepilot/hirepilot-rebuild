@@ -247,3 +247,33 @@ means something broke, because nothing did.
 
 Revisit only with a positive signal, not the absence of a negative one: WWR
 publishing a supported API, or explicit permission. Not "the feed responded".
+
+
+## D20 — an index earns its place by appearing in a plan
+
+Four indexes went onto jobs and job_matches on the reasoning that A7.17 had
+made the index the universe. EXPLAIN ANALYZE on production disagreed:
+
+    unfiltered feed  42.19ms  2 seq scans  indexes used: none
+    24h filtered      1.47ms  1 seq scan   uses idx_jobs_active_posted
+
+The unfiltered feed reads essentially every active row, so a sequential scan is
+the correct plan and no index can improve it. The selective path is the one
+A7.17 actually unlocked, and there the index is worth 28x. The other three were
+speculation - jobs(source) cannot help a window that already sorts the full
+scan, and both job_matches indexes lose to a hash join over a table the match
+store caps at 500 rows.
+
+Kept one, dropped three, including from databases that already created them.
+This database has filled its volume once and taken production down with it, so
+an index no plan names is not neutral, it is cost with no return.
+
+The general rule: an index is justified by a plan that names it, not by an
+argument about what the query looks like. /api/jobs/db-health prints the plan,
+so the justification is checkable rather than remembered.
+
+The wider lesson is about the instrument. Wall-clock p95 from curl could not
+resolve this - p50 was 0.391s before and 0.405s after, and p95 moved in both
+directions across runs, because round-trip and serialising twenty descriptions
+dominate a 42ms query. Measuring the right quantity mattered more than
+measuring carefully.

@@ -636,30 +636,36 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_applications_run ON applications(run_id)`,
 
   /*
-   * A7.17 - the hot paths. Neither `jobs` nor `job_matches` carried a single
-   * index, which the 500-row cap had been hiding: it bounded the result set
-   * and, by accident, kept the query small. Removing the cap made the index
-   * the universe, so 24,800 rows are scanned and hash-joined on every ranked
-   * feed request. The instruction was explicit - add indexes, never reinstate
-   * the cap.
+   * A7.17 - ONE index, and it is the one the planner asks for.
    *
-   * Composite, in the order the queries actually use them. posted_at carries
-   * DESC NULLS LAST to match A7.7's sort exactly; a plain DESC index does not
-   * serve NULLS LAST without a sort step, which is the whole point.
+   * Four went in on the reasoning that removing the 500-row cap made the index
+   * the universe. Then EXPLAIN ANALYZE on production said otherwise, and the
+   * numbers decided it:
    *
-   * All four are btree and additive. Deliberately NOT added: a pg_trgm GIN
-   * index for the ILIKE keyword search. It is the slowest path (p95 1.34s vs
-   * 0.41s), but a trigram index over description on this row count is a large
-   * object and this database has already filled its volume once and taken
-   * production down with it. That one is sized against real headroom first.
+   *   unfiltered feed  42.19ms  2 seq scans  indexes used: none
+   *   24h filtered      1.47ms  1 seq scan   uses idx_jobs_active_posted
+   *
+   * The unfiltered feed reads essentially every active row, so a seq scan IS
+   * the right plan and no index can improve it. The selective path is the one
+   * A7.17 actually unlocked - "past 24 hours" went from 9 rows to 617 because
+   * the filter now runs against the whole index instead of inside a 500-row
+   * store - and there this index is worth 28x.
+   *
+   * The other three were speculation: jobs(source) cannot help a window that
+   * already sorts the full scan, and both job_matches indexes lose to a hash
+   * join over a table the match store caps at 500 rows. No plan named them.
+   * On a volume that has filled once and taken production down with it, an
+   * index no plan names is pure cost. Dropped, including on databases that
+   * already created them.
+   *
+   * The rule, so this does not get re-litigated: an index earns its place by
+   * appearing in a plan. /api/jobs/db-health prints the plan.
    */
   `CREATE INDEX IF NOT EXISTS idx_jobs_active_posted
      ON jobs (is_active, posted_at DESC NULLS LAST)`,
-  `CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source)`,
-  `CREATE INDEX IF NOT EXISTS idx_job_matches_user_job
-     ON job_matches (user_id, job_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_job_matches_user_score
-     ON job_matches (user_id, overall_score DESC NULLS LAST)`,
+  `DROP INDEX IF EXISTS idx_jobs_source`,
+  `DROP INDEX IF EXISTS idx_job_matches_user_job`,
+  `DROP INDEX IF EXISTS idx_job_matches_user_score`,
 ];
 
 /*

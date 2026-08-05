@@ -23,48 +23,51 @@ const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'migrations.js'), 'utf8');
 
-describe('A7.17 — the hot paths are indexed', () => {
-  it('indexes the feed filter and its sort key together', () => {
-    // WHERE is_active = true ORDER BY posted_at DESC is every unfiltered feed
-    // query. Separate single-column indexes do not serve it as well as the
-    // composite, and posted_at DESC NULLS LAST is the actual sort (A7.7).
+describe('A7.17 — one index, and the planner asked for it', () => {
+  it('indexes the selective path, which is the one A7.17 unlocked', () => {
+    /*
+     * Measured on production, not assumed:
+     *   unfiltered feed  42.19ms  2 seq scans  indexes used: none
+     *   24h filtered      1.47ms  1 seq scan   uses idx_jobs_active_posted
+     *
+     * posted_at carries DESC NULLS LAST to match A7.7's sort exactly. A plain
+     * DESC index does not serve NULLS LAST without a sort step, which is the
+     * whole point of having it.
+     */
     expect(src).toMatch(/CREATE INDEX IF NOT EXISTS idx_jobs_active_posted\b/);
     expect(src).toMatch(/ON jobs\s*\(is_active, posted_at DESC NULLS LAST\)/);
   });
 
-  it('indexes the partition key of the diversity window', () => {
-    // ROW_NUMBER() OVER (PARTITION BY jobs.source ...) sorts the whole set by
-    // source without one.
-    expect(src).toMatch(/CREATE INDEX IF NOT EXISTS idx_jobs_source\b/);
-  });
-
-  it('indexes the join key the ranked feed reads on every row', () => {
+  it('does not carry indexes no plan names', () => {
     /*
-     * LEFT JOIN job_matches jm ON jm.job_id = jobs.id AND jm.user_id = $1.
-     * user_id first: it is the equality predicate, job_id is the join column.
-     * Reversed, the index cannot serve the user filter.
+     * Three went in on reasoning and came out on evidence: jobs(source) cannot
+     * help a window that already sorts the full scan, and both job_matches
+     * indexes lose to a hash join over a 500-row table. On a volume that has
+     * filled once and taken production down, an index no plan names is cost
+     * with no return.
+     *
+     * Asserted as "not created", not merely "dropped" - a later edit that
+     * re-adds the CREATE alongside the DROP would leave whichever ran last.
      */
-    expect(src).toMatch(/CREATE INDEX IF NOT EXISTS idx_job_matches_user_job\b/);
-    expect(src).toMatch(/ON job_matches\s*\(user_id, job_id\)/);
+    for (const dead of ['idx_jobs_source', 'idx_job_matches_user_job', 'idx_job_matches_user_score']) {
+      expect(src).not.toMatch(new RegExp(`CREATE INDEX IF NOT EXISTS ${dead}\\b`));
+      expect(src).toMatch(new RegExp(`DROP INDEX IF EXISTS ${dead}\\b`));
+    }
   });
 
-  it('indexes the score, which is the ranked sort key', () => {
-    expect(src).toMatch(/CREATE INDEX IF NOT EXISTS idx_job_matches_user_score\b/);
-    expect(src).toMatch(/ON job_matches\s*\(user_id, overall_score DESC NULLS LAST\)/);
+  it('reclaims them from databases that already created them', () => {
+    // The drop is the deliverable, not the omission: production ran the
+    // CREATE before the measurement said otherwise.
+    expect(src).toMatch(/DROP INDEX IF EXISTS/);
   });
 
-  it('adds them without dropping or rewriting anything', () => {
-    // No destructive migration. Every one of these is additive and re-runnable.
-    // Anchored first: without this the slice below is src.slice(-401, 399) on
-    // a missing index, and the whole test passes before the code exists.
+  it('drops only indexes, never data', () => {
     const from = src.indexOf('idx_jobs_active_posted');
-    const to = src.indexOf('idx_job_matches_user_score');
     expect(from).toBeGreaterThan(-1);
-    expect(to).toBeGreaterThan(from);
-    const block = src.slice(from - 400, to + 400);
-    expect(block).not.toMatch(/DROP INDEX|DROP TABLE|DROP COLUMN|TRUNCATE/);
-    const creates = block.match(/CREATE INDEX(?! IF NOT EXISTS)/g) || [];
-    expect(creates).toHaveLength(0);
+    const block = src.slice(from - 1600, from + 900);
+    expect(block).not.toMatch(/DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/);
+    expect(block).not.toMatch(/CREATE INDEX(?! IF NOT EXISTS)/);
+    expect(block).not.toMatch(/DROP INDEX(?! IF EXISTS)/);
   });
 });
 

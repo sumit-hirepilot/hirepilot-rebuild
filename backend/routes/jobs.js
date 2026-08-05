@@ -532,12 +532,8 @@ async function feedPlan(userId, { dateFilter = false } = {}) {
       planningMs: plan['Planning Time'],
       // Named rather than dumped: the full plan is large and the only question
       // is whether each index earns the disk it occupies.
-      indexesUsed: [
-        'idx_jobs_active_posted',
-        'idx_jobs_source',
-        'idx_job_matches_user_job',
-        'idx_job_matches_user_score',
-      ].filter((n) => text.includes(n)),
+      indexesUsed: (text.match(/"Index Name":"([^"]+)"/g) || [])
+        .map((m) => m.split('"')[3]),
       seqScans: (text.match(/"Node Type":"Seq Scan"/g) || []).length,
     };
   } catch (err) {
@@ -555,12 +551,10 @@ async function feedPlan(userId, { dateFilter = false } = {}) {
  */
 router.get('/db-health', verifyToken, async (req, res) => {
   try {
-    const wanted = [
-      'idx_jobs_active_posted',
-      'idx_jobs_source',
-      'idx_job_matches_user_job',
-      'idx_job_matches_user_score',
-    ];
+    const wanted = ['idx_jobs_active_posted'];
+    // Dropped after EXPLAIN named none of them. Reported so a database that
+    // predates the drop is visibly carrying dead weight rather than silently.
+    const retired = ['idx_jobs_source', 'idx_job_matches_user_job', 'idx_job_matches_user_score'];
     const result = await query(
       `SELECT indexname, tablename FROM pg_indexes
         WHERE schemaname = 'public' AND tablename IN ('jobs', 'job_matches')`
@@ -570,6 +564,7 @@ router.get('/db-health', verifyToken, async (req, res) => {
       indexes: result.rows,
       expected: wanted.map((name) => ({ name, present: present.has(name) })),
       allPresent: wanted.every((name) => present.has(name)),
+      retiredStillPresent: retired.filter((name) => present.has(name)),
       plan: await feedPlan(req.user.id),
       planFiltered: await feedPlan(req.user.id, { dateFilter: true }),
     });
