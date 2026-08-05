@@ -19,7 +19,9 @@ import JobsPage from '../pages/jobs';
 
 jest.mock('next/router', () => {
   const router = {
-    push: jest.fn(), replace: jest.fn(),
+    // router.push is awaited with .finally() in syncUrl, so the mock has to
+    // return a promise or every filter change throws inside the component.
+    push: jest.fn(() => Promise.resolve()), replace: jest.fn(() => Promise.resolve()),
     pathname: '/jobs', route: '/jobs', asPath: '/jobs', query: {}, isReady: true,
     events: { on: jest.fn(), off: jest.fn(), emit: jest.fn() },
   };

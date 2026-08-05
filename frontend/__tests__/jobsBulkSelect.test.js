@@ -24,8 +24,8 @@ import JobsPage from '../pages/jobs';
 const push = jest.fn();
 jest.mock('next/router', () => {
   const router = {
-    push: (...a) => push(...a),
-    replace: jest.fn(),
+    push: (...a) => { push(...a); return Promise.resolve(); },
+    replace: jest.fn(() => Promise.resolve()),
     pathname: '/jobs', route: '/jobs', asPath: '/jobs', query: {}, isReady: true,
     events: { on: jest.fn(), off: jest.fn(), emit: jest.fn() },
   };

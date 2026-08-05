@@ -103,6 +103,22 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.5: a filter control that changes nothing ---- */
+  { suite: 'filterControlsApply',
+    test: 'applies the date window when it is chosen',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace("onChange={(e) => applyFilter(setDatePosted, 'datePosted', e.target.value)}",
+      'onChange={(e) => setDatePosted(e.target.value)}') },
+  { suite: 'filterControlsApply',
+    test: 'applies the experience level when it is chosen',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace("onChange={(e) => applyFilter(setExperience, 'experience', e.target.value)}",
+      'onChange={(e) => setExperience(e.target.value)}') },
+  { suite: 'filterControlsApply',
+    test: 'resets the page state, so the next page is 2 and not 4',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('    setter(value);\n    setPage(1);', '    setter(value);') },
+
   /* ---- A7.9: the URL is the state, in both directions ---- */
   { suite: 'urlRoundTrip',
     test: 'round-trips sort',
@@ -131,8 +147,8 @@ const CASES = [
   { suite: 'undatedReachable',
     test: 'reaches them in one click',
     file: 'pages/jobs.js',
-    mutate: (s) => s.replace("loadJobs(token, { page: 1, datePosted: 'unknown' });",
-      'loadJobs(token, { page: 1 });') },
+    mutate: (s) => s.replace("onClick={() => applyFilter(setDatePosted, 'datePosted', 'unknown')}",
+      "onClick={() => setDatePosted('unknown')}") },
   { suite: 'undatedReachable',
     test: 'says nothing when nothing is buried',
     file: 'pages/jobs.js',

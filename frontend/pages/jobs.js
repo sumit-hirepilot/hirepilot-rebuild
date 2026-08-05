@@ -602,6 +602,26 @@ export default function Jobs() {
       .finally(() => { selfPush.current = false; });
   };
 
+  /*
+   * A7.5 — ONE path from "the user changed a filter" to "the list matches it".
+   *
+   * Found on production: the Experience and Date posted selects called their
+   * setState and stopped. No reload, no URL change - so the dropdown read
+   * "Past 7 days" over a list that was nothing of the sort. The four
+   * multi-select facets worked only because each of them separately remembered
+   * to call setPage, syncUrl and loadJobs. Four right by repetition and two
+   * wrong is not six controls with a bug, it is one missing function.
+   *
+   * setPage(1) is part of it: applying a filter while on page 7 shows an empty
+   * page of a non-empty result.
+   */
+  const applyFilter = (setter, key, value) => {
+    setter(value);
+    setPage(1);
+    syncUrl({ page: 1, [key]: value });
+    loadJobs(token, { page: 1, [key]: value });
+  };
+
   const asArray = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
   // Reads the query string back into state. Used on first load and whenever
@@ -894,7 +914,12 @@ export default function Jobs() {
         </div>
 
         <div className={page.filterRow}>
-          <select value={experience} onChange={(e) => setExperience(e.target.value)} className={page.expSelect}>
+          <select
+            value={experience}
+            aria-label="Experience"
+            onChange={(e) => applyFilter(setExperience, 'experience', e.target.value)}
+            className={page.expSelect}
+          >
             <option value="">Experience</option>
             <option value="entry">Entry level</option>
             <option value="mid">Mid level</option>
@@ -908,7 +933,12 @@ export default function Jobs() {
             placeholder="Location"
             className={page.locInput}
           />
-          <select value={datePosted} onChange={(e) => setDatePosted(e.target.value)} className={page.expSelect}>
+          <select
+            value={datePosted}
+            aria-label="Date posted"
+            onChange={(e) => applyFilter(setDatePosted, 'datePosted', e.target.value)}
+            className={page.expSelect}
+          >
             <option value="">Date posted</option>
             <option value="24h">Past 24 hours</option>
             <option value="3d">Past 3 days</option>
@@ -1116,10 +1146,7 @@ export default function Jobs() {
               type="button"
               className={page.unknownDateNote}
               title="Their source does not publish an original date, so we will not invent one - they sort last rather than being placed in a window we cannot confirm."
-              onClick={() => {
-                setDatePosted('unknown'); setPage(1);
-                loadJobs(token, { page: 1, datePosted: 'unknown' });
-              }}
+              onClick={() => applyFilter(setDatePosted, 'datePosted', 'unknown')}
             >
               {formatNumber(ranking.undatedTotal)} jobs have no publication date and sort last - show them
             </button>
