@@ -88,6 +88,32 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.17 perf clause — CLOSED. One index, chosen by the planner.
+
+The spec said: measure p95 before and after, and if it degrades add indexes on
+posted_at and overall_score, never reinstate the cap.
+
+p95 from curl could not answer it. 0.391s before, 0.405s after on p50, with p95
+moving in both directions across runs - round-trip and serialising twenty
+descriptions dominate a 42ms query. So the measurement moved server-side:
+EXPLAIN ANALYZE via GET /api/jobs/db-health (authenticated).
+
+    unfiltered feed  42.19ms  2 seq scans  indexes used: none
+    24h filtered      1.47ms  1 seq scan   uses idx_jobs_active_posted
+
+Four indexes went in on reasoning; three came out on evidence. The unfiltered
+feed reads essentially every active row, so a seq scan is the right plan. The
+selective path is the one A7.17 unlocked and there the index is worth 28x.
+Dropped from production too, verified: retiredStillPresent [], allPresent true,
+filtered path 1.13ms and naming the index.
+
+D20 records the rule: an index earns its place by appearing in a plan.
+
+Deliberately not added: pg_trgm GIN for the ILIKE keyword search, the slowest
+path at ~1.3s. A trigram index over description at 24,800 rows is a large
+object and this volume has filled once already. Sized against real headroom
+before it goes anywhere near production. Open, owned by B1.
+
 ## A7.6 — CLOSED, but not the defect it was filed as.
 
 Filed as "checkboxes with no bulk action". Stale: the bulk pipeline landed, and
