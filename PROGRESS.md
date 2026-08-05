@@ -88,6 +88,78 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.11 / A7.9 / A7.5(partial) — CLOSED. Verified on production.
+
+Each one was found by verifying the previous one, which is why they land
+together.
+
+### A7.11 — 4,685 undated jobs are stated and reachable
+
+Reproduced: himalayas reports posted_null 4685 of 4685 - every row it supplies,
+18.9% of the index. BOTH routes in the goal were tested rather than assumed:
+
+- Backfill from pubDate: closed. Fetched live, eight unrelated companies came
+  back inside an 11-minute window on the day of the fetch. It is their ingest
+  clock. Filling posted_at from it fabricates freshness, which is precisely
+  what the null exists to prevent, and D4 would then rest on invented data.
+- Backfill from the posting page: closed. It returns 403 to a plain server
+  request, and getting past that is circumventing bot protection - the line
+  D19 drew for We Work Remotely, which does not move for a different source.
+
+So the second option in full. A7.7's NULLS LAST is correct and was silently
+costing a fifth of the product under "Newest first". ranking.undatedTotal is
+reported whenever the sort is by recency (null under score - nothing is buried
+by date). The page states the count with the reason, and the notice IS the
+control: one click applies datePosted=unknown, a filter on a known state rather
+than a time window. D22.
+
+PRODUCTION: sort=recent -> undatedTotal 4685 of 24,886. sort=score -> null.
+datePosted=unknown -> exactly 4,685, all himalayas, all posted_at null. Click
+through gives 4,569 at a 70% floor with 20/20 rows reading "Publication date
+unavailable".
+
+### A7.9 — sort, minScore and ranked never survived the URL
+
+Found while verifying A7.11: /jobs?sort=recent produced the score-ranked feed.
+The page wrote most filters to the query string and read most back, but these
+three by neither - so a shared link showed the recipient a different list, and
+the A7.1 score floor reset to 0.4 on every reload with the slider still sitting
+where the user left it.
+
+Guarded as ONE RULE, not three assertions: every key the query-builder assigns
+must appear in the restore path, derived from the source. The defect is the
+asymmetry, so the next control added gets caught.
+
+PRODUCTION: /jobs?sort=recent&minScore=0.7 restores both - "Newest first, then
+best match · Only show matches above 70%".
+
+### A7.5 (partial) — the Experience and Date posted filters did nothing
+
+Found while verifying A7.9, on the main browse surface. Selecting "Past 7 days"
+left the count at 4,569 with every row still undated - impossible for a
+seven-day window. "Senior" did nothing either. Both called setState and
+stopped.
+
+The four multi-select facets worked because each separately remembered to call
+setPage, syncUrl and loadJobs. Four right by repetition and two wrong is one
+missing function, not six buggy controls. applyFilter now owns that path,
+including setPage(1) - filtering from page 3 without it makes "Next" ask for
+page 4 of a result set the user has seen none of.
+
+Both selects also had no accessible name; the first <option> reads as a label
+by sight and is nothing to a screen reader. Same defect as A7.6's checkboxes.
+
+PRODUCTION: 24,897 -> 3,492 on "Past 7 days" -> 891 adding "Senior", URL
+?experience=senior&datePosted=7d, no console errors, 375/768/1440 no overflow.
+
+### What still remains in A7.5
+
+This closed the two dead controls found by testing. The FULL sweep in the goal
+- every nav item and button on every page, at three widths, mapped to
+PROGRESS.md - is NOT done. That is the next goal.
+
+105 backend / 93 frontend, 65/65 guards proven red.
+
 ## A7.13 — CLOSED. The empty state names a cause and stops contradicting itself.
 
 Reproduced on production first: keywords=figma + Past 24 hours rendered "No
@@ -340,8 +412,9 @@ identical response SHAPE every time, `ranking` always present.
   `frontend/scripts/prove-guards-red.js`.
 - Verified locally AND on production.
 
-Then: A7.11, A7.4, A7.5, A7.8-A7.10, A7.18, Wave C, then B1-B5.
-(A7.17, A7.13, A7.14, A7.6 CLOSED and verified on production.)
+Then: A7.5 (full sweep), A7.4, A7.8, A7.10, A7.18, Wave C, then B1-B5.
+(A7.17, A7.13, A7.11, A7.14, A7.6, A7.9 CLOSED and verified on production.
+A7.5 partially closed - the two dead controls; the full sweep is still open.)
 
 ## Next goal — A7.13, search returns nothing against a live index (cold)
 
