@@ -634,6 +634,32 @@ const STATEMENTS = [
 
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS run_id INTEGER REFERENCES apply_runs(id) ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS idx_applications_run ON applications(run_id)`,
+
+  /*
+   * A7.17 - the hot paths. Neither `jobs` nor `job_matches` carried a single
+   * index, which the 500-row cap had been hiding: it bounded the result set
+   * and, by accident, kept the query small. Removing the cap made the index
+   * the universe, so 24,800 rows are scanned and hash-joined on every ranked
+   * feed request. The instruction was explicit - add indexes, never reinstate
+   * the cap.
+   *
+   * Composite, in the order the queries actually use them. posted_at carries
+   * DESC NULLS LAST to match A7.7's sort exactly; a plain DESC index does not
+   * serve NULLS LAST without a sort step, which is the whole point.
+   *
+   * All four are btree and additive. Deliberately NOT added: a pg_trgm GIN
+   * index for the ILIKE keyword search. It is the slowest path (p95 1.34s vs
+   * 0.41s), but a trigram index over description on this row count is a large
+   * object and this database has already filled its volume once and taken
+   * production down with it. That one is sized against real headroom first.
+   */
+  `CREATE INDEX IF NOT EXISTS idx_jobs_active_posted
+     ON jobs (is_active, posted_at DESC NULLS LAST)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_matches_user_job
+     ON job_matches (user_id, job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_matches_user_score
+     ON job_matches (user_id, overall_score DESC NULLS LAST)`,
 ];
 
 /*

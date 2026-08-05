@@ -104,6 +104,20 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.17 perf: the index is the universe, so index it ---- */
+  { suite: 'hotPathIndexes', dir: 'backend', base: true,
+    test: 'indexes the join key the ranked feed reads on every row',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace('ON job_matches (user_id, job_id)', 'ON job_matches (job_id, user_id)') },
+  { suite: 'hotPathIndexes', dir: 'backend', base: true,
+    test: 'indexes the feed filter and its sort key together',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace('ON jobs (is_active, posted_at DESC NULLS LAST)', 'ON jobs (is_active)') },
+  { suite: 'hotPathIndexes', dir: 'backend', base: true,
+    test: 'exposes the indexes actually present, not the ones we meant to create',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('FROM pg_indexes', 'FROM pg_class') },
+
   /* ---- A7.6: the bulk control has a name, and it works when clicked ---- */
   { suite: 'jobsBulkSelect',
     test: 'gives every job checkbox an accessible name carrying that job',

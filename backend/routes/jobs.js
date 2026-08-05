@@ -492,6 +492,37 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+/*
+ * A7.17 - runMigrations logs a failed statement and carries on, then prints
+ * "Migrations complete", so a CREATE INDEX that failed looks exactly like one
+ * that worked. Declaring an index proves intent; this reads pg_indexes and
+ * proves existence. Same reason A1's constraint guard reads pg_constraint:
+ * containment is not existence.
+ */
+router.get('/db-health', async (req, res) => {
+  try {
+    const wanted = [
+      'idx_jobs_active_posted',
+      'idx_jobs_source',
+      'idx_job_matches_user_job',
+      'idx_job_matches_user_score',
+    ];
+    const result = await query(
+      `SELECT indexname, tablename FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename IN ('jobs', 'job_matches')`
+    );
+    const present = new Set(result.rows.map((r) => r.indexname));
+    res.json({
+      indexes: result.rows,
+      expected: wanted.map((name) => ({ name, present: present.has(name) })),
+      allPresent: wanted.every((name) => present.has(name)),
+    });
+  } catch (err) {
+    console.error('db-health error:', err);
+    res.status(500).json({ error: 'Failed to read index state' });
+  }
+});
+
 router.get('/sources', async (req, res) => {
   try {
     const [countsResult, runsResult, ratesResult] = await Promise.all([
