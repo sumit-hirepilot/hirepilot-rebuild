@@ -62,37 +62,86 @@ marketing site both live and functional.
 
 ## Status
 
-Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.11 FILED not built (D17).
-Suites: frontend 63, backend 64. Guard audit 37/37. CI floors match.
+Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
+A7.11 FILED (D17). C1a/C1b FILED into Wave C.
+Suites: frontend 63, backend 64. Guard audit 37/37. CI green.
 
-## Just closed — A7.12, non-job content [shipped + VERIFIED 2026-08-05]
+## A7.15 — FINDING (diagnosis complete, no fix applied)
 
-LIVE INCIDENT, contained. A candidate's bio was indexed as a job with a working
-Apply Now and Auto-Pilot on. **Exposure was verified, not assumed:** 4 sibling
-HN rows resolved to greenhouse, the ONE enabled adapter, so they were genuinely
-reachable by automated apply.
+**posted_at is NOT ingest time. The foundation is sound.**
+`posted_equals_ingest` is near-zero on every source: 26/9,972 greenhouse,
+9/4,542 ashby, 15/3,153 nofluffjobs, 0 on jobindex/jobicy/lever/remoteok/
+workingnomads/landingjobs/remotive. Those are genuine coincidences. **A7.13,
+A7.11 and D4 are NOT built on sand.**
 
-**Cause was NOT the "Who wants to be hired" thread** - that was a red herring.
-The HN adapter parses `Company | Title | Location`; a comment with no pipes made
-`segments[0]` the entire first line, so company_name became a paragraph. 16 of
-200 HIRING posts hit the same path.
+**The poller is healthy:** ~1,873 rows added in 24h.
 
-Fixed as a class in three places: `notAJobReason()` (three independent signals,
-returns the REASON so withholding is reportable), the aggregator (refuses before
-storing - Apply Now cannot exist for a row that is not there), and the HN
-adapter (the pipe convention IS the parse; without it the comment is withheld).
+**The real cause of "9 jobs in 24 hours":**
+```
+24h ranked (signed-in default)  →   9
+24h unranked (whole index)      → 616    (excludedUnknownDate 4,685 = himalayas)
+7d → 42 ranked   |   30d → 149 ranked
+```
+The index genuinely holds 616 jobs posted in 24h. The user sees 9 because the
+time filter runs INSIDE the personalised set - `job_matches` is capped at
+`MATCH_STORE_LIMIT = 500`. There is no freshness problem. There is a scoping
+problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
+intersected with a 500-row window.
 
-Existing rows contained by migration: `is_active = false`, never DELETE, with an
-audit row written to a new `data_corrections` table BEFORE the mutation.
+## Next goal — A7.17, ONE ranking path (executable cold)
 
-**Production, after deploy:** non-job rows 19, all hackernews, still_live 0.
-HN feed: 0 rows reading as a person. The 4 greenhouse-reachable rows are now
-real employers (Brightcore Energy, IonQ, Kinelo).
+Supersedes A7.13's fix, A7.16, and the tiering-branch defect.
 
-**Process failure, recorded:** I pushed 98e72c8 with a RED backend suite. The
-floor script printed `backend: FAILURES` and the push went through anyway
-because the commands were sequential, not chained on success. The gate worked;
-I ignored its output. Every push since is chained `&& ... || exit 1`.
+**Principle: filters apply to the INDEX; ranking applies to the FILTERED
+result. The 500-row match store is a fast path for the UNFILTERED feed only,
+never the universe a filter runs inside.**
+
+### The six ranking implementations that exist today (counted, not estimated)
+
+| # | Location | ORDER BY | Used by |
+|---|---|---|---|
+| 1 | `jobs.js:719` | `match_tier ASC, posted_at DESC NULLS LAST, id DESC` | keyword / scope / datePosted (the tiering branch) |
+| 2 | `jobs.js:812` | `${orderBySql}` + per-source cap | ranked feed (signed-in default) |
+| 3 | `jobs.js:825` | `posted_at DESC NULLS LAST, id DESC` | unranked browse (`ranked=0`) |
+| 4 | `matches.js:111` | `jm.overall_score DESC, j.posted_at DESC NULLS LAST, jm.id DESC` | dashboard |
+| 5 | `agents.js:178` | `jm.overall_score DESC NULLS LAST, am.matched_at DESC NULLS LAST, am.id DESC` | search agents |
+| 6 | `apply.js:291` | `overall_score DESC` | auto-apply candidate selection |
+
+### The fix
+
+The ranked branch (#2) does `INNER JOIN job_matches`, which caps the universe
+at 500 BEFORE filters run. Change to `LEFT JOIN`, so the whole index is the
+universe and score is a SORT KEY rather than a membership test:
+`ORDER BY overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC`.
+A 24h filter then returns 616, with the ~9 scored rows first and the rest
+after - "best match first, then the rest", which is what a user expects.
+
+`minScore` under a LEFT JOIN must be `(overall_score >= $x OR overall_score IS
+NULL)`, otherwise the floor silently deletes every unscored row. And per the
+goal: **minScore must apply on the keyword path too, or the control is
+removed** - today `figma + minScore=0.4` returns the same 11 as `figma` alone
+and `ranking.minScore` comes back null. That is the A7.1 dead-control class.
+
+Then collapse #1 into #2 (the tiering branch exists only to handle keyword
+relevance - fold `match_tier` in as a sort key), and route #4/#5/#6 through the
+same helper.
+
+### Deterministic response shape — pin it FIRST
+
+`ranking` was ABSENT on two `datePosted=24h` probes and PRESENT on a retry with
+identical params. That non-determinism nearly caused a misdiagnosis of A7.15.
+Write that test before touching the queries: identical params, N calls,
+identical response SHAPE every time, `ranking` always present.
+
+### Acceptance
+- 24h ranked returns the same order of magnitude as 24h unranked (616, not 9).
+  Measure before AND after; the numbers above are the "before".
+- minScore applies on every path including keyword search, or the control goes.
+- Per-assertion red-green, non-zero count, cases added to
+  `frontend/scripts/prove-guards-red.js`.
+- Verified locally AND on production.
+
+Then: A7.14, A7.5, A7.6, A7.8-A7.10, then B1-B5.
 
 ## Next goal — A7.13, search returns nothing against a live index (cold)
 
