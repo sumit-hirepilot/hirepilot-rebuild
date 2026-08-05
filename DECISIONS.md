@@ -199,3 +199,21 @@ Filed as A7.11 with both options costed. One source, one adapter: tractable.
 
 Also blocks D4 (timing signal) for that 19%, so A7.11 is a wedge prerequisite
 rather than tidying.
+
+
+## D18 — a diversity cap may reorder a page; it may not shrink the total
+
+A7.17's thesis is that filters apply to the index and ranking applies to the
+filtered result. The per-source cap sits awkwardly across that line: it deletes
+rows, which makes it look like a filter, but its purpose is presentational -
+stop one source owning a page.
+
+Resolved by where the count runs. The page query caps; the COUNT does not. The
+cap relaxes as you page, so every capped row stays reachable, which makes the
+uncapped count the honest answer to "how many jobs match what I asked for" and
+makes it stable across pages. Counting inside the cap gave 60 on page 1 and 120
+on page 2 - not a rounding difference, a number that means nothing.
+
+The general rule, since this will come up again: anything the user did not ask
+for may change the ORDER of a result set or what fits on one page. Only what the
+user did ask for may change its SIZE.

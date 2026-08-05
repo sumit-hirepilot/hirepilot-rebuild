@@ -88,6 +88,60 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.17 — CLOSED, one ranking path. Verified local + production.
+
+Six ranking implementations existed; three inside GET /api/jobs alone. Collapsed
+the three to one query. The other three (matches.js dashboard, agents.js,
+apply.js) serve different questions and now share the same shape - filed as the
+remaining half of A7.17 only if they drift; they are not duplicate feeds.
+
+The defect underneath: the ranked branch INNER JOINed job_matches, so the
+universe was MATCH_STORE_LIMIT (500) BEFORE any filter ran. "Past 24 hours"
+meant "of your top 500 matches, which are recent". Now a LEFT JOIN - score is a
+SORT KEY, not a membership test - so an unscored row ranks last instead of
+being deleted.
+
+MEASURED ON PRODUCTION, before -> after:
+  24h ranked            9 -> 617     (acceptance: same order of magnitude as unranked)
+  24h unranked        616 -> 617     (the two now agree; they are one query)
+  figma + minScore=0.9  11 -> 7      (the floor was reported null and did nothing on
+                                      the keyword path; it now applies on every path)
+  total across pages   60/120 -> 24808/24808  (see below)
+  Jobs page, 375/768/1440: no console errors, no horizontal overflow, 617 at all three.
+  "Past 24 hours" + "Best match" now returns 67%, 63%, 63%, 59%... descending,
+  ties by newest. Before: 9 rows.
+
+TWO THINGS THE MEASUREMENT FOUND THAT THE TESTS DID NOT:
+
+1. My own regression. Moving the COUNT inside the CTE put it inside the
+   per-source diversity cap, which scales with the page - so total read 60 on
+   page 1 and 120 on page 2. The cap is a per-page presentation device and
+   every capped row is reachable by paging, so the count now runs uncapped and
+   only the page query caps. Guarded twice: the count SQL must not contain
+   `source_rank <=` while the page SQL must, and `page` must not be able to
+   reach the count query at all.
+
+2. A state that could not exist before. Because a date filter used to run
+   inside the 500-row store, every row it could return was already scored.
+   Searching the whole index surfaces jobs newer than the last scoring run:
+   "Past 24 hours" is now 617 rows with 11 of 20 unscored on page 1. The card
+   already omits the ring rather than printing a fabricated 0%, so no
+   Constraint 1 breach - but a page of scoreless cards with no explanation
+   reads as a bug. The API reports unscoredInPage and the page now says so.
+   Verified against the DOM: 9 rings + 11 unscored = the 20 it claims.
+
+83 backend tests (floor 64 -> 83), 41/41 guards proven red. Three A7.1/A7.7
+assertions rewrote from SQL literals to properties - same lesson as A7.12: an
+assertion pinned to a literal blocks the refactor instead of protecting the
+behaviour.
+
+Note for whoever picks this up: the LEFT JOIN property was UNGUARDED when the
+collapse first went green. Reverting it to INNER left every test passing. That
+is the exact shape of the thing this project keeps finding - the load-bearing
+property is the one nobody wrote a test for, because it was never a decision,
+it was just how the code happened to be.
+
+## SUPERSEDED — the A7.17 plan, kept for the reasoning
 ## Next goal — A7.17, ONE ranking path (executable cold)
 
 Supersedes A7.13's fix, A7.16, and the tiering-branch defect.
