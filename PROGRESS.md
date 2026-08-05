@@ -62,33 +62,48 @@ marketing site both live and functional.
 
 ## Status
 
-Wave A CLOSED (A1-A6 + A3-a/b/c). A7.2 CLOSED.
-Suites: frontend 60, backend 49. Guard audit 28/28. CI floors: frontend 60,
-backend 49. All verified on production.
+Wave A CLOSED (A1-A6 + A3-a/b/c). A7.2, A7.3, A7.4 CLOSED.
+Suites: frontend 63, backend 55. Guard audit 34/34. CI floors match.
+A7.11 FILED, not built (see DECISIONS D17).
 
-## Just closed — A7.2 [shipped + VERIFIED 2026-08-05]
+## Just closed — A7.4 [shipped + VERIFIED 2026-08-05]
 
-Ingestion side of the parse-failure defect. A2c stopped users SEEING `name`
-where an employer belongs; this stops it being written.
+`default: return row.event_type` put raw keys on screen; SIX types reached it,
+including `application_queued` which A1 introduced and never mapped - a defect
+added by a fix. Lines also named the role but not the employer.
 
-Traced to source, not guessed: **himalayas**. The live API returns a real
-`companyName`, so the current parser is CORRECT and the bad rows are legacy
-from an older shape. Fixing only rows would leave the class open, so the gate
-moved to the funnel every source normalises through (`jobAggregator`), whose
-old check tested truthiness - which the literal string 'name' satisfies.
+One `where()` helper is now the only place a job is named (reads row OR
+metadata, since background events often carry only metadata). The default
+branch returns a sentence. `activityVocabulary.test.js` scans routes/ and
+services/ for activity_log inserts and binds the formatter to the events the
+backend ACTUALLY writes.
 
-**Production count, from GET /api/jobs/field-integrity:**
-total 25,012 · bad_company 399 (all himalayas) · bad_title 0 · bad_location 24.
+Verified: 6 tests, 3 assertions proven red, CI green.
 
-D16: the 399 stay active. Repair is impossible (nothing to recover the employer
-from); `parsedOr` already withholds the placeholder at every render site, so the
-criterion is met without destroying 399 postings whose title, location and apply
-URL are intact. No corrective migration, no data risk.
+## Next goal — A7.5, full CTA and flow sweep (executable cold)
 
-Verified: 7 tests, all proven red. The FIRST proof attempt was invalid -
-`git stash push` silently did nothing because an untracked file was in the path
-list, so the "pre-change" run tested the changed file and passed. Redone against
-a genuinely reverted file. Audit 28/28, CI green.
+From the master prompt:
+- Walk every nav item and button, signed in, desktop AND mobile.
+- For each: where it goes, whether the destination matches the label, whether
+  the content is consistent with where the user came from.
+- Full map to PROGRESS.md. Fix every mismatch.
+- Report any CTA that is dead, mislabelled, or lands somewhere unrelated.
+
+Start from this, do not re-derive:
+- **Presence is not function - CLICK it.** A7.1's sort control rendered
+  perfectly and did nothing because on that page state alone never refetches;
+  every DOM assertion passed. That is the defect class this goal hunts.
+- Nav lives in `frontend/components/DashboardLayout.js`; the marketing header
+  is `frontend/components/Layout.js`.
+- 14 `<a href>` internal links were converted to `<Link>` in A3. Any NEW `<a>`
+  to an internal route fails lint (`no-html-link-for-pages`), so that class is
+  already guarded - do not re-sweep it.
+- A7.6 (jobs checkboxes with no bulk action) is a KNOWN dead control; it is its
+  own goal, so note it and leave it.
+- Verify locally AND on production. Use a fresh browser tab: a reload to the
+  same path is not a fresh document, and a retained console buffer reads as a
+  live error.
+- Then: A7.6, A7.8-A7.10, then B1-B5.
 
 ## Next goal — A7.3, dates (executable cold)
 
