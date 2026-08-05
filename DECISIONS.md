@@ -130,3 +130,17 @@ the target is an identifier: `/HP_EXECUTE/` is satisfied by `HP_EXECUTE_X`,
 Assertions on RENDERED user-facing copy (renderState, applicationsScreen) are
 also out of scope: there containment is the intent - the sentence legitimately
 contains the word - and anchoring would pin wording that is allowed to change.
+
+## D13 — submissions stay in the user's own browser; no remote control
+Recorded position, permanent. Applications are submitted in the user's own
+browser, in their own signed-in session, user-initiated. The extension is not
+remote-controllable from the cloud and must not become so. Remote-driving it
+would convert the mechanism into something materially closer to server-side
+automation - exactly what Constraint 4 marks `deferred: ToS` and what A5's
+Greenhouse finding flagged for counsel. Constraint 4 stays `deferred: ToS`
+until counsel answers that flag. See SUBMISSION_AUDIT.md §4.
+
+## D14 — mobile app is filed, not built
+Filed as an A7-style backlog item with acceptance criteria (BACKLOG_MOBILE.md).
+E2 stays what it is: surfacing store links on the site. Building a mobile app
+is not in the current queue and must not be started as a side effect of E2.
