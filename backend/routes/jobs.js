@@ -329,6 +329,48 @@ router.get('/facets', async (req, res) => {
  * is exactly why the count has to be visible somewhere or the data rots
  * unnoticed. Aggregates only, no PII.
  */
+/*
+ * A7.15 — index freshness, per source.
+ *
+ * Measured: 9 jobs index-wide in a 24h window against ~24,800 indexed. Three
+ * questions, and the third is the dangerous one:
+ *   - how many rows arrive per window (created_at)
+ *   - what posted_at actually HOLDS
+ *   - whether the poller adds new rows or re-touches seen ones
+ *
+ * `postedEqualsIngest` is the tell. If posted_at tracks created_at, the field
+ * is our ingest time wearing the employer's label, and every time filter in
+ * the product measures the wrong thing. Compared with a 2-minute tolerance
+ * because ingest writes both within the same cycle.
+ */
+router.get('/freshness', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT source,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS added_24h,
+              COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int   AS added_7d,
+              COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days')::int  AS added_30d,
+              COUNT(*) FILTER (WHERE posted_at IS NULL)::int                        AS posted_null,
+              COUNT(*) FILTER (WHERE posted_at IS NOT NULL
+                                 AND ABS(EXTRACT(EPOCH FROM (posted_at - created_at))) < 120)::int
+                AS posted_equals_ingest,
+              COUNT(*) FILTER (WHERE posted_at > NOW() - INTERVAL '24 hours')::int  AS posted_24h,
+              MIN(posted_at) AS posted_min,
+              MAX(posted_at) AS posted_max,
+              MAX(created_at) AS last_ingest
+         FROM jobs
+        WHERE is_active = true
+        GROUP BY source
+        ORDER BY total DESC`
+    );
+    res.json({ generatedAt: new Date().toISOString(), bySource: rows });
+  } catch (err) {
+    console.error('Freshness check error:', err);
+    res.status(500).json({ error: 'Failed to run the freshness check' });
+  }
+});
+
 router.get('/field-integrity', async (req, res) => {
   try {
     const placeholders = ['', '-', '--', 'n/a', 'na', 'none', 'null', 'undefined',
