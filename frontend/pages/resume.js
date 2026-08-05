@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -368,7 +370,7 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
         {tailoredHistory.map((t) => (
           <div key={t.id} className={styles.card} style={{ marginBottom: 0 }}>
             <p className={page.tailoredTitle}>{t.job_title}</p>
-            <p className={page.tailoredCompany}>{t.company_name}</p>
+            <p className={page.tailoredCompany}>{parsedOr(t.company_name, 'Company not stated')}</p>
             <span className={t.confirmed_at ? page.defaultBadge : page.draftBadge}>
               {t.confirmed_at ? 'Confirmed' : 'Draft'}
             </span>
@@ -474,7 +476,7 @@ function TailorForJob({ jobs, token, base, reload }) {
         <option value="">Choose a job to tailor for&hellip;</option>
         {jobs.map((j) => (
           <option key={j.id} value={j.id}>
-            {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {j.company_name}
+            {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {parsedOr(j.company_name, 'Company not stated')}
           </option>
         ))}
       </select>
@@ -615,7 +617,7 @@ function CoverLetters({ jobs, token, base }) {
           <option value="">Choose a job&hellip;</option>
           {jobs.map((j) => (
             <option key={j.id} value={j.id}>
-              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {j.company_name}
+              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {parsedOr(j.company_name, 'Company not stated')}
             </option>
           ))}
         </select>
@@ -633,7 +635,7 @@ function CoverLetters({ jobs, token, base }) {
         history.map((cl) => (
           <div key={cl.id} className={styles.card}>
             <p className={page.tailoredTitle}>{cl.job_title}</p>
-            <p className={page.tailoredCompany}>{cl.company_name}</p>
+            <p className={page.tailoredCompany}>{parsedOr(cl.company_name, 'Company not stated')}</p>
             <p className={page.compareText} style={{ whiteSpace: 'pre-line' }}>{cl.content}</p>
             <div className={page.resumeActions} style={{ marginTop: '0.75rem' }}>
               <button className={page.deleteButton} onClick={() => handleDelete(cl.id)}>Delete</button>
@@ -696,7 +698,7 @@ function ScreeningAnswers({ jobs, token, base }) {
           <option value="">No specific job (general answer)</option>
           {jobs.map((j) => (
             <option key={j.id} value={j.id}>
-              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {j.company_name}
+              {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {parsedOr(j.company_name, 'Company not stated')}
             </option>
           ))}
         </select>
@@ -720,7 +722,7 @@ function ScreeningAnswers({ jobs, token, base }) {
       ) : (
         history.map((a) => (
           <div key={a.id} className={styles.card}>
-            {a.job_title && <p className={page.tailoredCompany}>{a.job_title} &middot; {a.company_name}</p>}
+            {a.job_title && <p className={page.tailoredCompany}>{a.job_title} &middot; {parsedOr(a.company_name, 'Company not stated')}</p>}
             <p className={page.tailoredTitle}>{a.question}</p>
             <p className={page.compareText} style={{ marginTop: '0.5rem' }}>{a.answer}</p>
           </div>

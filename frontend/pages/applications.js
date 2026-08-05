@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -283,7 +285,7 @@ export default function Applications() {
               <div key={app.id} className={page.pendingReviewRow}>
                 <div>
                   <p className={page.roleCell} style={{ marginBottom: '0.125rem' }}>{app.title}</p>
-                  <p className={styles.emptyState} style={{ margin: 0, fontSize: '0.75rem' }}>{app.company_name}</p>
+                  <p className={styles.emptyState} style={{ margin: 0, fontSize: '0.75rem' }}>{parsedOr(app.company_name, 'Company not stated')}</p>
                 </div>
                 <div className={page.pendingReviewActions}>
                   <button
@@ -349,7 +351,7 @@ export default function Applications() {
                       {app.title}
                       {app.submitted_by === 'auto_pilot' && <span className={page.autoBadge}>Auto-Pilot</span>}
                     </td>
-                    <td>{app.company_name}</td>
+                    <td>{parsedOr(app.company_name, 'Company not stated')}</td>
                     <td>
                       {app.status === 'failed' ? (
                         <button
@@ -403,7 +405,7 @@ export default function Applications() {
                             {app.title}
                             {app.submitted_by === 'auto_pilot' && <span className={page.autoBadge}>Auto-Pilot</span>}
                           </p>
-                          <p className={page.cardSubtitle}>{app.company_name}</p>
+                          <p className={page.cardSubtitle}>{parsedOr(app.company_name, 'Company not stated')}</p>
                           <p className={page.cardMeta}>
                             {formatDateShort(app.applied_at)}
                           </p>

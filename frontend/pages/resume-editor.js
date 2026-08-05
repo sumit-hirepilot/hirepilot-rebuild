@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { parsedOr } from '../lib/renderState';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import page from '../styles/ResumeEditor.module.css';
@@ -264,7 +265,11 @@ export default function ResumeEditor() {
               <option value="">Pick one of your matches…</option>
               {jobs.map((j) => (
                 <option key={j.job_id || j.id} value={j.job_id || j.id}>
-                  {j.title} — {j.company_name}
+                  {/* A7.2 — company_name was rendered raw here, so 181 legacy
+                      rows read "UI/UX Engineer — name". The A7.2 comment
+                      predicted exactly this: the render guard only protects
+                      surfaces that route through it. This one did not. */}
+                  {j.title} — {parsedOr(j.company_name, 'Company not stated')}
                 </option>
               ))}
             </select>

@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -189,7 +191,7 @@ export default function ApplyQueue() {
               <div className={page.rowMain}>
                 <span className={page.rowTitle}>{item.title}</span>
                 <span className={page.rowMeta}>
-                  {item.company_name}
+                  {parsedOr(item.company_name, 'Company not stated')}
                   {item.location ? ` · ${item.location}` : ''}
                 </span>
                 <span className={page.rowTags}>

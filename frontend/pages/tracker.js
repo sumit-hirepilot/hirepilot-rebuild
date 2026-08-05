@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -167,7 +169,7 @@ export default function Tracker() {
             record rather than a verified submission.
           </p>
           <div className={page.addRow}>
-            <input required placeholder="Company" value={draft.company}
+            <input required placeholder="Company" value={parsedOr(draft.company, 'Company not stated')}
               onChange={(e) => setDraft({ ...draft, company: e.target.value })} />
             <input required placeholder="Role" value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
@@ -196,7 +198,7 @@ export default function Tracker() {
                 <div key={c.id} className={page.card}>
                   <div className={page.cardTitle}>{c.title}</div>
                   <div className={page.cardCo}>
-                    {c.company_name}{c.location ? ` · ${c.location}` : ''}
+                    {parsedOr(c.company_name, 'Company not stated')}{c.location ? ` · ${c.location}` : ''}
                   </div>
 
                   {/* Verified vs self-reported is the distinction the whole

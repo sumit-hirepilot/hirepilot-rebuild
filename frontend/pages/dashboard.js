@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -201,7 +203,7 @@ export default function Dashboard() {
                   <div>
                     <p className={styles.matchTitle}>{m.title}</p>
                     <p className={styles.matchSubtitle}>
-                      {m.company_name} &middot; {m.location}
+                      {parsedOr(m.company_name, 'Company not stated')} &middot; {m.location}
                       {' · '}
                       {timeAgo(m.posted_at)}
                     </p>

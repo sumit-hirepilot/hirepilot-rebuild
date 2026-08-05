@@ -31,7 +31,7 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 105
+        run: node tools/run-suite.js backend 112
 
   frontend:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        run: node tools/run-suite.js frontend 93
+        run: node tools/run-suite.js frontend 94
 
       # Mutates a file, runs one guard, requires it to go RED, reverts. Fails
       # the build if any guard cannot detect its own violation.

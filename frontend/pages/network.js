@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.2 - a company that did not parse must never render as if it did.
+import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -158,7 +160,7 @@ export default function Network() {
                 {contacts.map((c) => (
                   <tr key={c.id}>
                     <td className={page.nameCell}>{`${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unnamed'}</td>
-                    <td>{c.company_name}</td>
+                    <td>{parsedOr(c.company_name, 'Company not stated')}</td>
                     <td>{c.job_title || '—'}</td>
                     <td>
                       <div className={page.statusPipeline}>

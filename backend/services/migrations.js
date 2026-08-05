@@ -1,6 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const { query } = require('../db');
+const { NOT_PARSED } = require('./parsedField');
+
+/*
+ * A7.2 — the migration's token list is DERIVED from the shared set, never
+ * spelled out in SQL. A hardcoded ARRAY[...] is a second definition, and it
+ * drifts the first time a token is added on one side only - the same shape as
+ * A7.17's three ranking paths disagreeing.
+ *
+ * The empty string is dropped: TRIM('') = '' would match a company that is
+ * blank rather than mis-parsed, and those are already NULL or absent.
+ */
+const NOT_PARSED_SQL = `ARRAY[${[...NOT_PARSED]
+  .filter((t) => t !== '')
+  .map((t) => `'${t.replace(/'/g, "''")}'`)
+  .join(', ')}]`;
 
 // schema.sql creates the base tables and is entirely CREATE TABLE IF NOT
 // EXISTS / CREATE INDEX IF NOT EXISTS, so running it on every boot is a
@@ -663,6 +678,48 @@ const STATEMENTS = [
    */
   `CREATE INDEX IF NOT EXISTS idx_jobs_active_posted
      ON jobs (is_active, posted_at DESC NULLS LAST)`,
+
+  /*
+   * A7.2 (second half) — correct the rows that predate the ingest guard.
+   *
+   * 181 himalayas rows carry the literal string `name` as company_name. The
+   * parser is correct now and nothing new can be stored, so these are legacy;
+   * field-integrity has been counting them without anything acting on it, and
+   * the resume editor renders company_name raw, so they read as an employer
+   * called "name" on a live, applyable card.
+   *
+   * Null, not delete: `name` was never information, the posting itself is
+   * real, and every surface using parsedOr then says "Company not stated"
+   * honestly rather than confidently wrong.
+   *
+   * Recorded BEFORE it is applied. A corrector that overwrites in place and
+   * keeps no record makes who was affected unknowable - the explicit lesson
+   * from A5, and it is not softened here.
+   *
+   * The token list comes from the shared NOT_PARSED set rather than being
+   * spelled out in SQL, so adding a token cannot leave the migration behind.
+   */
+  /*
+   * Uses the data_corrections table A7.12 already created, with A7.12's
+   * columns. A second CREATE TABLE IF NOT EXISTS carrying a different shape is
+   * a silent no-op against the existing table, and every INSERT against the
+   * shape that never got created then fails into runMigrations' swallowed
+   * error path - a correction that logs nothing while appearing to work.
+   * Caught by the guard below rather than in production.
+   */
+  `INSERT INTO data_corrections (correction, table_name, row_count, detail)
+     SELECT 'a7.2-null-unparsed-company', 'jobs', COUNT(*),
+            jsonb_build_object(
+              'ids', COALESCE(jsonb_agg(id), '[]'::jsonb),
+              'values', COALESCE(jsonb_agg(DISTINCT company_name), '[]'::jsonb),
+              'reason', 'field-name token stored as an employer; predates the A7.2 ingest guard'
+            )
+       FROM jobs
+      WHERE LOWER(TRIM(company_name)) = ANY(${NOT_PARSED_SQL})
+     HAVING COUNT(*) > 0`,
+  `UPDATE jobs
+      SET company_name = NULL
+    WHERE LOWER(TRIM(company_name)) = ANY(${NOT_PARSED_SQL})`,
   `DROP INDEX IF EXISTS idx_jobs_source`,
   `DROP INDEX IF EXISTS idx_job_matches_user_job`,
   `DROP INDEX IF EXISTS idx_job_matches_user_score`,

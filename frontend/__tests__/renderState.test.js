@@ -149,3 +149,33 @@ describe('A7.14 — the source dot reports the fetcher, not the leftovers', () =
     expect(panel).not.toMatch(/⚡ Live sources/);
   });
 });
+
+describe('A7.2 — every surface that shows a company routes through parsedOr', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  /*
+   * Found during the A7.5 sweep: the resume editor rendered {j.company_name}
+   * raw, so 181 legacy rows read "UI/UX Engineer — name" in the "Tailor to a
+   * job" list. The A7.2 comment had predicted it - "the render guard protects
+   * surfaces that route through it, and there is no guarantee every future
+   * surface will."
+   *
+   * So guard the rule over the whole pages directory rather than that one
+   * line: any page interpolating a company field must pass it through
+   * parsedOr. The next page to show a company gets caught here.
+   */
+  const dir = path.join(__dirname, '..', 'pages');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
+
+  it('never interpolates a raw company field into JSX', () => {
+    const offenders = [];
+    for (const f of files) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      // `{x.company_name}` or `{x.company}` standing alone inside JSX.
+      const raw = src.match(/\{\s*\w+\.company(_name)?\s*\}/g) || [];
+      if (raw.length) offenders.push(`${f}: ${raw.join(', ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

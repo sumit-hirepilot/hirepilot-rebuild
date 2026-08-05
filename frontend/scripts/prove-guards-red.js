@@ -103,6 +103,24 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.2 second half: the legacy rows the guard was written after ---- */
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'nulls a company that is a field-name token rather than an employer',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace('SET company_name = NULL', "SET company_name = 'Unknown'") },
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'records what it changed before changing it',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace("'values', COALESCE(jsonb_agg(DISTINCT company_name), '[]'::jsonb),", '') },
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'uses the same vocabulary as the ingest guard, not a second list',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace('${NOT_PARSED_SQL}', "ARRAY['name']") },
+  { suite: 'renderState',
+    test: 'never interpolates a raw company field into JSX',
+    file: 'pages/dashboard.js',
+    mutate: (s) => s.replace("{parsedOr(m.company_name, 'Company not stated')}", '{m.company_name}') },
+
   /* ---- A7.5: a filter control that changes nothing ---- */
   { suite: 'filterControlsApply',
     test: 'applies the date window when it is chosen',
