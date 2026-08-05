@@ -364,9 +364,27 @@ router.get('/field-integrity', async (req, res) => {
     const undatedTotal = dates.reduce((n, r) => n + r.undated, 0);
     const grandTotal = dates.reduce((n, r) => n + r.total, 0);
 
+    /*
+     * A7.12 — non-job rows by source. A bio indexed as a job reached the feed
+     * with a working Apply Now; this is how many of that class exist and
+     * where they came from.
+     */
+    const { rows: nonJob } = await query(
+      `SELECT source,
+              COUNT(*) FILTER (WHERE is_active = true)::int  AS still_live,
+              COUNT(*) FILTER (WHERE is_active = false)::int AS withheld
+         FROM jobs
+        WHERE LENGTH(COALESCE(company_name, '')) > 80
+           OR company_name ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+           OR title ~* '^(hi[!,. ]|hey |i am |i''m |my name is )'
+           OR COALESCE(apply_url, job_url, '') ~* 'linkedin\\.com/in/'
+        GROUP BY source ORDER BY still_live DESC, withheld DESC`
+    );
+
     res.json({
       ...rows[0],
       badCompanyBySource: bySource,
+      nonJobRows: nonJob,
       dateCoverage: {
         undated: undatedTotal,
         total: grandTotal,
