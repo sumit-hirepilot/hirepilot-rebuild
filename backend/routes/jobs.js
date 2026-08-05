@@ -576,15 +576,18 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     let ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false };
 
     /*
-     * NULLS LAST on every recency key: Postgres puts NULLs FIRST on DESC, so
-     * `ORDER BY posted_at DESC` led the "newest" list with jobs that have no
-     * date at all. `id DESC` is the unique final key - without it rows sharing
-     * a score and a timestamp come back in whatever order the plan happens to
-     * produce, which is what made equal-score rows look randomly shuffled.
+     * A7.17 — the per-source cap is a property of the UNFILTERED feed.
+     * Applied to a filtered result it silently drops rows the user explicitly
+     * asked for, which is the same category error as running a filter inside
+     * the 500-row match store.
      */
-    const orderBySql = sort === 'recent'
-      ? 'posted_at DESC NULLS LAST, overall_score DESC, id DESC'
-      : 'overall_score DESC, posted_at DESC NULLS LAST, id DESC';
+    let hasIndexFilter = false;
+
+    /*
+     * A7.7's NULLS LAST + unique-final-key reasoning now lives in the single
+     * ranking path below, where match_tier joins it as the leading key. Two
+     * definitions of "the order" was how the branches drifted apart.
+     */
 
     // Multiple keyword "chips" - accepts repeated ?keywords=X&keywords=Y, or
     // falls back to the single ?search= param for backward compatibility
@@ -601,16 +604,19 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     let filterClause = 'is_active = true';
 
     if (source) {
+      hasIndexFilter = true;
       params.push(source);
       filterClause += ` AND source = $${params.length}`;
     }
 
     if (location) {
+      hasIndexFilter = true;
       params.push(`%${location}%`);
       filterClause += ` AND location ILIKE $${params.length}`;
     }
 
     if (company) {
+      hasIndexFilter = true;
       params.push(`%${company}%`);
       filterClause += ` AND company_name ILIKE $${params.length}`;
     }
@@ -623,6 +629,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     const jobTypes = asArray(jobType);
     if (jobTypes.length) {
+      hasIndexFilter = true;
       // Compare against the normalised expression, not the raw column - the
       // raw values are fragmented across several spellings per type.
       const ph = jobTypes.map((t) => { params.push(t); return `$${params.length}`; });
@@ -633,12 +640,14 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // because location is free text and jobs.country is mostly empty.
     const regions = asArray(req.query.region);
     if (regions.length) {
+      hasIndexFilter = true;
       const ph = regions.map((r) => { params.push(r); return `$${params.length}`; });
       filterClause += ` AND ${REGION_SQL} IN (${ph.join(', ')})`;
     }
 
     const workArrangements = asArray(req.query.workArrangement);
     if (workArrangements.length) {
+      hasIndexFilter = true;
       const ph = workArrangements.map((w) => { params.push(w); return `$${params.length}`; });
       filterClause += ` AND COALESCE(NULLIF(work_arrangement,''),'unknown') IN (${ph.join(', ')})`;
     }
@@ -647,6 +656,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // static reference rates). Multiple bands OR together.
     const salaryBands = asArray(req.query.salary);
     if (salaryBands.length) {
+      hasIndexFilter = true;
       const conds = salaryBands
         .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
         .filter(Boolean);
@@ -662,6 +672,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // were excluded for that reason needs to be surfaced, not silent.
     let dateFilterSql = '';
     if (datePosted) {
+      hasIndexFilter = true;
       const intervalMap = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
       const interval = intervalMap[datePosted];
       if (interval) dateFilterSql = ` AND posted_at >= CURRENT_TIMESTAMP - INTERVAL '${interval}'`;
@@ -687,155 +698,118 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     let noExactMatches = false;
     let excludedUnknownDateCount = 0;
 
-    if (keywords.some((k) => k && k.trim())) {
-      // Rank exact title matches (tier 1) above title-word matches (tier 2)
-      // above broad title-or-description matches (tier 3, "related" -
-      // excluded from the default result set entirely unless requested).
-      //
-      // Every query below shares the same `params` array (filter params +
-      // all tiering params) and always computes match_tier via the same CTE,
-      // even the ones that only filter on it - Postgres requires every bound
-      // parameter to actually appear in the query, so a COUNT query that
-      // dropped the tier-3-only params while still receiving the full array
-      // would error. Routing everything through one CTE keeps every query
-      // referencing every param, consistently.
-      const tiering = buildSearchTiering(keywords, params, { scope });
-      const wantRelated = includeRelated === 'true';
+    /*
+     * A7.17 — ONE ranking path.
+     *
+     * There were three branches inside this endpoint alone (keyword tiering,
+     * ranked feed, unranked browse) plus three more elsewhere, each with its
+     * own ORDER BY. They disagreed in ways users felt: `datePosted` went
+     * through the tiering branch, which returned no `ranking` object at all,
+     * and the ranked branch INNER JOINed job_matches - capping the universe at
+     * MATCH_STORE_LIMIT (500) BEFORE any filter ran. "Past 24 hours" therefore
+     * meant "of your top 500 matches, which are recent": 9 results against an
+     * index holding 616.
+     *
+     * The principle, now enforced in one place: FILTERS apply to the INDEX;
+     * RANKING applies to the FILTERED result. The match store is a fast path
+     * for the unfiltered feed, never the universe a filter runs inside.
+     *
+     * LEFT JOIN, so score is a SORT KEY rather than a membership test. An
+     * unscored row is ranked last, not excluded - we cannot judge it, which is
+     * not the same as it being a bad match.
+     */
+    const wantRelated = includeRelated === 'true';
+    const hasKeywords = keywords.some((k) => k && k.trim());
 
-      const scoredCte = `WITH scored AS (
-        SELECT ${JOB_COLUMNS}, ${tiering.tierCaseExpr} as match_tier
-        FROM jobs WHERE ${filterClause}
+    // match_tier ranks exact title matches above title-word above
+    // title-or-description. With no keywords every row is tier 1, so the same
+    // expression serves the plain feed and the search - one query, not two.
+    const tiering = hasKeywords
+      ? buildSearchTiering(keywords, params, { scope })
+      : { tierCaseExpr: '1' };
+    if (hasKeywords) hasIndexFilter = true;
+    const tierFilter = hasKeywords ? (wantRelated ? 'match_tier <= 3' : 'match_tier <= 2') : 'TRUE';
+
+    const scoreParams = [...params, userId];
+    const userIdx = scoreParams.length;
+
+    /*
+     * The floor filters SCORED rows only. Excluding unscored rows would
+     * collapse the universe back to the 500 this goal exists to escape, and
+     * passing them silently would let a "40% floor" quietly include rows with
+     * no score at all - so the response reports how many are unscored and the
+     * UI can say so.
+     */
+    let floorSql = '';
+    if (rankByScore && minScore > 0) {
+      scoreParams.push(minScore);
+      floorSql = ` AND (jm.overall_score >= $${scoreParams.length} OR jm.overall_score IS NULL)`;
+    }
+
+    const rankedCte = `
+      WITH ranked AS (
+        SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
+               ${tiering.tierCaseExpr} AS match_tier,
+               jm.overall_score, jm.skills_match_score, jm.experience_match_score,
+               jm.location_match_score, jm.salary_match_score,
+               ROW_NUMBER() OVER (
+                 PARTITION BY jobs.source
+                 ORDER BY jm.overall_score DESC NULLS LAST, jobs.posted_at DESC NULLS LAST, jobs.id
+               ) AS source_rank
+          FROM jobs
+          LEFT JOIN job_matches jm
+            ON jm.job_id = jobs.id AND jm.user_id = $${userIdx}
+         WHERE ${filterClause}${dateFilterSql}${floorSql}
       )`;
-      const tierFilter = wantRelated ? 'match_tier <= 3' : 'match_tier <= 2';
 
-      const countResult = await query(
-        `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter}${dateFilterSql}`,
-        params
+    // Diversity cap only on the unfiltered feed - see hasIndexFilter above.
+    const capSql = (!hasIndexFilter && rankByScore)
+      ? ` AND source_rank <= GREATEST(3, CEIL((${Number(page) || 1}::numeric * ${Number(limit)}) / 4))`
+      : '';
+    const where = `WHERE ${tierFilter}${capSql}`;
+
+    const orderBySql = sort === 'recent'
+      ? 'match_tier ASC, posted_at DESC NULLS LAST, overall_score DESC NULLS LAST, id DESC'
+      : 'match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC';
+
+    const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${where}`, scoreParams);
+    total = parseInt(countResult.rows[0]?.count ?? 0, 10);
+
+    const result = await query(
+      `${rankedCte} SELECT * FROM ranked ${where}
+        ORDER BY ${orderBySql}
+        LIMIT $${scoreParams.length + 1} OFFSET $${scoreParams.length + 2}`,
+      [...scoreParams, limit, offset]
+    );
+    jobs = result.rows;
+
+    const unscored = jobs.filter((j) => j.overall_score === null || j.overall_score === undefined).length;
+    ranking = {
+      mode: rankByScore ? 'ranked' : 'all',
+      sort,
+      minScore: rankByScore && minScore > 0 ? minScore : null,
+      sourceDiversified: Boolean(capSql),
+      // Stated, never implied: a floor cannot judge a row that has no score.
+      unscoredInPage: unscored,
+    };
+
+    if (datePosted) {
+      const unknownDateResult = await query(
+        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${where} AND posted_at IS NULL`,
+        scoreParams
       );
-      total = parseInt(countResult.rows[0].count, 10);
+      excludedUnknownDateCount = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);
+    }
 
-      const result = await query(
-        `${scoredCte} SELECT * FROM scored WHERE ${tierFilter}${dateFilterSql}
-         ORDER BY match_tier ASC, posted_at DESC NULLS LAST, id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
+    if (hasKeywords && !wantRelated && total === 0) {
+      const relatedResult = await query(
+        `${rankedCte} SELECT * FROM ranked WHERE match_tier = 3${capSql}
+          ORDER BY ${orderBySql} LIMIT $${scoreParams.length + 1}`,
+        [...scoreParams, limit]
       );
-      jobs = result.rows;
-
-      if (datePosted) {
-        const unknownDateResult = await query(
-          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE ${tierFilter} AND posted_at IS NULL`,
-          params
-        );
-        excludedUnknownDateCount = parseInt(unknownDateResult.rows[0].count, 10);
-      }
-
-      if (!wantRelated && total === 0) {
-        noExactMatches = true;
-        const relatedCountResult = await query(
-          `${scoredCte} SELECT COUNT(*) as count FROM scored WHERE match_tier = 3${dateFilterSql}`,
-          params
-        );
-        relatedTotal = parseInt(relatedCountResult.rows[0].count, 10);
-
-        const relatedResult = await query(
-          `${scoredCte} SELECT * FROM scored WHERE match_tier = 3${dateFilterSql}
-           ORDER BY posted_at DESC
-           LIMIT $${params.length + 1}`,
-          [...params, limit]
-        );
-        relatedJobs = relatedResult.rows;
-      }
-    } else if (rankByScore) {
-      /*
-       * A7.1 — the browsable feed is the SAME product as the Dashboard.
-       *
-       * This branch exists because the two diverged: the Dashboard read
-       * /api/matches (authenticated, ORDER BY overall_score DESC) while this
-       * route was unauthenticated and ordered by posted_at, so "View all jobs"
-       * took a Principal Product Designer from 71-75% UX roles to a
-       * chronological dump containing a Hindi Voice Coach and an in-home nurse
-       * practitioner. Same user, same second, two unrelated products.
-       *
-       * Ranking, in order:
-       *   1. per-source interleave, so no single source can own a page. micro1
-       *      alone swamped every page of results; taking the best from each
-       *      source in turn keeps one prolific scraper from burying the rest.
-       *   2. score within that interleave.
-       *
-       * INNER JOIN, not LEFT: a floor of 0 still means "jobs scored against
-       * this user's profile". Unscored rows are not silently ranked last, they
-       * are a different question - answered by the explicit unranked browse.
-       */
-      const scoreParams = [...params, userId, minScore];
-      const userIdx = scoreParams.length - 1;
-      const scoreIdx = scoreParams.length;
-
-      // The jobs table stays unaliased so the shared filterClause - which
-      // references bare column names - resolves unchanged. job_matches carries
-      // none of those names, so nothing is ambiguous.
-      const rankedCte = `
-        WITH ranked AS (
-          SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
-                 jm.overall_score,
-                 jm.skills_match_score, jm.experience_match_score,
-                 jm.location_match_score, jm.salary_match_score,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY jobs.source ORDER BY jm.overall_score DESC, jobs.id
-                 ) AS source_rank
-            FROM jobs
-            JOIN job_matches jm ON jm.job_id = jobs.id AND jm.user_id = $${userIdx}
-           WHERE ${filterClause}${dateFilterSql}
-             AND jm.overall_score >= $${scoreIdx}
-        )`;
-
-      const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked`, scoreParams);
-      total = parseInt(countResult.rows[0].count, 10);
-
-      /*
-       * Diversity as a CAP, not a round-robin.
-       *
-       * Interleaving by source_rank did prevent domination, but it broke score
-       * order: the list read 0.75 0.71 0.67 0.63 0.59, then jumped back up to
-       * 0.71 when the next round began. "Score-sorted by default" and "no
-       * single source may dominate" then contradict each other.
-       *
-       * Capping each source's contribution and THEN ordering by score honours
-       * both literally. The cap scales with depth so pagination still works -
-       * a source may hold at most a quarter of everything requested so far,
-       * rather than a fixed number that would starve later pages.
-       */
-      const result = await query(
-        `${rankedCte}
-         SELECT * FROM ranked
-          WHERE source_rank <= GREATEST(3, CEIL(($${scoreIdx + 3}::numeric * $${scoreIdx + 1}) / 4))
-          ORDER BY ${orderBySql}
-          LIMIT $${scoreIdx + 1} OFFSET $${scoreIdx + 2}`,
-        [...scoreParams, limit, offset, page]
-      );
-      jobs = result.rows;
-      ranking = { mode: 'ranked', sort, minScore, sourceDiversified: true };
-    } else {
-      const countResult = await query(`SELECT COUNT(*) as count FROM jobs WHERE ${filterClause}${dateFilterSql}`, params);
-      total = parseInt(countResult.rows[0].count, 10);
-
-      const result = await query(
-        `SELECT ${JOB_COLUMNS}
-         FROM jobs WHERE ${filterClause}${dateFilterSql}
-         ORDER BY posted_at DESC NULLS LAST, id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      );
-      jobs = result.rows;
-      ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false };
-
-      if (datePosted) {
-        const unknownDateResult = await query(
-          `SELECT COUNT(*) as count FROM jobs WHERE ${filterClause} AND posted_at IS NULL`,
-          params
-        );
-        excludedUnknownDateCount = parseInt(unknownDateResult.rows[0].count, 10);
-      }
+      relatedJobs = relatedResult.rows;
+      relatedTotal = relatedJobs.length;
+      noExactMatches = relatedJobs.length > 0;
     }
 
     const decorate = (list) => list.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));

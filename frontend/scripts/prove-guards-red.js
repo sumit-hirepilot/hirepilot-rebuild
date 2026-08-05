@@ -84,6 +84,21 @@ const CASES = [
     file: 'components/NotificationBell.js',
     mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
 
+  /* ---- A7.17: one ranking path; the index is the universe ---- */
+  { suite: 'jobsRanking', dir: 'backend', base: true,
+    test: 'LEFT JOINs the match store so score is a sort key, not a membership test',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('LEFT JOIN job_matches jm', 'JOIN job_matches jm') },
+  { suite: 'jobsRanking', dir: 'backend', base: true,
+    test: 'scopes the per-source cap to the unfiltered feed',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('!hasIndexFilter && rankByScore', 'rankByScore') },
+  { suite: 'rankingShape', dir: 'backend', base: true,
+    test: 'always carries the ranking object',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('      unscoredInPage: unscored,\n    };',
+      '    };\n    if (datePosted) ranking = undefined;') },
+
   /* ---- A7.12: non-job content must never be stored or made applyable ---- */
   { suite: 'notAJob', dir: 'backend', base: true,
     test: 'rejects a bio indexed as a job',

@@ -91,10 +91,16 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     mockRows();
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
 
+    /*
+     * A7.17 collapsed the branches, so this asserts the PROPERTY rather than
+     * the SQL literal: a per-source rank is computed and capped, and score is
+     * a sort key. The cap is now scoped to the UNFILTERED feed - applied to a
+     * filtered result it would drop rows the user explicitly asked for.
+     */
     const pageSql = query.mock.calls[1][0];
     expect(pageSql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
-    expect(pageSql).toMatch(/WHERE source_rank\s*<=/);
-    expect(pageSql).toMatch(/ORDER BY overall_score DESC/);
+    expect(pageSql).toMatch(/source_rank\s*<=/);
+    expect(pageSql).toMatch(/overall_score DESC NULLS LAST/);
     expect(pageSql).not.toMatch(/ORDER BY source_rank/);
   });
 });
@@ -106,7 +112,15 @@ describe('A7.1 — unranked browse stays available, but only on request', () => 
 
     expect(res.status).toBe(200);
     expect(res.body.ranking.mode).toBe('all');
-    expect(query.mock.calls.map((c) => c[0]).join('\n')).not.toMatch(/JOIN job_matches/);
+    /*
+     * A7.17: the join is now always present (LEFT, so the index is the
+     * universe). What must hold for an anonymous caller is that NO user's
+     * scores are bound - the join key is null, so every score comes back null
+     * and the order is pure recency.
+     */
+    expect(res.body.ranking.sort).toBe('recent');
+    const boundUserId = query.mock.calls[1][1].includes(null);
+    expect(boundUserId).toBe(true);
   });
 
   it('honours an explicit opt-out into unranked browse', async () => {
@@ -145,8 +159,13 @@ describe('A7.7 — the sort is explicit and deterministic', () => {
     mockRows();
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
 
+    /*
+     * A7.17 put match_tier ahead of score as the leading key, so a tier-3
+     * "related" hit cannot outrank an exact title match. The tie-break chain
+     * this test exists for is unchanged and still asserted in order.
+     */
     const pageSql = query.mock.calls[1][0];
-    expect(pageSql).toMatch(/ORDER BY overall_score DESC, posted_at DESC NULLS LAST, id DESC/);
+    expect(pageSql).toMatch(/ORDER BY match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC/);
   });
 
   it('puts undated jobs last, not first', async () => {
@@ -187,5 +206,47 @@ describe('A7.7 — the sort is explicit and deterministic', () => {
     mockRows();
     const res = await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
     expect(['score', 'recent']).toContain(res.body.ranking.sort);
+  });
+});
+
+describe('A7.17 — filters apply to the index, not to the match store', () => {
+  it('LEFT JOINs the match store so score is a sort key, not a membership test', () => {
+    /*
+     * THE property of this goal, and it was unguarded: reverting LEFT JOIN to
+     * INNER JOIN left every other test green.
+     *
+     * An INNER JOIN caps the universe at MATCH_STORE_LIMIT (500) BEFORE any
+     * filter runs, so "Past 24 hours" meant "of your top 500 matches, which
+     * are recent" - 9 results against an index holding 616. LEFT JOIN makes
+     * the index the universe; an unscored row ranks last rather than being
+     * excluded, because "we cannot judge it" is not "it is a bad match".
+     *
+     * Asserted on the source: a mocked db cannot show a count difference, and
+     * the count itself is verified against production.
+     */
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'jobs.js'), 'utf8');
+
+    expect(src).toMatch(/LEFT JOIN job_matches jm\b/);
+    // No bare INNER join on the ranking path - that is the regression.
+    expect(src).not.toMatch(/\n\s+JOIN job_matches jm\b/);
+  });
+
+  it('scopes the per-source cap to the unfiltered feed', () => {
+    // Applied to a filtered result the cap silently drops rows the user asked
+    // for - the same category error as filtering inside the match store.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'jobs.js'), 'utf8');
+    expect(src).toMatch(/!hasIndexFilter\s*&&\s*rankByScore/);
+  });
+
+  it('applies the floor to scored rows without deleting unscored ones', () => {
+    // Excluding unscored rows would collapse the universe back to the 500.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'jobs.js'), 'utf8');
+    expect(src).toMatch(/overall_score >= \$\$\{scoreParams\.length\} OR jm\.overall_score IS NULL/);
   });
 });
