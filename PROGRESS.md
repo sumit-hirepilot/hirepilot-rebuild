@@ -62,23 +62,60 @@ marketing site both live and functional.
 
 ## Status
 
-Wave A CLOSED (A1-A6 + A3-a/b/c). A7.2, A7.3, A7.4 CLOSED.
-Suites: frontend 63, backend 55. Guard audit 34/34. CI floors match.
-A7.11 FILED, not built (see DECISIONS D17).
+Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.11 FILED not built (D17).
+Suites: frontend 63, backend 64. Guard audit 37/37. CI floors match.
 
-## Just closed — A7.4 [shipped + VERIFIED 2026-08-05]
+## Just closed — A7.12, non-job content [shipped + VERIFIED 2026-08-05]
 
-`default: return row.event_type` put raw keys on screen; SIX types reached it,
-including `application_queued` which A1 introduced and never mapped - a defect
-added by a fix. Lines also named the role but not the employer.
+LIVE INCIDENT, contained. A candidate's bio was indexed as a job with a working
+Apply Now and Auto-Pilot on. **Exposure was verified, not assumed:** 4 sibling
+HN rows resolved to greenhouse, the ONE enabled adapter, so they were genuinely
+reachable by automated apply.
 
-One `where()` helper is now the only place a job is named (reads row OR
-metadata, since background events often carry only metadata). The default
-branch returns a sentence. `activityVocabulary.test.js` scans routes/ and
-services/ for activity_log inserts and binds the formatter to the events the
-backend ACTUALLY writes.
+**Cause was NOT the "Who wants to be hired" thread** - that was a red herring.
+The HN adapter parses `Company | Title | Location`; a comment with no pipes made
+`segments[0]` the entire first line, so company_name became a paragraph. 16 of
+200 HIRING posts hit the same path.
 
-Verified: 6 tests, 3 assertions proven red, CI green.
+Fixed as a class in three places: `notAJobReason()` (three independent signals,
+returns the REASON so withholding is reportable), the aggregator (refuses before
+storing - Apply Now cannot exist for a row that is not there), and the HN
+adapter (the pipe convention IS the parse; without it the comment is withheld).
+
+Existing rows contained by migration: `is_active = false`, never DELETE, with an
+audit row written to a new `data_corrections` table BEFORE the mutation.
+
+**Production, after deploy:** non-job rows 19, all hackernews, still_live 0.
+HN feed: 0 rows reading as a person. The 4 greenhouse-reachable rows are now
+real employers (Brightcore Energy, IonQ, Kinelo).
+
+**Process failure, recorded:** I pushed 98e72c8 with a RED backend suite. The
+floor script printed `backend: FAILURES` and the push went through anyway
+because the commands were sequential, not chained on success. The gate worked;
+I ignored its output. Every push since is chained `&& ... || exit 1`.
+
+## Next goal — A7.13, search returns nothing against a live index (cold)
+
+Reported: search "figma" + Past 24 hours + 40% floor returned "No jobs match
+these filters" against ~24,800 indexed jobs, with one related job.
+
+- Establish WHICH of the three constraints empties the result: the keyword, the
+  24h window, or the 40% score floor. Do not guess - vary one at a time against
+  `/api/jobs` and record the counts.
+- If it is the filters rather than a broken search, the UI must say WHICH filter
+  caused the empty result, not just report zero.
+
+Start from this, do not re-derive:
+- A7.11/D17: himalayas supplies NO posted_at for 4,663 rows (19% of the index).
+  A 24h window excludes every one of them by construction. Check this first -
+  it is the most likely single cause and it is already documented.
+- `ranking` in the `/api/jobs` response already reports `{mode, sort, minScore,
+  sourceDiversified}` - extend that pattern rather than inventing a new shape.
+- The empty state lives in `frontend/pages/jobs.js`; `countText` in
+  `lib/renderState.js` already distinguishes loading / failed / real-zero, so a
+  "which filter" message belongs alongside it, not as a new component.
+- Then A7.14 (We Work Remotely at 0 jobs; the A7.3 unified date string never
+  reached the source panel), A7.5, A7.6, A7.8-A7.10, then B1-B5.
 
 ## Next goal — A7.5, full CTA and flow sweep (executable cold)
 
