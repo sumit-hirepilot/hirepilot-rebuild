@@ -37,16 +37,31 @@ describe('A7.2 — the aggregator withholds unparsed rows', () => {
     path.join(__dirname, '..', 'services', 'jobAggregator.js'), 'utf8'
   );
 
-  it('gates on isParsed, not on truthiness', () => {
-    // The old gate was `!normalized.company_name`, which the string 'name'
-    // satisfies. Truthiness cannot tell a value from a placeholder.
-    expect(src).toMatch(/isParsed\(normalized\.company_name\)/);
-    expect(src).toMatch(/isParsed\(normalized\.title\)/);
+  it('withholds an unparsed row rather than storing it', () => {
+    /*
+     * Asserts the PROPERTY, not the call. A7.12 replaced the direct isParsed
+     * calls here with notAJobReason(), which subsumes them - and these
+     * assertions, matching the old literal shape, went red on a change that
+     * strictly strengthened the guard. That is what asserting on an
+     * implementation detail buys you.
+     *
+     * What must hold: an unparseable title or company never reaches storeJob.
+     */
+    const { notAJobReason } = require('../services/parsedField');
+    expect(notAJobReason({ title: 'Designer', company_name: 'name' })).toBeTruthy();
+    expect(notAJobReason({ title: 'name', company_name: 'Vercel' })).toBeTruthy();
+    expect(notAJobReason({ title: 'Designer', company_name: 'Vercel' })).toBeNull();
+
+    // ...and the aggregator consults it before storing.
+    const guardLine = src.indexOf('notAJobReason(normalized)');
+    const storeLine = src.indexOf('await storeJob(normalized)');
+    expect(guardLine).toBeGreaterThan(-1);
+    expect(storeLine).toBeGreaterThan(guardLine);
   });
 
-  it('counts what it withheld rather than skipping silently', () => {
+  it('records why a row was withheld rather than skipping silently', () => {
     // A silent skip is how the first one went unnoticed for months.
-    expect(src).toMatch(/sourceStats\.unparsed/);
+    expect(src).toMatch(/sourceStats\.(unparsed|notAJob)/);
   });
 });
 
