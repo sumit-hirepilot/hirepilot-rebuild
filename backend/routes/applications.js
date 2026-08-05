@@ -124,6 +124,27 @@ router.get('/integrity', verifyToken, async (req, res) => {
       Object.entries(rows[0]).map(([k, v]) => [k, Number(v)])
     );
 
+    /*
+     * A4 — the receipt machinery, read from the catalog for the same reason.
+     * runMigrations logs a failed CREATE TRIGGER and carries on, so "the deploy
+     * was clean" is not evidence the table is actually append-only. The whole
+     * value of a receipt is that it cannot be rewritten; that claim has to be
+     * checked, not assumed.
+     */
+    const { rows: receiptFacts } = await query(
+      `SELECT
+         (SELECT COUNT(*) FROM pg_tables
+           WHERE tablename = 'submission_receipts')                     AS table_present,
+         (SELECT COUNT(*) FROM pg_trigger
+           WHERE tgname = 'trg_submission_receipts_immutable'
+             AND NOT tgisinternal)                                      AS immutable_trigger,
+         (SELECT COUNT(*) FROM pg_indexes
+           WHERE indexname = 'idx_submission_receipts_app_unique')      AS one_per_application`
+    );
+    const receipts = Object.fromEntries(
+      Object.entries(receiptFacts[0]).map(([k, v]) => [k, Number(v) > 0])
+    );
+
     // Confirm the constraint is really there, per the standing rule: a failed
     // ADD CONSTRAINT is logged and skipped by runMigrations, so a clean boot
     // proves nothing. Read the catalog instead.
@@ -152,6 +173,7 @@ router.get('/integrity', verifyToken, async (req, res) => {
     res.json({
       counts,
       constraintPresent: con.length > 0,
+      receipts,
       // Absent, not empty, when the caller is not an admin - so a reader cannot
       // mistake "not shown to you" for "nobody affected".
       ...(affected ? { affected } : { affectedDetail: 'requires ADMIN_EMAILS' }),
