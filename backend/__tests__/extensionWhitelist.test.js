@@ -29,16 +29,17 @@ function blockFor(marker, end) {
 describe('every submit path honours the verified-adapter whitelist', () => {
   it('the queue-run path refuses an unsupported adapter', () => {
     const run = blockFor('async function processOne', 'async function pause');
-    expect(run).toMatch(/!item\.automationSupported/);
-    expect(run).toMatch(/HP_EXECUTE/);
+    expect(run).toMatch(/!item\.automationSupported\b/);
+    // Anchored: /HP_EXECUTE/ is satisfied by HP_EXECUTE_ANYTHING.
+    expect(run).toMatch(/\bHP_EXECUTE\b/);
   });
 
   it('the drawer fill path refuses an unsupported adapter', () => {
     const drawer = blockFor("case 'HP_DRAWER_FILL'", "case 'HP_SET_SUBMIT'");
-    expect(drawer).toMatch(/HP_EXECUTE/);
+    expect(drawer).toMatch(/\bHP_EXECUTE\b/);
     // The gate must exist, and must sit BEFORE the execute call - a check after
     // the form has been filled is not a gate.
-    expect(drawer).toMatch(/automationSupported/);
+    expect(drawer).toMatch(/\bautomationSupported\b/);
     expect(drawer.indexOf('automationSupported')).toBeLessThan(drawer.indexOf('HP_EXECUTE'));
   });
 
@@ -56,7 +57,7 @@ describe('every submit path honours the verified-adapter whitelist', () => {
     expect(executes.length).toBeGreaterThan(0);
     for (const at of executes) {
       const before = stripped.slice(0, at);
-      expect(before).toMatch(/automationSupported/);
+      expect(before).toMatch(/\bautomationSupported\b/);
     }
   });
 });

@@ -49,7 +49,7 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     expect(res.body.ranking.mode).toBe('ranked');
     expect(res.body.ranking.sort).toBe('score');
     const sql = query.mock.calls.map((c) => c[0]).join('\n');
-    expect(sql).toMatch(/JOIN job_matches/);
+    expect(sql).toMatch(/JOIN job_matches\b/);
     expect(sql).not.toMatch(/ORDER BY posted_at DESC\s*\n\s*LIMIT/);
   });
 
@@ -64,8 +64,8 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     await request(app()).get('/api/jobs?limit=1').set('Authorization', `Bearer ${token}`);
 
     const pageSql = query.mock.calls[1][0];
-    expect(pageSql).toMatch(/jm\.overall_score/);
-    expect(pageSql).toMatch(/jm\.skills_match_score/);
+    expect(pageSql).toMatch(/jm\.overall_score\b/);
+    expect(pageSql).toMatch(/jm\.skills_match_score\b/);
   });
 
   it('applies a floor and states it, never silently', async () => {
@@ -93,7 +93,7 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
 
     const pageSql = query.mock.calls[1][0];
     expect(pageSql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
-    expect(pageSql).toMatch(/WHERE source_rank <=/);
+    expect(pageSql).toMatch(/WHERE source_rank\s*<=/);
     expect(pageSql).toMatch(/ORDER BY overall_score DESC/);
     expect(pageSql).not.toMatch(/ORDER BY source_rank/);
   });

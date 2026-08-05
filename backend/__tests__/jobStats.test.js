@@ -58,7 +58,7 @@ describe('GET /api/jobs/stats', () => {
     // the query must be restricted to the three ATS sources.
     const directCall = query.mock.calls[1];
     expect(directCall[1]).toEqual([['greenhouse', 'lever', 'ashby']]);
-    expect(directCall[0]).toMatch(/source = ANY/);
+    expect(directCall[0]).toMatch(/\bsource = ANY\b/);
   });
 
   it('fails with 503 rather than reporting zero', async () => {

@@ -112,3 +112,21 @@ first thirty seconds: signup, resume upload, then an empty feed with no
 explanation, because scoring only runs on a manual
 POST /api/matches/recalculate. Operator decision, taken with the health data.
 A1 immediately after.
+
+## D12 — A3-c instruction truncated; interpretation recorded
+The A3-c brief ends mid-sentence at "Find every place in". Per the standing
+operating mode (decide, record, continue) I read the goal as its first bullet
+states it: sweep BOTH suites for containment assertions a superstring would
+satisfy, anchor them, and re-prove each red through the mutation audit with a
+superstring mutation specifically.
+
+Scope decision inside that: `expect(x).not.toMatch(...)` is NOT in scope. A
+superstring makes a negative assertion more likely to fire, not less - its
+failure mode is the opposite one (the false positive, which is what H4 was).
+The vulnerable shape is a POSITIVE containment on a source or SQL string where
+the target is an identifier: `/HP_EXECUTE/` is satisfied by `HP_EXECUTE_X`,
+`toContain(CONSTRAINT)` by `<name>X`. Those are what get anchored.
+
+Assertions on RENDERED user-facing copy (renderState, applicationsScreen) are
+also out of scope: there containment is the intent - the sentence legitimately
+contains the word - and anchoring would pin wording that is allowed to change.

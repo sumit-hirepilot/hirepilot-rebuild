@@ -22,8 +22,9 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.join(__dirname, '..');
-const REPO = path.join(ROOT, '..');
+const ROOT = path.join(__dirname, '..');          // frontend/
+const REPO = path.join(ROOT, '..');              // repo root
+const DIRS = { frontend: ROOT, backend: path.join(REPO, 'backend') };
 
 /** file, a mutation applied to its text, and the test name that must catch it. */
 const CASES = [
@@ -70,6 +71,25 @@ const CASES = [
   { suite: 'localVerification', test: 'attaches a React root that renders real content',
     file: 'pages/applications.js', mutate: (s) => s.replace('export default function Applications() {',
       'export default function Applications() {\n  if (true) return null;') },
+
+  /* ---- A3-c: superstring mutations ----
+   * Each renames an identifier to a SUPERSTRING of itself. An unanchored
+   * assertion (`toContain('og:image')`, `/HP_EXECUTE/`) stays green against
+   * these, so the thing could be renamed into non-existence unnoticed. These
+   * cases exist to prove the anchoring, not the identifier.
+   */
+  { suite: 'landingHonesty', test: 'has OG and Twitter card tags',
+    file: 'pages/index.js', mutate: (s) => s.replace(/og:image"/g, 'og:imagex"') },
+  { suite: 'extensionWhitelist', dir: 'backend', base: true,
+    test: 'the queue-run path refuses an unsupported adapter',
+    file: 'extension/background.js', mutate: (s) => s.replace(/HP_EXECUTE/g, 'HP_EXECUTE_X') },
+  { suite: 'appliedRequiresSubmission', dir: 'backend', base: true,
+    test: 'adds a CHECK constraint binding applied to a submission record',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace(/applications_applied_requires_submission/g, 'applications_applied_requires_submissionX') },
+  { suite: 'jobsRanking', dir: 'backend', base: true,
+    test: 'ranks by score without being asked to',
+    file: 'backend/routes/jobs.js', mutate: (s) => s.replace(/JOIN job_matches\b/g, 'JOIN job_matchesX') },
 ];
 
 /*
@@ -82,12 +102,21 @@ function escapeForJestT(name) {
   return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function runTest(suite, test) {
-  const args = ['jest', `__tests__/${suite}.test.js`, '-t', escapeForJestT(test)];
+function runTest(suite, test, dir = 'frontend') {
+  const cwd = DIRS[dir];
+  /*
+   * --runInBand --no-cache: one audit run reported DID_NOT_RUN for a case that
+   * fails correctly in isolation, and did not reproduce. The verdict logic was
+   * verified correct, so the remaining variable was jest's workers and its
+   * transform cache. An instrument that is right most of the time is not an
+   * instrument. Slower, deterministic.
+   */
+  const args = ['jest', `__tests__/${suite}.test.js`, '--runInBand', '--no-cache',
+    '-t', escapeForJestT(test)];
   let out;
   let failed = false;
   try {
-    out = String(execFileSync('npx', args, { cwd: ROOT, stdio: 'pipe' }));
+    out = String(execFileSync('npx', args, { cwd, stdio: 'pipe' }));
   } catch (err) {
     failed = true;
     out = String(err.stdout || '') + String(err.stderr || '');
@@ -107,7 +136,7 @@ function runTest(suite, test) {
 
 const results = [];
 for (const c of CASES) {
-  const abs = path.join(ROOT, c.file);
+  const abs = path.isAbsolute(c.file) ? c.file : path.join(c.base ? REPO : ROOT, c.file);
   const original = fs.readFileSync(abs, 'utf8');
   let verdict;
   try {
@@ -116,7 +145,7 @@ for (const c of CASES) {
       verdict = 'MUTATION_NO_OP'; // the anchor moved; the case proves nothing
     } else {
       fs.writeFileSync(abs, mutated);
-      verdict = runTest(c.suite, c.test);
+      verdict = runTest(c.suite, c.test, c.dir || 'frontend');
     }
   } finally {
     fs.writeFileSync(abs, original);

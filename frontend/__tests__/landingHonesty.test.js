@@ -89,7 +89,7 @@ describe('G0.3 — meta and copy hygiene', () => {
      * misspelled into non-existence and the guard would not notice.
      */
     for (const tag of ['og:title', 'og:description', 'og:image', 'og:url', 'twitter:card', 'twitter:image']) {
-      expect(code).toMatch(new RegExp(`["']${tag.replace(':', ':')}["']`));
+      expect(code).toMatch(new RegExp(`["']${tag}["']`));
     }
     expect(code).toMatch(/twitter:card"\s+content="summary_large_image"/);
   });

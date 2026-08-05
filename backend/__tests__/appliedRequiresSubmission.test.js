@@ -64,7 +64,7 @@ describe('A1 — the write path cannot mint a false "applied"', () => {
     const sqlAndParams = activity[0] + JSON.stringify(activity[1]);
     expect(sqlAndParams).not.toMatch(/application_sent/);
     expect(sqlAndParams).not.toMatch(/"status":"applied"/);
-    expect(activity[0]).toMatch(/application_queued/);
+    expect(activity[0]).toMatch(/\bapplication_queued\b/);
   });
 });
 
@@ -74,7 +74,9 @@ describe('A1 / D10a — the rule lives in the table', () => {
   const CONSTRAINT = 'applications_applied_requires_submission';
 
   it('adds a CHECK constraint binding applied to a submission record', () => {
-    expect(src).toContain(CONSTRAINT);
+    // Anchored: toContain(CONSTRAINT) is satisfied by `<name>X`, so the
+    // constraint could be renamed into non-existence with this still green.
+    expect(src).toMatch(new RegExp(`\\b${CONSTRAINT}\\b`));
     expect(src).toMatch(/ADD CONSTRAINT\s+applications_applied_requires_submission/);
   });
 
@@ -109,13 +111,13 @@ describe('A1 / D10a — the rule lives in the table', () => {
      */
     const body = src.slice(src.indexOf(CONSTRAINT));
     const clause = body.slice(0, body.indexOf('END $$'));
-    expect(clause).toMatch(/employer_confirmation_id IS NOT NULL/);
-    expect(clause).toMatch(/verified_at IS NOT NULL/);
+    expect(clause).toMatch(/\bemployer_confirmation_id IS NOT NULL/);
+    expect(clause).toMatch(/\bverified_at IS NOT NULL/);
   });
 
   it('guards the ADD so a repeated boot does not throw', () => {
     const body = src.slice(src.indexOf('DO $$'));
-    expect(body).toMatch(/pg_constraint/);
+    expect(body).toMatch(/\bpg_constraint\b/);
     expect(body).toMatch(/IF NOT EXISTS/);
   });
 });
