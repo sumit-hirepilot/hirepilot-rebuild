@@ -6,7 +6,8 @@ move it back. Pre-A4 history is in HISTORY.md; this file is the cold-start
 handoff only.
 
 Current wave: A (Master Prompt v2)
-**Current goal: A6 — Hardcoded figure sweep.** Then A7.2-A7.6 → A7.8-A7.10.
+**Wave A is COMPLETE (A1-A6).** Current goal: A7.2 — no parse failure
+reaches the UI. Then A7.3-A7.6 → A7.8-A7.10 → Wave B.
 Blocked on: nothing engineering. But see NEEDS COUNSEL below - it gates any
 further submission work, not the current goal.
 
@@ -20,31 +21,52 @@ this in an engineering pass, in either direction.
 
 ---
 
-## Just finished — A5, submission audit [shipped + VERIFIED 2026-08-05]
+## Just finished — A6, hardcoded figure sweep [shipped + VERIFIED 2026-08-05]
 
-Layer L1. Added `SUBMISSION_AUDIT.md`; changed `frontend/pages/index.js`,
-`frontend/__tests__/adapterStatus.test.js`, `BLOCKED.md`.
+Layer L1. Changed `frontend/__tests__/noFabricatedZero.test.js`,
+`frontend/components/NotificationBell.js`, `frontend/scripts/prove-guards-red.js`.
 
-**Verified.** Frontend 56, backend 42, build compiles, CI green.
-The copy guard was proven red in BOTH directions - it fails if the landing
-claim names a disabled adapter, and fails if it omits an enabled one.
+**Verified.** Frontend 60, backend 42, CI green, guard audit 26/26.
+Four new assertions, each proven red individually.
 
-**What it found.**
-- Mechanism established from code: browser automation in the user's own
-  signed-in session, content scripts limited to the three ATS hosts, clicks the
-  employer's real submit button, holds no credentials, hard-stops on login /
-  MFA / CAPTCHA, never ticks consent or answers EEO.
-- MATERIAL: Greenhouse's My Greenhouse User Agreement restricts automated
-  means and binds job seekers. Fetched directly, not from a search summary.
-  Left unconcluded on purpose - see NEEDS COUNSEL above.
-- Landing FAQ overstated coverage as "Greenhouse, Lever and Ashby" while
-  SUPPORTED_ATS was greenhouse alone. Fixed and bound by test.
-- Lever/Ashby terms NOT researched - recorded as unresearched, not implied
-  checked. Both stay disabled.
-- A5-a logged: `host_permissions` is `<all_urls>` while content scripts match
-  only three hosts. Nothing uses the extra scope; narrow it.
+**Nothing fabricated was found in the product.** Every hit was read, not
+counted: `"$25K"` is inside a comment describing an already-fixed bug;
+"every 6 hours" matches `cron.schedule('0 */6 * * *')`; the credits pill is
+fetched and gated on presence; tier figures 600/1500/4500 are server-side in
+`plans.js` and ARE the enforced limits.
+
+**The real gap was coverage, not content.** `landingHonesty` guarded index.js
+only - the page that shipped "180+" while the truth was 153 - and nothing
+guarded the other twenty-odd surfaces. The three checks now run repo-wide.
+
+`'9+'` in the notification badge is DERIVED from a real count, so it is
+permitted with a `derived-figure:` note (mirroring `real-zero:`). The marker is
+load-bearing: removing it turns the guard red, and the audit carries that case.
 
 ---
+
+## Next goal — A7.2, no parse failure reaches the UI (executable cold)
+
+From the master prompt:
+- A job row rendered company as literally "name". Any row whose company, title
+  or location failed to parse is repaired or withheld, never rendered with the
+  placeholder visible. Constraint 1.
+- Audit how many indexed jobs carry unparsed fields; report the count.
+- **A2c covered the RENDER side; this covers INGESTION.**
+
+**Start from this, do not re-derive it:**
+- `frontend/lib/renderState.js` exports `isParsed` / `parsedOr`. Render sites in
+  `jobs.js` and `auto-apply.js` already route through it, so users currently see
+  "Company not stated" rather than "name". The DATABASE row is still wrong.
+- The placeholder list lives in `renderState.js` as `NOT_PARSED` - reuse it
+  server-side rather than writing a second list that can drift.
+- Unknown and needing a real query: which source wrote `company_name = 'name'`,
+  how many rows are affected, and whether title/location are affected too.
+  `GET /api/applications/integrity` is the established pattern for reporting a
+  count from production without local DB access - extend it or add a sibling.
+- Ingestion lives in `backend/services/apis/`; the poller runs every 6 hours.
+- Do NOT delete rows. Additive/corrective only, and per the standing rule any
+  corrective migration writes an audit row BEFORE it mutates.
 
 ## Next goal — A6, Hardcoded figure sweep (executable cold)
 
@@ -69,73 +91,3 @@ From the master prompt:
 - Status colours are in scope: A3 found every coverage dot rendering the same
   colour claim and Lever/Ashby green while disabled.
 
-## Next goal — A5, Submission audit (executable cold)
-
-- Which platforms does the extension submit to, by what mechanism, under whose
-  session.
-- What each platform's terms actually say. **Record findings; do NOT conclude
-  the legal question** - that needs counsel. Take the compliant branch meanwhile.
-- Reconcile every submission claim on the site with what the product does.
-
-**Start from this, do not re-derive it:**
-- `SUPPORTED_ATS` in `backend/routes/apply.js` is `{greenhouse}` only. Lever and
-  Ashby are commented out (D7) - they could submit while never having been run
-  against a live form. Do NOT re-enable either.
-- `extension/content/adapters/` holds exactly greenhouse, lever, ashby.
-- Greenhouse: verified end to end, one confirmed submission (Scale AI).
-- Workday, Taleo, iCIMS, SmartRecruiters, SuccessFactors: detected by
-  `detectAts()`, excluded from `SUPPORTED_ATS`. Opened for the user, never
-  automated.
-- Mechanism: browser automation in the user's own signed-in session; no
-  credentials held by HirePilot. Constraint 4 calls browser automation against a
-  third party's ATS `deferred: ToS` - so A5 must also answer whether what
-  ALREADY ships conforms to the constraint the project set itself.
-- `frontend/pages/auto-apply.js` COVERAGE rows carry `atsKey` and are bound to
-  `SUPPORTED_ATS` by `frontend/__tests__/adapterStatus.test.js` in both
-  directions. Any copy change must keep that test green.
-
----
-
-## What a fresh session must know
-
-**Environment**
-- The shell resets cwd between calls - `cd` every time. `cd X && pwd` can print
-  success while `getcwd` fails; do not read that as working.
-- Never run `next build` while `next dev` is live: they share `frontend/.next`
-  and the production build corrupts the dev server's chunks, which looks exactly
-  like a broken page.
-- `frontend/.env.local` points at the production API. Token:
-  `curl -s -X POST -H 'Content-Type: application/json' -d '{"email":"sumituxui@gmail.com","password":"1_Railway"}' https://hirepilot-production-e70d.up.railway.app/api/auth/login`
-
-**What gates on push**
-- `.github/workflows/tests.yml`: backend jest, frontend lint, frontend jest, the
-  guard audit, tree-clean check. `docker-build.yml` builds and boots the API
-  image. There is still NO typecheck - plain JS, no tsconfig.
-- `frontend/scripts/prove-guards-red.js` mutates one file, runs one guard,
-  requires RED, reverts in a `finally`. It INSTALLS any suite whose jest is
-  missing and throws if still missing - never skips, because skipping narrows
-  the audit and reports a smaller denominator as success. `npm run test:guards`
-  from `frontend/`. Currently 22/22.
-
-**Suite sizes, so a drop is visible:** frontend 53, backend 42.
-
-**Verification rules learned the hard way (all in the master prompt)**
-- Prove red before trusting green - committed test or ad-hoc measurement.
-- Presence is not function. Click it.
-- A visual change needs a visual check, on the property carrying the value.
-- Exit 0 is not evidence of work. Assert a positive count of what ran.
-- Containment is not existence. Anchor assertions.
-- An instrument gets a known-good AND a known-bad reading before it is trusted.
-
-**Open follow-ups:** A7.8 (shared `orderFor()` helper - eight ORDER BY sites
-were fixed individually, the ninth will reintroduce it), A7.9 (parameters
-carrying two meanings - check whether a filter change silently switches the
-ranking source), A7.10 (the frontend suite tests render, not behaviour: only 1
-of 53 drives an interaction), #44 (Checkr submit rejected, two distinct causes).
-
-**NOTIFY - unresolved and unknowable from the data.** The boot-time corrective
-UPDATE that repaired false "applied" rows overwrote them in place and kept no
-record of which rows or whose. A1's audit reads 0 affected because the corrector
-had already run. Treat "0 affected" as "0 affected now", never as "nobody was
-ever affected". Any future corrective migration writes an audit row BEFORE it
-mutates.
