@@ -301,3 +301,28 @@ company). Size only breaks ties inside a tier.
 Found by running the feature against real data rather than the fixture written
 for it - the fixture agreed with the wrong rule because its largest recovery
 was also its first candidate.
+
+
+## D22 — himalayas keeps its null posted_at; the product stops hiding the cost
+
+A7.11 offered two routes: backfill the date from the original posting, or state
+the exclusion in the UI. The first is closed on evidence.
+
+Their pubDate is not a publish date. Fetched live, eight unrelated companies
+came back with timestamps inside an 11-minute window on the day of the fetch -
+it is their ingest clock, and the job's own page shows a "Posted on" date up to
+two months earlier. Filling posted_at from it would fabricate freshness, which
+is the exact thing the null exists to prevent, and D4's timing signal would
+then be built on invented data.
+
+The original posting page returns 403 to a plain server request. Getting past
+that is circumventing bot protection - the line D19 already drew for We Work
+Remotely, and it does not move because a different source is behind it.
+
+So: state it. 4,685 rows (18.9% of the index, every row himalayas supplies)
+have no publication date. A7.7's NULLS LAST is correct and was silently costing
+a fifth of the product under "Newest first". The count is now reported and
+shown, with the reason, and `datePosted=unknown` reaches them in one click.
+
+Revisit if himalayas exposes a real publication date field. Not by parsing a
+page that is telling us not to.

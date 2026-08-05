@@ -889,6 +889,10 @@ export default function Jobs() {
             <option value="3d">Past 3 days</option>
             <option value="7d">Past 7 days</option>
             <option value="30d">Past 30 days</option>
+            {/* A7.11 — "unknown" is a state, not a missing time range. Every
+                row himalayas supplies has no publish date, and NULLS LAST puts
+                all 4,685 of them behind everything else permanently. */}
+            <option value="unknown">No publication date</option>
           </select>
           <FilterPanel
             label="Employment type"
@@ -1079,6 +1083,22 @@ export default function Jobs() {
                   errorText: 'Result count unavailable',
                 }).text}
           </span>
+          {/* A7.11 — a fifth of the index sorts last under "Newest first" and
+              nothing said so. Stated with the count, and reachable in a click:
+              the sort is correct, the silence was the defect. */}
+          {!showSavedOnly && !datePosted && ranking?.undatedTotal > 0 && (
+            <button
+              type="button"
+              className={page.unknownDateNote}
+              title="Their source does not publish an original date, so we will not invent one - they sort last rather than being placed in a window we cannot confirm."
+              onClick={() => {
+                setDatePosted('unknown'); setPage(1);
+                loadJobs(token, { page: 1, datePosted: 'unknown' });
+              }}
+            >
+              {formatNumber(ranking.undatedTotal)} jobs have no publication date and sort last - show them
+            </button>
+          )}
           {!showSavedOnly && datePosted && excludedUnknownDateCount > 0 && (
             <span className={page.unknownDateNote} title="These jobs' sources don't expose a reliable original-publish date, so we can't confirm they fall in this window - shown separately rather than guessing.">
               +{excludedUnknownDateCount} more with unknown publish date (excluded from this filter)

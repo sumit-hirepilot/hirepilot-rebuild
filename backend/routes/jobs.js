@@ -838,8 +838,20 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const DATE_INTERVAL = { '24h': '1 day', '3d': '3 days', '7d': '7 days', '30d': '30 days' };
     const DATE_LABEL = {
       '24h': 'Past 24 hours', '3d': 'Past 3 days', '7d': 'Past 7 days', '30d': 'Past 30 days',
+      unknown: 'Jobs with no publication date',
     };
-    if (datePosted && DATE_INTERVAL[datePosted]) {
+    /*
+     * A7.11 — `unknown` is a real value here, not a missing one.
+     *
+     * 4,685 jobs (18.9% of the index, every row himalayas supplies) have no
+     * publication date, and A7.7 sorts posted_at DESC NULLS LAST - correct,
+     * and at this scale it means they are permanently last and effectively
+     * unreachable. This is the one click that reaches them. It is a filter on
+     * a known state, not a time window, so it must not also apply one.
+     */
+    if (datePosted === 'unknown') {
+      addFilter('datePosted', DATE_LABEL.unknown, () => 'posted_at IS NULL');
+    } else if (datePosted && DATE_INTERVAL[datePosted]) {
       addFilter('datePosted', DATE_LABEL[datePosted],
         () => `posted_at >= CURRENT_TIMESTAMP - INTERVAL '${DATE_INTERVAL[datePosted]}'`);
     }
@@ -894,6 +906,9 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     let excludedUnknownDateCount = 0;
     // Always present, null when it does not apply - A7.17's shape rule.
     let emptyReason = null;
+    // A7.11 — how many rows the recency sort put behind everything else.
+    // Null when sorting by score, where nothing is buried by date.
+    let undatedTotal = null;
 
     /*
      * A7.17 — ONE ranking path.
@@ -992,6 +1007,23 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     );
     jobs = result.rows;
 
+    /*
+     * A7.11 — the same COUNT answers two different questions, so it runs for
+     * both. Under a date window it is "how many we could not place in it".
+     * Under a recency sort with no window it is "how many this sort has buried
+     * behind everything else" - which nothing on screen used to say, and which
+     * is 4,685 rows in production.
+     */
+    if (datePosted || sort === 'recent') {
+      const unknownDateResult = await query(
+        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere} AND posted_at IS NULL`,
+        scoreParams
+      );
+      const undated = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);
+      if (datePosted) excludedUnknownDateCount = undated;
+      if (sort === 'recent') undatedTotal = undated;
+    }
+
     const unscored = jobs.filter((j) => j.overall_score === null || j.overall_score === undefined).length;
     ranking = {
       mode: rankByScore ? 'ranked' : 'all',
@@ -1000,15 +1032,11 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       sourceDiversified: Boolean(capSql),
       // Stated, never implied: a floor cannot judge a row that has no score.
       unscoredInPage: unscored,
+      // A7.11 — stated for the same reason, one column over.
+      undatedTotal,
     };
 
-    if (datePosted) {
-      const unknownDateResult = await query(
-        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere} AND posted_at IS NULL`,
-        scoreParams
-      );
-      excludedUnknownDateCount = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);
-    }
+
 
     /*
      * A7.13 — when the result is empty, name the filter that emptied it.
