@@ -31,6 +31,7 @@
  * reached the employer before anything is marked applied.
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
@@ -1100,6 +1101,40 @@ const SUCCESS_SIGNALS = [
   /application id/i,
 ];
 
+/*
+ * A4 — the receipt, user-reviewable.
+ *
+ * Reads the frozen row, never the application's current values. If no receipt
+ * exists the answer is that none was recorded, not the live profile dressed up
+ * as history.
+ */
+router.get('/queue/:id/receipt', verifyToken, async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const r = await query(
+      `SELECT id, application_id, submitted_at, answers_sent, fields_sent,
+              resume_id, resume_sha256, resume_filename,
+              platform_response, platform_confirmation_id, platform_url, ats,
+              created_at
+         FROM submission_receipts
+        WHERE application_id = $1 AND user_id = $2`,
+      [id, req.user.id]
+    );
+    if (!r.rows.length) {
+      return res.status(404).json({
+        receipt: null,
+        reason: 'No submission receipt was recorded for this application. '
+          + 'Applications submitted before receipts existed have none, and the '
+          + 'current profile values are not a record of what was sent.',
+      });
+    }
+    res.json({ receipt: r.rows[0], immutable: true });
+  } catch (err) {
+    console.error('Get receipt error:', err);
+    res.status(500).json({ error: 'Failed to load the submission receipt' });
+  }
+});
+
 router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
   const id = Number(req.params.id);
   try {
@@ -1177,6 +1212,66 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
     );
 
     /*
+     * A4 — freeze the receipt.
+     *
+     * Written once, here, because this is the only moment the application is
+     * known to have reached the employer. screening_answers on the application
+     * row is CURRENT state - later discovery runs rewrite it - so a screen that
+     * renders it as "what was sent" is asserting something it cannot know. The
+     * receipt is that assertion made truthfully: a copy, taken at submit time,
+     * that the database refuses to let anything change afterwards.
+     *
+     * ON CONFLICT DO NOTHING, not DO UPDATE: a re-submit must never overwrite
+     * the first receipt's account of what went out.
+     *
+     * A receipt failure must not un-verify a real submission - the employer
+     * has the application either way - so it is reported, never thrown.
+     */
+    let receipt = null;
+    try {
+      const src = await query(
+        // Hashed in Node, not via pgcrypto: digest() needs an extension that
+        // may not be installed, and a missing extension must not be the reason
+        // a submission has no receipt.
+        `SELECT a.screening_answers, a.resume_id, a.ats, a.target_form_url,
+                r.original_filename, r.file_data
+           FROM applications a
+           LEFT JOIN resumes r ON r.id = a.resume_id
+          WHERE a.id = $1 AND a.user_id = $2`,
+        [id, req.user.id]
+      );
+      const row = src.rows[0] || {};
+      const resumeSha = row.file_data
+        ? crypto.createHash('sha256').update(row.file_data).digest('hex')
+        : null;
+      const ins = await query(
+        `INSERT INTO submission_receipts
+           (application_id, user_id, submitted_at, answers_sent, fields_sent,
+            resume_id, resume_sha256, resume_filename,
+            platform_response, platform_confirmation_id, platform_url, ats)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (application_id) DO NOTHING
+         RETURNING id, submitted_at`,
+        [
+          id, req.user.id, when,
+          JSON.stringify(row.screening_answers || {}),
+          JSON.stringify({ targetFormUrl: row.target_form_url || null }),
+          row.resume_id || null,
+          resumeSha,
+          row.original_filename || null,
+          text.slice(0, 5000),
+          hasId ? String(confirmationId).trim().slice(0, 255) : null,
+          finalUrl ? String(finalUrl).slice(0, 1024) : null,
+          row.ats || null,
+        ]
+      );
+      receipt = ins.rows[0] ? { id: ins.rows[0].id, frozen: true } : { frozen: false, reason: 'a receipt already exists for this application' };
+    } catch (err) {
+      console.error('Receipt freeze failed:', err.message);
+      receipt = { frozen: false, reason: 'receipt could not be written' };
+    }
+
+    /*
      * A credit is spent here and nowhere else - on a submission the employer
      * has confirmed. Charging on an attempt would bill someone for a form that
      * stalled on a CAPTCHA or had to be retried after a bad fill.
@@ -1203,6 +1298,8 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
 
     res.json({
       verified: true,
+      // Stated, so a caller can tell a frozen receipt from an absent one.
+      receipt,
       application: r.rows[0],
       evidenceBasis: hasId ? 'confirmation_id' : 'confirmation_page_text',
     });

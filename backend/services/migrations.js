@@ -322,6 +322,61 @@ const STATEMENTS = [
    * Guarded by a catalog lookup rather than a bare ADD, because Postgres has no
    * ADD CONSTRAINT IF NOT EXISTS and a duplicate would throw on every boot.
    */
+  /*
+   * A4 — the immutable submission receipt.
+   *
+   * screening_answers on the application is CURRENT state: later discovery runs
+   * rewrite it. Rendering it as "what was sent" is a Constraint 1 violation, so
+   * the receipt is a separate row written once, at the moment the employer's
+   * confirmation is captured, and never touched again.
+   *
+   * Immutability is enforced by the DATABASE, not by convention. A rule that
+   * lives only in application code is one careless UPDATE away from being
+   * false, and the whole point of a receipt is that it can be trusted when
+   * someone disputes what went out under their name.
+   */
+  `CREATE TABLE IF NOT EXISTS submission_receipts (
+     id SERIAL PRIMARY KEY,
+     application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     submitted_at TIMESTAMP NOT NULL,
+     -- What was sent, frozen. JSONB so the shape can grow without a migration
+     -- that would rewrite existing receipts.
+     answers_sent JSONB NOT NULL DEFAULT '{}'::jsonb,
+     fields_sent JSONB NOT NULL DEFAULT '{}'::jsonb,
+     -- Which file, identified by content rather than by a mutable row id.
+     resume_id INTEGER,
+     resume_sha256 VARCHAR(64),
+     resume_filename VARCHAR(255),
+     -- The platform's own words back, capped for the 500MB volume.
+     platform_response TEXT,
+     platform_confirmation_id VARCHAR(255),
+     platform_url VARCHAR(1024),
+     ats VARCHAR(50),
+     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_receipts_app ON submission_receipts(application_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_receipts_user ON submission_receipts(user_id)`,
+
+  // One receipt per application. A second submit cannot quietly replace the
+  // first one's account of what was sent.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_receipts_app_unique
+     ON submission_receipts(application_id)`,
+
+  `CREATE OR REPLACE FUNCTION submission_receipts_are_immutable()
+     RETURNS TRIGGER AS $fn$
+     BEGIN
+       RAISE EXCEPTION
+         'submission_receipts is append-only: % on receipt % was rejected',
+         TG_OP, COALESCE(OLD.id, NEW.id);
+     END;
+     $fn$ LANGUAGE plpgsql`,
+
+  `DROP TRIGGER IF EXISTS trg_submission_receipts_immutable ON submission_receipts`,
+  `CREATE TRIGGER trg_submission_receipts_immutable
+     BEFORE UPDATE OR DELETE ON submission_receipts
+     FOR EACH ROW EXECUTE FUNCTION submission_receipts_are_immutable()`,
+
   `DO $$
    BEGIN
      IF NOT EXISTS (
