@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { isParsed } = require('./parsedField');
 const remoteOKClient = require('./apis/remoteok');
 const motiveClient = require('./apis/remotive');
 const himalayasClient = require('./apis/himalayas');
@@ -218,8 +219,26 @@ const storeJobsFromSource = async (rawJobs, source, results) => {
   for (const job of rawJobs) {
     const normalized = normalizeJob(job, source);
 
-    if (!normalized.external_id || !normalized.title || !normalized.company_name || !normalized.job_url) {
+    if (!normalized.external_id || !normalized.job_url) {
       continue; // skip malformed entries rather than failing the whole batch
+    }
+
+    /*
+     * A7.2 — a field that did not parse must not be stored.
+     *
+     * The old gate tested truthiness only, so the literal string 'name' passed
+     * it: himalayas wrote company_name = 'name' on roughly a fifth of its
+     * ~4,900 rows, and a job card rendered `name - Philippines` as an employer.
+     * A2c stopped users seeing it; this stops it being written.
+     *
+     * Withheld, not repaired: there is nothing to repair it FROM. A row whose
+     * employer is unknown is not a job posting a user can act on, and inventing
+     * one would be the very fabrication this guards against. Counted so the
+     * drop is visible - a silent skip is how the first one went unnoticed.
+     */
+    if (!isParsed(normalized.title) || !isParsed(normalized.company_name)) {
+      sourceStats.unparsed = (sourceStats.unparsed || 0) + 1;
+      continue;
     }
 
     try {

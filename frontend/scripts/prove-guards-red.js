@@ -84,6 +84,16 @@ const CASES = [
     file: 'components/NotificationBell.js',
     mutate: (s) => s.replace(/ \{\/\* derived-figure:[^}]*\*\/\}/, '') },
 
+  /* ---- A7.2: a field that did not parse must not be stored ---- */
+  { suite: 'parsedField', dir: 'backend', base: true,
+    test: 'gates on isParsed, not on truthiness',
+    file: 'backend/services/jobAggregator.js',
+    mutate: (s) => s.replace(/isParsed\(normalized\.company_name\)/, 'Boolean(normalized.company_name)') },
+  { suite: 'parsedField', dir: 'backend', base: true,
+    test: 'holds exactly the same placeholders on both sides',
+    file: 'frontend/lib/renderState.js',
+    mutate: (s) => s.replace("'nan',", "'nan', 'tbd',") },
+
   /* ---- A3-c: superstring mutations ----
    * Each renames an identifier to a SUPERSTRING of itself. An unanchored
    * assertion (`toContain('og:image')`, `/HP_EXECUTE/`) stays green against

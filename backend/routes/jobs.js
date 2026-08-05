@@ -322,6 +322,40 @@ router.get('/facets', async (req, res) => {
  * last_synced_at also answers the health check's poller-freshness question,
  * which /sources could not.
  */
+/*
+ * A7.2 — how many indexed jobs carry a field that never parsed.
+ *
+ * Reported rather than assumed: the render guard hides these from users, which
+ * is exactly why the count has to be visible somewhere or the data rots
+ * unnoticed. Aggregates only, no PII.
+ */
+router.get('/field-integrity', async (req, res) => {
+  try {
+    const placeholders = ['', '-', '--', 'n/a', 'na', 'none', 'null', 'undefined',
+      'unknown', 'name', 'title', 'company', 'company_name', 'location', 'nan'];
+    const { rows } = await query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(company_name,''))) = ANY($1))::int AS bad_company,
+              COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(title,''))) = ANY($1))::int        AS bad_title,
+              COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(location,''))) = ANY($1))::int     AS bad_location
+         FROM jobs WHERE is_active = true`,
+      [placeholders]
+    );
+    const { rows: bySource } = await query(
+      `SELECT source, COUNT(*)::int AS bad
+         FROM jobs
+        WHERE is_active = true
+          AND LOWER(TRIM(COALESCE(company_name,''))) = ANY($1)
+        GROUP BY source ORDER BY bad DESC`,
+      [placeholders]
+    );
+    res.json({ ...rows[0], badCompanyBySource: bySource });
+  } catch (err) {
+    console.error('Field integrity error:', err);
+    res.status(500).json({ error: 'Failed to run the field integrity check' });
+  }
+});
+
 router.get('/stats', async (req, res) => {
   try {
     const [totals, direct, synced] = await Promise.all([
