@@ -43,3 +43,25 @@ authenticated caller; identities are gated on ADMIN_EMAILS.
 The one thing still needing a human, and ONLY if the count ever goes non-zero:
     set ADMIN_EMAILS=sumituxui@gmail.com on the API service
 It currently reports users_affected 0, so there is nobody to identify.
+
+## A5 — needs counsel before ANY further submission work (2026-08-05)
+The one enabled adapter is Greenhouse. The My Greenhouse User Agreement
+(fetched directly 2026-08-05) restricts using "automated means, including
+spiders, robots, crawlers, or similar means or processes to access or use the
+Services", and it binds job seekers - the party HirePilot acts for.
+
+Not concluded here, deliberately. The determining questions are legal, not
+engineering: whether that agreement reaches an employer's embedded
+job-boards.greenhouse.io form where the candidate may have no My Greenhouse
+account; and whether user-initiated automation inside the user's own
+authenticated session, stopping at every login, CAPTCHA and consent, is what
+the clause means.
+
+§3's default table, read literally, says browser automation against a third
+party's ATS is `deferred: ToS` - which points at disabling Greenhouse, i.e. the
+product's core. That is the operator's call with advice, not an engineering
+pass's.
+
+Holding pattern in force: nothing new ships against any ATS; Lever and Ashby
+stay disabled; Lever/Ashby terms unresearched and must be read before either is
+re-enabled. Full findings in SUBMISSION_AUDIT.md.

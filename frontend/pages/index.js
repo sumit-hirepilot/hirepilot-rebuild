@@ -78,7 +78,7 @@ const FAQS = [
   },
   {
     q: 'Does HirePilot submit real applications to employers?',
-    a: 'Yes, through the browser extension, which fills and submits the form in your own signed-in browser rather than from a server. An application is only marked applied once the employer’s own confirmation page has been captured — there is no code path that sets that status without it. It pauses and asks you when a form needs something only you can give: a login, a CAPTCHA, a consent tick, or a question your profile has never answered. Coverage today is Greenhouse, Lever and Ashby; Workday, Taleo and iCIMS are not automated and are opened for you to complete.',
+    a: 'Yes, through the browser extension, which fills and submits the form in your own signed-in browser rather than from a server. An application is only marked applied once the employer’s own confirmation page has been captured — there is no code path that sets that status without it. It pauses and asks you when a form needs something only you can give: a login, a CAPTCHA, a consent tick, or a question your profile has never answered. Automated coverage today is Greenhouse only \u2014 the one adapter verified end to end against a live posting. Lever and Ashby adapters are built but disabled until each has a verified live run, because an application cannot be unsent. Workday, Taleo and iCIMS are not automated and are opened for you to complete.',
   },
   {
     q: 'Is this powered by an LLM?',

@@ -74,3 +74,52 @@ describe('A3 / H6 — adapter status is bound to SUPPORTED_ATS', () => {
     expect(supported.has('ashby')).toBe(false);
   });
 });
+
+/*
+ * A5 — the marketing copy is bound to the whitelist too.
+ *
+ * The Auto Apply panel was bound; the landing page was not, and it drifted:
+ * the FAQ read "Coverage today is Greenhouse, Lever and Ashby" while
+ * SUPPORTED_ATS had been cut to greenhouse alone (D7, after Lever and Ashby
+ * were found able to submit untested). A visitor deciding whether to trust the
+ * product read a claim the product could not keep.
+ *
+ * §7 says copy follows the product, and it reads the same in both directions.
+ * This makes drift a test failure rather than something noticed months later.
+ */
+describe('A5 — the landing page cannot overstate automated coverage', () => {
+  const landing = fs.readFileSync(path.join(ROOT, 'pages', 'index.js'), 'utf8');
+  const supported = serverSupported();
+
+  // Every ATS the product has an adapter for, named on the landing page.
+  const NAMED = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby' };
+
+  it('reads the whitelist and the page', () => {
+    expect(supported.size).toBeGreaterThan(0);
+    expect(landing.length).toBeGreaterThan(1000);
+  });
+
+  it('does not present a disabled adapter as automated coverage', () => {
+    /*
+     * Anchored on the sentence that makes the coverage claim, not on the whole
+     * file - Lever and Ashby legitimately appear elsewhere (job sources, and
+     * the honest statement that their adapters are built but off).
+     */
+    const m = landing.match(/Automated coverage today is[^.]*\./);
+    expect(m).toBeTruthy();
+    const claim = m[0];
+
+    const overstated = Object.entries(NAMED)
+      .filter(([key, name]) => !supported.has(key) && new RegExp(`\\b${name}\\b`).test(claim))
+      .map(([, name]) => name);
+    expect(overstated).toEqual([]);
+  });
+
+  it('names every adapter the server WILL run', () => {
+    const claim = (landing.match(/Automated coverage today is[^.]*\./) || [''])[0];
+    const missing = [...supported]
+      .filter((key) => NAMED[key] && !new RegExp(`\\b${NAMED[key]}\\b`).test(claim))
+      .map((key) => NAMED[key]);
+    expect(missing).toEqual([]);
+  });
+});
