@@ -892,3 +892,15 @@
 
 /* A7.1 — the ring now holds "100%", four characters rather than two. */
 .scoreRing { font-size: 0.75rem; letter-spacing: -0.02em; }
+
+/* Item 3 — the single action a stuck user can take, next to the reason. */
+.emptyAction {
+  margin-top: 0.6rem;
+  background: transparent;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.emptyAction:hover { border-color: var(--accent, #2563eb); }

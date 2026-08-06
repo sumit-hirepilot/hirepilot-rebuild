@@ -291,6 +291,31 @@ const postedTimeAgo = timeAgo;
  * relax the wrong control, which is worse than the generic sentence it
  * replaced.
  */
+/*
+ * Wave C / item 3 — one action, and it undoes exactly the thing we blamed.
+ *
+ * Naming the cause without offering the fix leaves the user to translate
+ * "Past 24 hours is what emptied this" into finding that control and changing
+ * it. "Clear filters" is not that action: it throws away everything they
+ * chose, including the search they came for.
+ *
+ * Returns null when there is nothing specific to offer, so the empty state
+ * explains rather than inventing a button.
+ */
+function emptyReasonAction(cause) {
+  if (!cause || !cause.withoutIt) return null;
+  switch (cause.key) {
+    case 'datePosted': return { label: `Show jobs from any date (${cause.withoutIt})`, key: 'datePosted', value: '' };
+    case 'minScore': return { label: `Drop the match filter (${cause.withoutIt})`, key: 'minScore', value: 0 };
+    case 'experience': return { label: `Any experience level (${cause.withoutIt})`, key: 'experience', value: '' };
+    case 'location': return { label: `Any location (${cause.withoutIt})`, key: 'location', value: '' };
+    case 'company': return { label: `Any company (${cause.withoutIt})`, key: 'company', value: '' };
+    // The search term is the user's intent, and offering to delete it is the
+    // one suggestion that misses the point (D21). No button for it.
+    default: return null;
+  }
+}
+
 function emptyReasonText({ emptyReason, keywords, noExactMatches, relatedTotal }) {
   const cause = emptyReason?.primary
     ? (emptyReason.filters || []).find((f) => f.key === emptyReason.primary)
@@ -616,6 +641,11 @@ export default function Jobs() {
    * setPage(1) is part of it: applying a filter while on page 7 shows an empty
    * page of a non-empty result.
    */
+  const EMPTY_SETTERS = {
+    datePosted: setDatePosted, minScore: setMinScore,
+    experience: setExperience, location: setLocation, company: setCompany,
+  };
+
   const applyFilter = (setter, key, value) => {
     setter(value);
     setPage(1);
@@ -664,6 +694,15 @@ export default function Jobs() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadJobs]);
+
+  /*
+   * Item 3 — the action offered by the empty state, derived from the cause the
+   * server named. Computed here so the JSX stays a single expression.
+   */
+  const emptyCause = emptyReason?.primary
+    ? (emptyReason.filters || []).find((f) => f.key === emptyReason.primary)
+    : null;
+  const emptyAction = emptyReasonAction(emptyCause);
 
   const MULTI_KEYS = ['keywords', 'exclude', 'jobType', 'workArrangement', 'salary', 'region'];
 
@@ -1259,11 +1298,23 @@ export default function Jobs() {
           {loading ? (
             <p className={styles.emptyState}>Loading jobs&hellip;</p>
           ) : (showSavedOnly ? savedJobs : jobs).length === 0 ? (
-            <p className={styles.emptyState}>
-              {showSavedOnly
-                ? 'No saved jobs yet. Click the star on any job to save it for later.'
-                : emptyReasonText({ emptyReason, keywords, noExactMatches, relatedTotal })}
-            </p>
+            <div>
+              <p className={styles.emptyState}>
+                {showSavedOnly
+                  ? 'No saved jobs yet. Click the star on any job to save it for later.'
+                  : emptyReasonText({ emptyReason, keywords, noExactMatches, relatedTotal })}
+              </p>
+              {/* Item 3 — one action, undoing exactly the filter we named. */}
+              {!showSavedOnly && emptyAction && (
+                <button
+                  type="button"
+                  className={page.emptyAction}
+                  onClick={() => applyFilter(EMPTY_SETTERS[emptyAction.key], emptyAction.key, emptyAction.value)}
+                >
+                  {emptyAction.label}
+                </button>
+              )}
+            </div>
           ) : (
             <div className={page.list}>
               {(showSavedOnly ? savedJobs : jobs).map((job) => renderJobRow(job))}

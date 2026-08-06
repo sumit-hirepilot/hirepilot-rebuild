@@ -117,6 +117,20 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  { suite: 'emptyStateCopy',
+    test: 'offers to remove exactly the filter it blamed',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace("case 'datePosted': return { label: `Show jobs from any date (${cause.withoutIt})`, key: 'datePosted', value: '' };", '') },
+  { suite: 'emptyStateCopy',
+    test: 'never offers to delete the search term',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('    default: return null;',
+      "    case 'keywords': return { label: `Drop the search (${cause.withoutIt})`, key: 'keywords', value: [] };\n    default: return null;") },
+  { suite: 'emptyStateCopy',
+    test: 'offers nothing when relaxing the filter would still return nothing',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace('if (!cause || !cause.withoutIt) return null;', 'if (!cause) return null;') },
+
   /* ---- Wave C: plain language ---- */
   { suite: 'scoreBands',
     test: 'says nothing when there is no score',

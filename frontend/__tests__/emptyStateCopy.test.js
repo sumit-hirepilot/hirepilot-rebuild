@@ -14,6 +14,7 @@
 import '@testing-library/jest-dom';
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import JobsPage from '../pages/jobs';
 
@@ -124,5 +125,81 @@ describe('A7.13 — the empty state names the filter that emptied it', () => {
     await waitFor(() => expect(
       screen.getByText(/No jobs found\. Try a different search term\./i, { selector: 'p' })
     ).toBeInTheDocument());
+  });
+});
+
+describe('Item 3 — the empty state offers one action, and it undoes the cause', () => {
+  it('offers to remove exactly the filter it blamed', async () => {
+    const user = userEvent.setup();
+    mockEmpty({
+      emptyReason: {
+        primary: 'datePosted',
+        filters: [
+          { key: 'datePosted', label: 'Past 24 hours', withoutIt: 11 },
+          { key: 'keywords', label: 'Search: figma', withoutIt: 580 },
+        ],
+      },
+    });
+    render(<JobsPage />);
+
+    const action = await screen.findByRole('button', { name: /show jobs from any date \(11\)/i });
+    await user.click(action);
+
+    // Presence is not function: the request must actually drop the filter.
+    await waitFor(() => {
+      const called = global.fetch.mock.calls.map((c) => String(c[0]));
+      expect(called.some((u) => /datePosted=/.test(u) === false && /\/api\/jobs\?/.test(u))).toBe(true);
+    });
+  });
+
+  it('never offers to delete the search term', async () => {
+    /*
+     * D21: dropping the keyword recovers the most results and is the least
+     * useful advice - the user typed it on purpose. Naming it is fine;
+     * offering a button that throws it away is not.
+     */
+    mockEmpty({
+      emptyReason: {
+        primary: 'keywords',
+        filters: [{ key: 'keywords', label: 'Search: figma', withoutIt: 580 }],
+      },
+    });
+    render(<JobsPage />);
+
+    // Scoped to the empty-state paragraph: the count line also says "No jobs
+    // match these filters", and an unscoped match is satisfied by either.
+    await waitFor(() => expect(
+      screen.getByText(/No jobs match\./i, { selector: 'p' })
+    ).toBeInTheDocument());
+    /*
+     * Scoped to the shapes emptyReasonAction can produce. Matching /search/
+     * loosely caught the page's own Search submit button - an assertion
+     * satisfied by an unrelated control proves nothing.
+     */
+    expect(screen.queryByRole('button', { name: /^(Show jobs from|Drop the|Any )/i }))
+      .not.toBeInTheDocument();
+  });
+
+  it('offers nothing when relaxing the filter would still return nothing', async () => {
+    /*
+     * withoutIt: 0 means the button would promise results that do not exist.
+     * The server only sets `primary` when the recovery is above zero, so this
+     * is the UI declining to trust that - a defensive case, and the first
+     * version of this test used primary: null, where the null check alone
+     * passes and the zero check is never reached.
+     */
+    mockEmpty({
+      emptyReason: {
+        primary: 'datePosted',
+        filters: [{ key: 'datePosted', label: 'Past 24 hours', withoutIt: 0 }],
+      },
+    });
+    render(<JobsPage />);
+
+    await waitFor(() => expect(
+      screen.getByText(/Past 24 hours is what emptied this/i, { selector: 'p' })
+    ).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^(Show jobs from|Drop the|Any )/i }))
+      .not.toBeInTheDocument();
   });
 });
