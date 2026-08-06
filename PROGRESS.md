@@ -720,6 +720,65 @@ OWED, and deliberately not faked:
     measure whether the flake disappears. That is a one-line experiment and it
     has not been done.
 
+## FEATURE 1 — C1 + C1a + C1b. C1 BLOCKED, C1a/C1b NEXT, spec below.
+
+C1 (Naukri) — BLOCKED on an operator decision, assessed today under A7.19 and
+recorded in BLOCKED.md with the table. Naukri returns 403 to a plain
+robots.txt fetch (Akamai edge block); integrating would mean evading it. No
+public jobs API. Wellfound and Cutshort disallow their job-DETAIL paths, so
+their JDs are off limits and a JD is what scoring and tailoring need.
+Instahyre is the only permissive robots.txt of the four and is the only one
+worth assessing further - establish job-page reachability with a declared bot
+UA and whether posted_at is a real publication date BEFORE writing any adapter.
+
+### C1a/C1b — WHAT IS ACTUALLY BUILT, measured not assumed
+
+frontend/pages/onboarding.js is 314 lines with a `step` state and NO live
+counts: grep finds no countText, no renderState, no "jobs in our index", no
+"match your experience". So C1a's central requirement - "live feedback after
+every answer, every number a real query" - is entirely unbuilt. This is a
+build, not a polish.
+
+### Building blocks that already exist - use them, do not re-invent
+
+ - `frontend/lib/renderState.js` exports `countText({...})` at line 54. C1a
+   says explicitly: use it, do not hand-roll a second convention. It already
+   distinguishes loading / failed / real-zero, which is what Constraint 1
+   needs INSIDE onboarding (a count of 0 says so and offers to widen; never
+   invent an encouraging figure).
+ - `GET /api/jobs/facets` (routes/jobs.js:300) already returns per-value
+   counts for region, workArrangement, salary, jobType.
+ - `GET /api/jobs/stats` (routes/jobs.js:530).
+ - `GET /api/jobs?...&limit=1` returns an honest `total` for ANY filter
+   combination, and the COUNT is now cached 60s (GOAL 1h) - so a live count
+   per onboarding answer is one call to an endpoint that already exists and is
+   already cheap. Check whether facets/stats suffice before adding an endpoint.
+
+### The acceptance that will be checked (from the master prompt)
+
+ - Every live count verified against the API returning the SAME number - the
+   screen and the endpoint agree, CHECKED not assumed.
+ - Completed end to end at 375px with one thumb.
+ - Interaction tests that CLICK the controls and assert the resulting state
+   AND the network call. Presence is not function: A7.1's sort control
+   rendered perfectly, passed every DOM assertion, and did nothing.
+ - Per-assertion red-green, non-zero executed count, cases added to
+   frontend/scripts/prove-guards-red.js.
+
+### Order to build C1a/C1b
+
+ 1. One question per screen, phrased as a question, chips not fields.
+ 2. Live count after each answer, via the existing endpoints, through
+    countText. Role -> "N jobs in our index". City -> "N of those in X".
+ 3. Resume parse as the first wow: skills as removable chips the moment it is
+    read, not behind a Continue button.
+ 4. Time to first match at step 4-5, a REAL row from the real query.
+ 5. Abandonment recovery: reopen on the step left, one line on what is saved.
+ 6. Failed parse as a designed path - "fill it in" one tap away, same screen.
+
+NOTE: C1a forbids modals in onboarding entirely, and requires inline
+validation under the field. No blocking pop-ups.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
