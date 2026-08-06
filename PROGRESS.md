@@ -637,6 +637,50 @@ Other lever if that is not enough: the COUNT LEFT JOINs job_matches, and a LEFT
 JOIN cannot change a row count unless the score floor is active. Counting
 without the join when there is no floor should be checked with EXPLAIN first.
 
+## GOAL 1h — CLOSED as far as it is worth taking. Numbers in LOAD.md.
+
+The COUNT cache landed with its isolation problem fixed first: twelve assertions
+across two files read query.mock.calls by ordinal position, assuming the COUNT
+runs first. They select by CONTENT now. Safety proved by making each input
+differ in turn - two users, a different search, date window, score floor, source
+filter each force a fresh COUNT; the page number, which cannot change a total,
+does not.
+
+RESULT, and it disproves the assumption behind the change: p95 at 200 went
+3,626 -> 2,679-3,434 ms, and at 500 went 8,114 -> 6,366 ms. Removing half the
+queries did NOT remove half the latency, so the PAGE query is what costs, not
+the COUNT. It builds the same 25,418-row CTE and cannot be cached - it differs
+per page and per user.
+
+Target p95 < 2s at 200 is NOT met; best observed 2,679 ms. Reaching it needs a
+materialised ranking or a narrower candidate set before the join. Deliberately
+NOT done: the product has zero users, and the standing priority is correctness
+and Wave C over latency for a load that does not exist. Recorded so the decision
+is visible rather than forgotten.
+
+DEAD LEADS, do not chase again: the EXPLAINs (they are in db-health, not the hot
+path); the connection pool (proved innocent in 1f); work_mem (raised to 32 MB,
+barely moved latency because the spill was already gone with the window
+function).
+
+## REMAINING, in order
+
+ 1i  SWEEP THE THREE CLASSES, each with a CI check. Not started.
+     - computed values never used (5 found: bc5140d's clamp report,
+       plans.can()'s fallback, the ROW_NUMBER window function, source_rank,
+       the A7.9 leftover)
+     - unbounded loads (calculateMatchesForUser 25,400 rows; the twelve-source
+       concurrent ingest; fetchAllForPlatform over every ATS company,
+       greenhouse alone 10,180)
+     - swallowed errors ("Failed to fetch jobs" hid a disk-full error through
+       five outages)
+ 1j  remainder: CI assertion that peak RSS during ingest stays under 500 MB; a
+     50-concurrent smoke load test in CI; volume free space in db-health IF
+     Postgres can see it - it cannot see the volume, so that half stays an
+     operator dependency rather than an inferred number.
+ 2   bounds sweep, 6 of 7 routes, jobs last, one commit each.
+ Then A7.13, A7.19, Wave C, B1-B5.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).

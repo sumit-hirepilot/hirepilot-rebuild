@@ -97,6 +97,46 @@ still work (crash rows persist, 25,399 jobs readable), so there is headroom,
 but it is thin. Removing the spill removed this symptom without giving the
 database more room. Pruning is a separate goal.
 
+## After GOAL 1h — the COUNT cache
+
+A feed request runs exactly **two** queries. The EXPLAINs suspected earlier are
+in `db-health`, **not** the hot path — that lead is dead, recorded so it is not
+chased again. Both queries build the same CTE over 25,418 rows, so the COUNT is
+close to half the database work per request and its answer only moves when
+ingest writes, every six hours. It is now cached for 60s, keyed by the full SQL
+plus parameters, bounded at 500 entries, oldest-out.
+
+p95, measured on production:
+
+| Users | before 1h | after 1h |
+|---|---|---|
+| 50 | 1,432 ms | 1,757 ms* |
+| 200 | 3,626 ms | **3,434 / 2,679 ms** (two clean runs) |
+| 500 | 8,114 ms | **6,366 ms** |
+
+\* the 50-user step overlapped the boot ingest cycle (RSS 106 → 686 MB), so it
+is not comparable. Re-measured steps are the two 200-user runs above, taken
+after the service settled.
+
+Zero failures at every step, every run.
+
+### Honest read
+
+The cache helped at 500 (8,114 → 6,366 ms, ~22%) and **barely moved 200**
+(3,626 → 2,679–3,434 ms). That disproves the assumption behind it: removing
+roughly half the queries did not remove half the latency, so **the page query,
+not the COUNT, is what costs**. It builds the same 25,418-row CTE and cannot be
+cached — it differs per page and per user.
+
+**Target p95 < 2s at 200 concurrent is NOT met.** Best observed is 2,679 ms.
+
+Reaching it would mean not scanning the whole index per request — a materialised
+ranking, or a narrower candidate set before the join. That is real work, and per
+the current priority it is deliberately **not** being done: the product has zero
+users, and correctness plus onboarding matter more than latency for a load that
+does not exist. The number is recorded here so the decision is visible rather
+than forgotten.
+
 ## The honest ceiling (before 1f, kept for the record)
 
 **10 concurrent users** is the last step with zero failures. Failures start at
