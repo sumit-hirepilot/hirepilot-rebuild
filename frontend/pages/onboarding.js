@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import page from '../styles/Onboarding.module.css';
 import { API_BASE } from '../lib/apiBase';
+import LiveIndexCount from '../components/LiveIndexCount';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
@@ -209,6 +210,17 @@ export default function Onboarding() {
                   onChange={(e) => setBasics((p) => ({ ...p, title: e.target.value }))}
                   placeholder="e.g. Senior Product Designer"
                 />
+                {/*
+                  * C1a — a real query behind the number. Asked of the same
+                  * endpoint the feed uses, so the screen and the API cannot
+                  * disagree. A zero says so and offers to widen rather than
+                  * becoming an encouraging figure.
+                  */}
+                <LiveIndexCount
+                  params={{ search: basics.title }}
+                  unit="jobs in our index"
+                  zeroText="No jobs match that title yet"
+                />
               </div>
               <div className={page.formGroup}>
                 <label>Location</label>
@@ -217,6 +229,13 @@ export default function Onboarding() {
                   value={basics.location}
                   onChange={(e) => setBasics((p) => ({ ...p, location: e.target.value }))}
                   placeholder="e.g. Austin, TX"
+                />
+                {/* Narrowed by BOTH answers, so the second number is honestly
+                  * "of those", not a fresh unrelated count. */}
+                <LiveIndexCount
+                  params={{ search: basics.title, location: basics.location }}
+                  unit={basics.title ? 'of those are near you' : 'jobs near you'}
+                  zeroText="None near that location yet"
                 />
               </div>
             </>
