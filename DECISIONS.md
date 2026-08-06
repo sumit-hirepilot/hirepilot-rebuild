@@ -712,3 +712,32 @@ D39 — Paging is bounded server-side, and the bound is stated.
       back page 50 while calling it page 250 is the A7.9 defect wearing a
       different hat. `total` still counts every row, so the bound hides nothing,
       and rows past it stay reachable by filtering or sorting.
+
+D40 — "Jobs with no publication date" excludes nothing. It selects them.
+      excludedUnknownDateCount was set whenever any datePosted value was
+      present, so choosing the unknown-date filter reported all 5,014 undated
+      rows as excluded from the filter that had just selected them. The page
+      printed "+5,014 more with unknown publish date (excluded from this
+      filter)" directly underneath a list of exactly those jobs.
+      Found by CLICKING the "show them" link on production, not by reading the
+      code - on screen the number and the rows beside it contradicted each
+      other, which no amount of reading the endpoint would have surfaced.
+      A figure that contradicts the rows it sits next to is fabricated data on
+      a live surface, Constraint 1, whatever arithmetic produced it. Now set
+      only for a RECOGNISED date window - an unparseable value narrows nothing,
+      so it cannot exclude anything either, and that case was claiming 5,014
+      exclusions on a request that had not filtered at all.
+
+D41 — A7.11's remedy was already built; the measurement was what was missing.
+      Fresh on production: 5,014 of 25,407 rows (19.7%) carry no posted_at, and
+      every one is himalayas - 100% of that source. The earlier note said 4,663,
+      which is why the standing order says reproduce before diagnosing.
+      Backfilling from the himalayas API is closed by evidence already in the
+      adapter: their pubDate is a last-synced timestamp, not an original
+      publish date, confirmed live against postings whose own page showed a
+      date up to two months earlier. Using it would fabricate a date, so
+      posted_at stays null - D25's shape, one level down.
+      The rows are NOT dropped: under a recency sort they order last (NULLS
+      LAST) and the feed says so with a live count and a one-click way to see
+      them, and under a date window they are excluded with the count stated.
+      Both verified rendering on production with the real figure.

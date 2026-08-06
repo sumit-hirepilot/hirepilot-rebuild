@@ -1205,7 +1205,23 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         scoreParams
       );
       const undated = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);
-      if (datePosted) excludedUnknownDateCount = undated;
+      /*
+       * A7.11 — `unknown` EXCLUDES nothing. It selects the undated rows.
+       *
+       * This read `if (datePosted)`, so choosing "Jobs with no publication
+       * date" reported all 5,014 of them as excluded from the very filter that
+       * had just selected them - and the page duly printed "+5,014 more with
+       * unknown publish date (excluded from this filter)" underneath a list of
+       * exactly those jobs. A number that contradicts the rows beside it is a
+       * fabricated figure on a live surface, Constraint 1, whatever arithmetic
+       * produced it.
+       *
+       * Also guarded on a RECOGNISED window: an unparseable datePosted filters
+       * nothing, so it can exclude nothing either.
+       */
+      const windowFilterApplied = Boolean(datePosted) && datePosted !== 'unknown'
+        && Object.prototype.hasOwnProperty.call(DATE_INTERVAL, datePosted);
+      if (windowFilterApplied) excludedUnknownDateCount = undated;
       if (sort === 'recent') undatedTotal = undated;
     }
 
