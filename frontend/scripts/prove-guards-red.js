@@ -117,6 +117,19 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  { suite: 'adminGrant', dir: 'backend', base: true,
+    test: 'refuses a normal signed-in user',
+    file: 'backend/routes/plans.js',
+    mutate: (s) => s.replace("  if (!bySecret && !byAdmin) return res.status(403).json({ error: 'Forbidden' });", '') },
+  { suite: 'adminGrant', dir: 'backend', base: true,
+    test: 'refuses a tier that does not exist',
+    file: 'backend/routes/plans.js',
+    mutate: (s) => s.replace('  if (!TIERS[tier]) {', '  if (false) {') },
+  { suite: 'adminGrant', dir: 'backend', base: true,
+    test: 'defaults credits to the tier allowance rather than a made-up figure',
+    file: 'backend/routes/plans.js',
+    mutate: (s) => s.replace('    : TIERS[tier].applicationsPerMonth;', '    : 99999;') },
+
   /* ---- Item 4: credits and tiers enforce server-side ---- */
   { suite: 'submissionGate', dir: 'backend', base: true,
     test: 'refuses a submission when the allowance is exhausted',
@@ -672,10 +685,42 @@ function ensureRunnable() {
 
 ensureRunnable();
 
+/*
+ * A mutation that outlives the process.
+ *
+ * Each case restores its file in a `finally`, which covers a thrown error and
+ * a normal exit - but not a kill. A run interrupted by a timeout left
+ * `if (false) {` sitting in routes/plans.js, and the next commit would have
+ * shipped it. A guard script that can corrupt the thing it guards is worse
+ * than no guard.
+ *
+ * So the original is written to disk BEFORE the file is touched, and any
+ * journal found at startup is replayed first. Crash, rerun, and the tree is
+ * clean again.
+ */
+const JOURNAL = path.join(REPO, '.guard-mutation-journal.json');
+
+function restoreFromJournal() {
+  if (!fs.existsSync(JOURNAL)) return;
+  try {
+    const { file, original } = JSON.parse(fs.readFileSync(JOURNAL, 'utf8'));
+    if (file && typeof original === 'string') {
+      fs.writeFileSync(file, original);
+      process.stdout.write(`recovered an interrupted mutation in ${file}\n`);
+    }
+  } catch (err) {
+    process.stdout.write(`WARNING: could not replay ${JOURNAL}: ${err.message}\n`);
+  }
+  fs.unlinkSync(JOURNAL);
+}
+
+restoreFromJournal();
+
 const results = [];
 for (const c of CASES) {
   const abs = path.isAbsolute(c.file) ? c.file : path.join(c.base ? REPO : ROOT, c.file);
   const original = fs.readFileSync(abs, 'utf8');
+  fs.writeFileSync(JOURNAL, JSON.stringify({ file: abs, original }));
   let verdict;
   try {
     const mutated = c.mutate(original);
@@ -687,6 +732,7 @@ for (const c of CASES) {
     }
   } finally {
     fs.writeFileSync(abs, original);
+    if (fs.existsSync(JOURNAL)) fs.unlinkSync(JOURNAL);
   }
   results.push({ ...c, verdict });
   process.stdout.write(`${verdict === 'RED' ? '  ok  ' : 'FAIL  '}${c.suite} :: ${c.test}\n`);

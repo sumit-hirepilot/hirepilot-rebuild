@@ -19,7 +19,7 @@
 
 const express = require('express');
 const { query } = require('../db');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -126,6 +126,60 @@ async function can(userId, capability) {
   if (capability === 'autoApply') return tier.autoApply;
   return true;
 }
+
+/*
+ * Item 4 — the admin path to grant a plan and credits.
+ *
+ * Testers are meant to experience the full paid product, and the tier gate is
+ * now genuinely enforced - so without a way to place an account on a tier that
+ * includes auto-apply, enforcing it would simply switch the feature off for
+ * everyone. Granting has to exist for enforcing to be safe.
+ *
+ * Same two doors as the kill switch: a shared secret, or the admin account.
+ * Neither is a user role a tester could reach.
+ */
+router.post('/admin/grant', attachUserIfPresent, async (req, res) => {
+  const secret = process.env.ADMIN_HALT_SECRET;
+  const bySecret = Boolean(secret) && req.get('x-admin-secret') === secret;
+
+  let byAdmin = false;
+  if (!bySecret && req.user?.id) {
+    try {
+      const u = await query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
+      byAdmin = u?.rows?.[0]?.is_admin === true;
+    } catch (err) {
+      byAdmin = false;
+    }
+  }
+  if (!bySecret && !byAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const tier = String(req.body?.tier || '').trim();
+  if (!email) return res.status(400).json({ error: 'email is required' });
+  if (!TIERS[tier]) {
+    return res.status(400).json({ error: `Unknown tier. One of: ${Object.keys(TIERS).join(', ')}` });
+  }
+
+  // credits_total is authoritative when set; default to the tier's allowance
+  // rather than inventing a number.
+  const credits = Number.isFinite(Number(req.body?.credits))
+    ? Number(req.body.credits)
+    : TIERS[tier].applicationsPerMonth;
+
+  const r = await query(
+    `UPDATE users
+        SET plan_tier = $2, credits_total = $3,
+            credits_used = 0,
+            credits_reset_at = date_trunc('month', CURRENT_TIMESTAMP) + INTERVAL '1 month'
+      WHERE LOWER(email) = $1
+      RETURNING id, email, plan_tier, credits_total, credits_used`,
+    [email, tier, credits]
+  );
+  if (!r.rows.length) return res.status(404).json({ error: 'No account with that email' });
+
+  console.warn(`[plans] granted ${tier} (${credits}) to ${email}`);
+  res.json({ granted: r.rows[0], autoApplyIncluded: TIERS[tier].autoApply });
+});
 
 router.get('/', verifyToken, async (req, res) => {
   try {
