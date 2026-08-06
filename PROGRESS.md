@@ -96,6 +96,60 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.9 — REPRODUCED, designed, NOT SHIPPED. Next goal, executable cold.
+
+The URL round-trip half of A7.9 is closed (recorded below). This is the other
+half - a parameter carrying two meanings - and it is a real pagination defect.
+
+REPRODUCTION, on production:
+    40 rows fetched as limit=40&page=1        -> 40 ids
+    40 rows fetched as limit=10, pages 1..4   -> 40 ids
+    identical order: NO.  same set: NO.
+    6 jobs appear in the single page of 40 and in none of the four pages of 10.
+
+CAUSE. The diversity cap is
+    source_rank <= GREATEST(3, CEIL((page * limit) / 4))
+so `page` and `limit` are not only pagination - they also set how many rows
+each source may contribute. At limit=10 the cap is 3 per source on page 1, 5 on
+page 2, 8 on page 3. Each page is therefore sliced with OFFSET out of a
+DIFFERENT capped list, and the lists are not nested at the front: a row that
+enters when the cap widens is inserted ABOVE rows the user has already been
+shown, so the offset skips past it. Rows can be missed entirely, and the same
+row can appear on two pages.
+
+A7.1 introduced the growing cap so deep paging could eventually reach
+everything. It does - but it broke pagination coherence to get there, and
+nothing said so.
+
+THE FIX, designed and not yet built:
+
+  The cap must not depend on `page`, because pages must be slices of ONE list.
+  Do the diversity in application code over a stable order:
+
+  1. Fetch the UNCAPPED ranked list, LIMIT page*limit (bounded; reject or clamp
+     absurd page numbers, and state the clamp).
+  2. Walk it in order, filling pages of `limit` and enforcing a per-page source
+     quota of CEIL(limit / 4); a row whose source is over quota for the page
+     being filled defers to the next page rather than being dropped.
+  3. Return page P from that partition.
+
+  This is a pure function of (ranked order, page, limit), so pagination is
+  coherent by construction: no row is skipped, none repeats, and no source owns
+  a page - which is what A7.1 actually asked for.
+
+  ranking.sourceDiversified stays; add the per-page quota to it so the UI can
+  state the rule rather than implying it.
+
+  Guard it on the property, not the SQL: for a fixed filter, the concatenation
+  of pages 1..N at limit L must equal page 1 at limit N*L, as a set AND in
+  order. That single assertion fails on today's behaviour and passes on the
+  design above. Then re-verify on production with the same 40-vs-4x10 check
+  used to find it.
+
+  Deliberately NOT shipped at the end of a long session: it rewrites paging on
+  the hottest endpoint in the product, and a half-verified version of it is
+  worse than the defect. Everything needed to build it cold is above.
+
 ## A7.8 — CLOSED. One declaration for the order that decides what gets applied to.
 
 A7.7 fixed non-deterministic ordering for the browsable feed. Two queries kept
