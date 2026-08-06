@@ -48,7 +48,56 @@ Each simulated user makes 3 sequential requests — feed, matches, tracker.
 | 500 | 1,500 | 1,145 | 355 | 15,651 ms | 299 MB |
 | 1,000 | 3,000 | 2,170 | 830 | 20,068 ms | 302 MB |
 
-## The honest ceiling
+## After GOAL 1f — the fix, and the new numbers
+
+The error was never memory and never the connection pool. Read out of
+`crash_reports` on production:
+
+```
+SQLSTATE 53100 — could not write to file "base/pgsql_tmp/pgsql_tmp152696.0":
+                 No space left on device
+```
+
+The feed CTE still carried `ROW_NUMBER() OVER (PARTITION BY jobs.source ...)`.
+A7.9 moved diversity into `feedDiversity` and deleted the `WHERE` that consumed
+`source_rank`; the window function was left behind. Every request sorted and
+partitioned all 25,418 rows to build a column nothing read — and a window
+function over the whole index does not fit in `work_mem`, so Postgres spilled
+it to `base/pgsql_tmp`. With the volume nearly full, those writes failed.
+
+A computed value never used is a defect, not dead weight. This one was the
+ceiling.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 20 | 60 | **60** | 0 | 836 ms | 113 MB |
+| 50 | 150 | **150** | 0 | 1,316 ms | 698 MB |
+| 200 | 600 | **600** | 0 | 3,844 ms | 447 MB |
+| 500 | 1,500 | **1,500** | 0 | 8,849 ms | 489 MB |
+| 1,000 | 3,000 | **2,999** | 1 | 17,487 ms | 498 MB |
+
+The single failure at 1,000 users is a `gaierror` — DNS resolution on the
+client running the test, not a server response.
+
+### The new honest ceiling
+
+- **Zero server failures at 1,000 concurrent users.** Target was 200; 1,000 is
+  reached.
+- **Usable latency is the real limit now.** p95 is 3.8 s at 200, 8.8 s at 500,
+  17.5 s at 1,000. If p95 under 5 s is the bar, the ceiling is **~200
+  concurrent users**. Nothing fails above that; it gets slow.
+- RSS 402–498 MB throughout, against a 1 GB cap. Memory is not the constraint
+  at any level tested.
+
+### Still true, and not fixed here
+
+The Postgres volume is nearly full — that is what turned a wasteful query into
+an outage, and the Railway canvas shows a warning on `postgres-volume`. Writes
+still work (crash rows persist, 25,399 jobs readable), so there is headroom,
+but it is thin. Removing the spill removed this symptom without giving the
+database more room. Pruning is a separate goal.
+
+## The honest ceiling (before 1f, kept for the record)
 
 **10 concurrent users** is the last step with zero failures. Failures start at
 20 and scale from there.
