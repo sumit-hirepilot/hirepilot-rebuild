@@ -25,7 +25,12 @@ function app() {
 }
 
 describe('GET /api/jobs/stats', () => {
-  beforeEach(() => query.mockReset());
+  beforeEach(() => {
+  query.mockReset();
+  // The feed COUNT is cached; a stale entry makes the next case observe no
+  // COUNT query at all. Cleared per case so each test sees its own calls.
+  try { require('../routes/jobs').resetFeedCountCache(); } catch (e) { /* not a feed test */ }
+});
 
   it('returns real integers, not placeholders', async () => {
     query
@@ -56,7 +61,10 @@ describe('GET /api/jobs/stats', () => {
     // "Watched directly" means we poll that company's own board. A job merely
     // listed on an aggregator does not make its employer a watched company, so
     // the query must be restricted to the three ATS sources.
-    const directCall = query.mock.calls[1];
+    // By content, not by position: an added or cached query ahead of this one
+    // would silently re-point the assertion at a different statement.
+    const directCall = query.mock.calls.find((c) => /\bsource = ANY\b/.test(String(c[0])));
+    expect(directCall).toBeDefined();
     expect(directCall[1]).toEqual([['greenhouse', 'lever', 'ashby']]);
     expect(directCall[0]).toMatch(/\bsource = ANY\b/);
   });

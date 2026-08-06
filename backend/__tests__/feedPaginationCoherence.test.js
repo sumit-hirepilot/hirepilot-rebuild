@@ -166,6 +166,9 @@ function jobsApp() {
 
 describe('A7.9 — the route, not just the function', () => {
   beforeEach(() => {
+  // The feed COUNT is cached; a stale entry makes the next case observe no
+  // COUNT query at all. Cleared per case so each test sees its own calls.
+  try { require('../routes/jobs').resetFeedCountCache(); } catch (e) { /* not a feed test */ }
     query.mockReset();
     query.mockImplementation((sql, params) => {
       if (/COUNT\(\*\) as count FROM ranked/.test(sql)) {

@@ -17,6 +17,24 @@ const jwt = require('jsonwebtoken');
 
 jest.mock('../db', () => ({ query: jest.fn() }));
 const { query } = require('../db');
+
+/*
+ * Selected by CONTENT, never by ordinal position.
+ *
+ * These read query.mock.calls[0] and [1] on the assumption that the COUNT runs
+ * first and the page query second. That assumption is not part of the contract
+ * - caching the COUNT, or adding any query ahead of them, silently re-points
+ * every assertion at a different statement. Asking for the query you mean is
+ * the same rule as asserting on the argument that carries the value.
+ */
+const callMatching = (re) => {
+  const hit = query.mock.calls.find((c) => re.test(String(c[0])));
+  if (!hit) throw new Error(`no query matching ${re}`);
+  return hit;
+};
+const countCall = () => callMatching(/COUNT\(\*\) as count/);
+const pageCall = () => callMatching(/SELECT \* FROM ranked/);
+
 const jobsRouter = require('../routes/jobs');
 
 function app() {
@@ -30,6 +48,13 @@ const token = jwt.sign({ id: 42, email: 'a@b.c' }, process.env.JWT_SECRET || 'de
 
 function mockRows() {
   query.mockReset();
+  /*
+   * The feed COUNT is cached (GOAL 1h). Without clearing it, the second case
+   * in this file observes NO count query at all, because the first case's
+   * entry is still valid - which is precisely the isolation problem that made
+   * asserting on ordinal position unsafe.
+   */
+  require('../routes/jobs').resetFeedCountCache();
   // count, then page. Both branches issue exactly these two in order.
   query
     .mockResolvedValueOnce({ rows: [{ count: '12' }] })
@@ -63,7 +88,7 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     mockRows();
     await request(app()).get('/api/jobs?limit=1').set('Authorization', `Bearer ${token}`);
 
-    const pageSql = query.mock.calls[1][0];
+    const pageSql = pageCall()[0];
     expect(pageSql).toMatch(/jm\.overall_score\b/);
     expect(pageSql).toMatch(/jm\.skills_match_score\b/);
   });
@@ -73,9 +98,9 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     const res = await request(app()).get('/api/jobs?limit=1&minScore=0.6').set('Authorization', `Bearer ${token}`);
 
     expect(res.body.ranking.minScore).toBe(0.6);
-    const params = query.mock.calls[0][1];
+    const params = countCall()[1];
     expect(params).toContain(0.6);
-    expect(query.mock.calls[0][0]).toMatch(/overall_score >= \$/);
+    expect(countCall()[0]).toMatch(/overall_score >= \$/);
   });
 
   it('caps any single source without breaking score order', async () => {
@@ -114,7 +139,7 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
      * defect. What the SQL still owes is the ORDER - diversity is asserted
      * where it lives, on the served page, in feedPaginationCoherence.
      */
-    const pageSql = query.mock.calls[1][0];
+    const pageSql = pageCall()[0];
     expect(pageSql).not.toMatch(/ROW_NUMBER\(\) OVER/);
     expect(pageSql).not.toMatch(/source_rank/);
     expect(pageSql).toMatch(/overall_score DESC NULLS LAST/);
@@ -136,7 +161,7 @@ describe('A7.1 — unranked browse stays available, but only on request', () => 
      * and the order is pure recency.
      */
     expect(res.body.ranking.sort).toBe('recent');
-    const boundUserId = query.mock.calls[1][1].includes(null);
+    const boundUserId = pageCall()[1].includes(null);
     expect(boundUserId).toBe(true);
   });
 
@@ -181,7 +206,7 @@ describe('A7.7 — the sort is explicit and deterministic', () => {
      * "related" hit cannot outrank an exact title match. The tie-break chain
      * this test exists for is unchanged and still asserted in order.
      */
-    const pageSql = query.mock.calls[1][0];
+    const pageSql = pageCall()[0];
     expect(pageSql).toMatch(/ORDER BY match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC/);
   });
 
@@ -191,7 +216,7 @@ describe('A7.7 — the sort is explicit and deterministic', () => {
     mockRows();
     await request(app()).get('/api/jobs?limit=20&sort=recent').set('Authorization', `Bearer ${token}`);
 
-    const pageSql = query.mock.calls[1][0];
+    const pageSql = pageCall()[0];
     expect(pageSql).toMatch(/posted_at DESC NULLS LAST/);
     expect(pageSql).not.toMatch(/posted_at DESC(?!\s+NULLS LAST)/);
   });
@@ -216,7 +241,7 @@ describe('A7.7 — the sort is explicit and deterministic', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.body.ranking.mode).toBe('ranked');
-    expect(query.mock.calls[1][0]).toMatch(/jm\.overall_score/);
+    expect(pageCall()[0]).toMatch(/jm\.overall_score/);
   });
 
   it('reports the active sort so the UI never has to infer it', async () => {
@@ -273,7 +298,7 @@ describe('A7.17 — filters apply to the index, not to the match store', () => {
     mockRows();
     await request(app()).get('/api/jobs?limit=20&minScore=0.6').set('Authorization', `Bearer ${token}`);
 
-    const sql = query.mock.calls[0][0];
+    const sql = countCall()[0];
     expect(sql).toMatch(/overall_score >= \$\d+ OR jm\.overall_score IS NULL/);
     // The OR is load-bearing: without it the floor deletes every unscored row.
     expect(sql).not.toMatch(/overall_score >= \$\d+\s*\)/);
@@ -298,8 +323,8 @@ describe('A7.17 — the reported total is a property of the filter, not of the p
     mockRows();
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
 
-    const countSql = query.mock.calls[0][0];
-    const pageSql = query.mock.calls[1][0];
+    const countSql = countCall()[0];
+    const pageSql = pageCall()[0];
     expect(countSql).toMatch(/SELECT COUNT\(\*\)/);
     expect(countSql).not.toMatch(/source_rank <=/);
     expect(pageSql).not.toMatch(/source_rank <=/);
@@ -310,7 +335,7 @@ describe('A7.17 — the reported total is a property of the filter, not of the p
     // appear in the count SQL, the total cannot vary with it.
     mockRows();
     await request(app()).get('/api/jobs?limit=20&page=3').set('Authorization', `Bearer ${token}`);
-    const countSql = query.mock.calls[0][0];
+    const countSql = countCall()[0];
     expect(countSql).not.toMatch(/\bCEIL\(/);
   });
 });

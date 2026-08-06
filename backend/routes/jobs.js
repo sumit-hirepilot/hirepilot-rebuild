@@ -816,6 +816,54 @@ const RELAX_ORDER = {
 const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, apply_url, location, work_arrangement,
               salary_min, salary_max, job_type, posted_at, created_at`;
 
+/*
+ * GOAL 1h — the feed COUNT, cached briefly.
+ *
+ * Measured: a feed request runs exactly TWO queries, and both build the same
+ * CTE over all 25,418 rows. So the COUNT is close to half the database work of
+ * every feed request - and it answers a question whose answer only moves when
+ * ingest writes, every six hours.
+ *
+ * The key is the full SQL plus its parameters, which is what makes this safe:
+ * the SQL text carries the filter clause, the tier expression, the date window
+ * and whether a score floor is applied, and the parameters carry the user id,
+ * the floor value and every filter argument. Two callers can only share an
+ * entry when both would have run character-for-character the same query with
+ * the same arguments - in which case they would have got the same number.
+ *
+ * Bounded and oldest-out: an unbounded map keyed by user-supplied filters is a
+ * memory leak with extra steps, and this codebase has already been killed once
+ * by an unbounded collection.
+ *
+ * 60 seconds. A stale total is a wrong number on a live surface, so the window
+ * is the smallest that still removes the duplicate work.
+ */
+const COUNT_TTL_MS = Number(process.env.FEED_COUNT_TTL_MS) || 60000;
+const COUNT_CACHE_MAX = 500;
+const countCache = new Map();
+
+/** Tests need a clean slate between cases; nothing in the app calls this. */
+function resetFeedCountCache() {
+  countCache.clear();
+}
+
+async function cachedCount(sql, params) {
+  const key = `${sql}|${JSON.stringify(params)}`;
+  const hit = countCache.get(key);
+  const now = Date.now();
+  if (hit && now - hit.at < COUNT_TTL_MS) return hit.value;
+
+  const r = await query(sql, params);
+  const value = parseInt(r.rows[0]?.count ?? 0, 10);
+
+  if (countCache.size >= COUNT_CACHE_MAX) {
+    // Map preserves insertion order, so the first key is the oldest write.
+    countCache.delete(countCache.keys().next().value);
+  }
+  countCache.set(key, { at: now, value });
+  return value;
+}
+
 router.get('/', attachUserIfPresent, async (req, res) => {
   try {
     const {
@@ -1192,8 +1240,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const orderBy = orderBySql(sort);
 
     const scoreParams = mainQuery.sp;
-    const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
-    total = parseInt(countResult.rows[0]?.count ?? 0, 10);
+    total = await cachedCount(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
 
     /*
      * Diversity applies to the unfiltered, score-ranked feed only - the same
@@ -1583,3 +1630,4 @@ router.get('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.resetFeedCountCache = resetFeedCountCache;

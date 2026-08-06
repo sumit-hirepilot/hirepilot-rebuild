@@ -35,6 +35,9 @@ const token = jwt.sign({ id: 42, email: 'a@b.c' }, process.env.JWT_SECRET || 'de
 /** Every COUNT returns `counts`, in order; page queries return no rows. */
 function mockCounts(counts) {
   query.mockReset();
+  // The feed COUNT is cached (GOAL 1h); a surviving entry would make the next
+  // case observe no count query at all.
+  require('../routes/jobs').resetFeedCountCache();
   let i = 0;
   query.mockImplementation((sql) => {
     if (/SELECT COUNT\(\*\)/.test(sql)) {
