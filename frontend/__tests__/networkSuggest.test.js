@@ -15,14 +15,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stripComments } = require('../test-utils/source');
 
 /* Comments stripped: the comment recording WHY data.suggestions was wrong
  * otherwise fails the guard that bans it. A guard reading prose tests the
  * wrong text - the same mistake this file exists to catch one layer up. */
-const stripComments = (src) => src
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, ' ')
-  .replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .replace(/^\s*\/\/.*$/gm, ' ');
 
 const page = stripComments(
   fs.readFileSync(path.join(__dirname, '..', 'pages', 'network.js'), 'utf8')

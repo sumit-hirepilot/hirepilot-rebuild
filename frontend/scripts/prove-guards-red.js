@@ -117,6 +117,21 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- D26/D24: the sweep tool itself ---- */
+  { suite: 'sweepSafety',
+    test: 'decides by allowlist, never by a list of things to avoid',
+    file: '../tools/ui-sweep.js',
+    mutate: (s) => s.replace('const isSafe = (label) => SAFE_CONTROLS.some((re) => re.test(label));',
+      'const DANGER = /apply|submit/i;\nconst isSafe = (label) => !DANGER.test(label);') },
+  { suite: 'sweepSafety',
+    test: 'refuses to run until preflight passes',
+    file: '../tools/ui-sweep.js',
+    mutate: (s) => s.replace('  if (!pre.ok) throw new Error(`D24: ${pre.why}`);\n', '') },
+  { suite: 'sweepSafety',
+    test: 'watches the DOM and the network, not the text length',
+    file: '../tools/ui-sweep.js',
+    mutate: (s) => s.replace('${document.body.innerHTML.length}|', '') },
+
   /* ---- A7.5: Find contacts rendered nothing ---- */
   { suite: 'networkSuggest',
     test: 'reads the field the suggest endpoint sends',

@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stripComments } = require('../test-utils/source');
 
 const read = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
 const pages = path.join(__dirname, '..', 'pages');
@@ -30,10 +31,6 @@ const exists = (f) => fs.existsSync(path.join(pages, f));
  * inside a comment saying a receipt must never be rendered. A guard that reads
  * prose is testing the wrong text; these read what a user sees.
  */
-const stripComments = (src) => src
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, ' ')
-  .replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .replace(/^\s*\/\/.*$/gm, ' ');
 
 const layout = stripComments(read('components', 'Layout.js'));
 const landing = stripComments(read('pages', 'index.js'));
