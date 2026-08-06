@@ -277,7 +277,48 @@ router.post('/tailor', async (req, res) => {
     const tailorMode = prefsResult.rows[0]?.resume_tailor_mode || 'honest';
 
     const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
-    const { tailoredText, addedSkills, matchedSkills } = buildTailoredText(originalText, jobText, tailorMode);
+    const proposed = buildTailoredText(originalText, jobText, tailorMode);
+
+    /*
+     * Item A — the guard, on THIS path too.
+     *
+     * The document editor already does this: verifyAdditions splits proposed
+     * skills into ones traceable to the user's own material and ones that are
+     * not, and an untraceable skill becomes a QUESTION rather than a silent
+     * addition. This route called buildTailoredText and wrote the result
+     * straight out.
+     *
+     * Found by walking a fresh account: a resume with no marketing anywhere in
+     * it came back reading "Additional relevant skills for this role:
+     * Marketing", pulled from the job description. That is a fabricated claim
+     * about a person, attached to an application in their name, and it cannot
+     * be unsent. Constraint 2.
+     *
+     * Same shape as A7.17: two paths for one operation, one of them guarded.
+     */
+    const corpus = await corpusFor(req.user.id, originalText);
+    const checked = verifyAdditions(
+      (proposed.addedSkills || []).map((t) => ({ text: t, kind: 'skill' })),
+      corpus
+    );
+    const allowedSkills = checked.filter((c) => c.ok).map((c) => c.text);
+    const needsConfirmation = checked.filter((c) => !c.ok).map((c) => ({
+      text: c.text,
+      why: c.why || 'This is not in your resume, skills or work history yet.',
+    }));
+
+    /*
+     * Rebuilt from the ALLOWED set only. Filtering the finished text would
+     * leave the sentence that introduces the skills behind, and a heading
+     * promising skills that are not there is its own small lie.
+     */
+    const rebuilt = allowedSkills.length
+      ? buildTailoredText(originalText, allowedSkills.join(' '), tailorMode)
+      : { tailoredText: originalText, addedSkills: [], matchedSkills: proposed.matchedSkills };
+
+    const tailoredText = rebuilt.tailoredText;
+    const addedSkills = allowedSkills;
+    const matchedSkills = proposed.matchedSkills;
     const diff = diffTailoring(originalText, tailoredText);
     const { score } = checkAts(jobText, tailoredText);
 
@@ -301,6 +342,10 @@ router.post('/tailor', async (req, res) => {
       diff,
       addedSkills,
       matchedSkills,
+      // Stated, never silently dropped: a skill the user genuinely has but has
+      // not listed is theirs to confirm, and confirming it is what makes it
+      // traceable. A skill they do not have must never appear at all.
+      needsConfirmation,
       atsScore: score,
       jobTitle: job.title,
       companyName: job.company_name,

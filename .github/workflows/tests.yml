@@ -31,7 +31,7 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 196
+        run: node tools/run-suite.js backend 205
 
   frontend:
     runs-on: ubuntu-latest
@@ -47,7 +47,14 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        run: node tools/run-suite.js frontend 198
+        run: node tools/run-suite.js frontend 201
+
+      # No mutation marker or audit artifact may reach a commit. Journalling,
+      # self-heal and the dirty-tree check all run on a developer's machine and
+      # a hard kill at the wrong moment skips every one of them. This does not
+      # run there, so nothing can skip it.
+      - name: No mutation artifact reached this commit
+        run: node tools/check-no-mutation-artifacts.js
 
       # Mutates a file, runs one guard, requires it to go RED, reverts. Fails
       # the build if any guard cannot detect its own violation.

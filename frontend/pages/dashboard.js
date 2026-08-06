@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [appStats, setAppStats] = useState(null);
   const [activity, setActivity] = useState([]);
   const [loadError, setLoadError] = useState(null);
+  const [autoApplyIncluded, setAutoApplyIncluded] = useState(true);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -80,6 +81,9 @@ export default function Dashboard() {
             return;
           }
           setProfile(profileData);
+          // Item A — the plan's answer arrives with the preference, so the
+          // status never has to guess whether "on" means running.
+          setAutoApplyIncluded(profileData.autoApplyIncluded !== false);
         }
       } catch (err) {
         // Item 5 — the dashboard had no error state at all: a failed load left
@@ -154,7 +158,14 @@ export default function Dashboard() {
             <div className={styles.autopilotLeft}>
               <span className={autoApplyEnabled ? styles.statusDot : styles.statusDotOff} />
               <div>
-                <p className={styles.autopilotTitle}>{autoApplyEnabled ? 'Auto-Pilot Active' : 'Auto-Pilot Paused'}</p>
+                {/* Item A — "Active" must mean running. On a plan without
+                    Auto-Pilot the engine refuses, so saying Active would tell
+                    the user a thing is happening that is not. */}
+                <p className={styles.autopilotTitle}>
+                  {!autoApplyIncluded
+                    ? 'Auto-Pilot is not on your plan'
+                    : (autoApplyEnabled ? 'Auto-Pilot Active' : 'Auto-Pilot Paused')}
+                </p>
                 <p className={styles.autopilotSubtitle}>
                   {scannedToday} jobs scanned &middot; {applicationsSent} tracked &middot; {matchTotal === null ? '—' : formatNumber(matchTotal)} matches found
                 </p>

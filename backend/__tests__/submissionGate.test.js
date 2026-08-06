@@ -242,3 +242,38 @@ describe('Item 4 — the tier gate is actually checked', () => {
     expect(src).toMatch(/blocked: 'tier'/);
   });
 });
+
+describe('Item A — the preference cannot claim what the plan refuses', () => {
+  const express2 = require('express');
+  function profileApp() {
+    const a = express2();
+    a.use(express2.json());
+    a.use('/api/profile', require('../routes/profile'));
+    return a;
+  }
+
+  it('refuses to enable Auto-Pilot on a tier without it, and says why', async () => {
+    query.mockImplementation((sql) => {
+      if (/plan_tier/.test(sql)) return Promise.resolve({ rows: [{ plan_tier: 'starter' }] });
+      return Promise.resolve({ rows: [{}] });
+    });
+    const res = await request(profileApp())
+      .put('/api/profile/preferences').send({ autoApplyEnabled: true });
+
+    expect(res.status).toBe(403);
+    expect(res.body.reason).toBe('tier');
+    // and nothing was written
+    expect(query.mock.calls.some((c) => /UPDATE user_preferences|INSERT INTO user_preferences/.test(c[0]))).toBe(false);
+  });
+
+  it('allows it on a tier that includes it', async () => {
+    // The negative above is only meaningful if the positive still works.
+    query.mockImplementation((sql) => {
+      if (/plan_tier/.test(sql)) return Promise.resolve({ rows: [{ plan_tier: 'power' }] });
+      return Promise.resolve({ rows: [{}] });
+    });
+    const res = await request(profileApp())
+      .put('/api/profile/preferences').send({ autoApplyEnabled: true });
+    expect(res.status).not.toBe(403);
+  });
+});

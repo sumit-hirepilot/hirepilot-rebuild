@@ -117,6 +117,16 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- Item A: Auto-Pilot never claims what the plan refuses ---- */
+  { suite: 'autoPilotPlanHonesty',
+    test: 'does not say Active when the plan does not include Auto-Pilot',
+    file: 'pages/dashboard.js',
+    mutate: (s) => s.replace('                  {!autoApplyIncluded', '                  {false') },
+  { suite: 'submissionGate', dir: 'backend', base: true,
+    test: 'refuses to enable Auto-Pilot on a tier without it, and says why',
+    file: 'backend/routes/profile.js',
+    mutate: (s) => s.replace('    if (autoApplyEnabled) {', '    if (false) {') },
+
   /* ---- Item 5: a screen that cannot load says so ---- */
   { suite: 'loadFailure',
     test: 'the jobs page says the results may be out of date',
@@ -732,6 +742,16 @@ function restoreFromJournal() {
 
 restoreFromJournal();
 
+/*
+ * What every file looked like BEFORE this script touched anything. Compared
+ * again at exit - see the dirty-tree check at the bottom.
+ */
+const baseline = new Map();
+for (const c of CASES) {
+  const abs = path.isAbsolute(c.file) ? c.file : path.join(c.base ? REPO : ROOT, c.file);
+  if (!baseline.has(abs)) baseline.set(abs, fs.readFileSync(abs, 'utf8'));
+}
+
 const results = [];
 for (const c of CASES) {
   const abs = path.isAbsolute(c.file) ? c.file : path.join(c.base ? REPO : ROOT, c.file);
@@ -757,8 +777,52 @@ for (const c of CASES) {
 
 const bad = results.filter((r) => r.verdict !== 'RED');
 process.stdout.write(`\n${results.length - bad.length}/${results.length} guards proven red on a violating input\n`);
+
+/*
+ * A dirty tree at exit is a FAILURE, not a pass.
+ *
+ * This script mutates real files. Restoring in a `finally` covers a throw; the
+ * journal covers a kill. Neither covers a mutate() whose replacement silently
+ * fails to invert, or a bug in this script leaving something behind - and a
+ * green "121/121" printed over a modified working tree is the most dangerous
+ * output it could produce, because the next commit ships the mutation.
+ *
+ * Three have escaped this way already: `if (false)` disabling a tier check
+ * twice, and a fabricated MATCH_EXAMPLE constant that reached a commit.
+ *
+ * So: compare the tree to what it was when this started, and fail on any file
+ * this script touched that did not come back.
+ */
+const touched = [...new Set(results.map((r) => (
+  path.isAbsolute(r.file) ? r.file : path.join(r.base ? REPO : ROOT, r.file)
+)))];
+
+const dirty = [];
+for (const file of touched) {
+  try {
+    const before = baseline.get(file);
+    if (before !== undefined && fs.readFileSync(file, 'utf8') !== before) dirty.push(file);
+  } catch (err) {
+    dirty.push(`${file} (unreadable: ${err.message})`);
+  }
+}
+
+if (dirty.length) {
+  process.stdout.write('\nDIRTY TREE — this script modified files and did not restore them:\n');
+  for (const f of dirty) process.stdout.write(`  ${f}\n`);
+  process.stdout.write('Restore them before committing. A guard that corrupts what it guards is worse than no guard.\n');
+  process.exit(2);
+}
+
+if (fs.existsSync(JOURNAL)) {
+  process.stdout.write(`\nDIRTY: ${JOURNAL} still exists at exit.\n`);
+  process.exit(2);
+}
+
 if (bad.length) {
   process.stdout.write('\nNOT PROVEN — these guards did not detect their own violation:\n');
   for (const b of bad) process.stdout.write(`  ${b.suite} :: ${b.test}  (${b.verdict})\n`);
   process.exit(1);
 }
+
+process.stdout.write('tree clean at exit\n');

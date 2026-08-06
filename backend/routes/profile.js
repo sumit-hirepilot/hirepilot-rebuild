@@ -31,6 +31,12 @@ router.get('/', async (req, res) => {
       skills: skillsResult.rows,
       experience: experienceResult.rows,
       preferences: preferencesResult.rows[0] || null,
+      /*
+       * Item A — the plan's answer travels with the preference, so no surface
+       * has to guess. A toggle reading "on" while the engine refuses is the
+       * A14 defect; the UI needs both facts in one place to avoid it.
+       */
+      autoApplyIncluded: await require('./plans').can(req.user.id, 'autoApply'),
     });
   } catch (err) {
     console.error('Get profile error:', err);
@@ -201,7 +207,29 @@ router.put('/preferences', async (req, res) => {
     const defaultRoles = pick('defaultRoles', existing.default_roles || []);
     const excludedKeywords = pick('excludedKeywords', existing.excluded_keywords || []);
     const includeRelocation = pick('includeRelocation', existing.include_relocation || false);
-    const autoApplyEnabled = pick('autoApplyEnabled', existing.auto_apply_enabled || false);
+    /*
+     * Item A — a toggle may not claim a capability the plan does not include.
+     *
+     * Enforcing the tier gate in the engine without teaching this path about
+     * it produced the worst possible state: the preference stored `true`, the
+     * dashboard said "Auto-Pilot Active", and the engine silently refused. The
+     * user is told a thing is running that is not running - the exact defect
+     * A14 was raised for, reintroduced from the other end.
+     *
+     * So the enable is refused here, with the reason, rather than accepted and
+     * quietly ignored.
+     */
+    let autoApplyEnabled = pick('autoApplyEnabled', existing.auto_apply_enabled || false);
+    if (autoApplyEnabled) {
+      const { can } = require('./plans');
+      if (!(await can(req.user.id, 'autoApply'))) {
+        return res.status(403).json({
+          error: 'Auto-Pilot is not included in your plan.',
+          reason: 'tier',
+          capability: 'autoApply',
+        });
+      }
+    }
     /*
      * Item 0 — clamped to the server ceiling. This field is user-settable and
      * the operator account was sitting at 50; a per-user preference must not
