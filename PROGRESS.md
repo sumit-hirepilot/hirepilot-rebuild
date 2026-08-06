@@ -402,6 +402,68 @@ Then: A7.13, A7.19, Wave C, B1-B5.
 STILL BLOCKED, operator: submissions HALTED; neither lever available to me can
 lift it. Item A's remaining steps gated on it. Re-checked every goal boundary.
 
+## GOAL 1b — CLOSED. Crash reasons outlive the container. Verified.
+
+Logging a stack before dying (c1cc33a) was necessary and not sufficient:
+Railway's log retention on a crash-looping service is exactly the condition the
+instrumentation exists for, and the logs from the first two outages are already
+gone. Reasons now go to crash_reports (event, message, stack, RSS, uptime) and
+are read back through /api/jobs/db-health.
+Best-effort and time-boxed: a handler that hangs reporting a crash converts a
+restart into a wedge. If the database is what died, stderr still has the line.
+FOUND BY WRITING THE TEST: the crash handlers did not RETURN the promise from
+the write, so nothing could await it - the reason would have raced the exit and
+usually lost.
+VERIFIED: a real process crashed, exited 1, and the reason was read back after
+it was gone. On production, recentCrashes is [] - the table is there and
+nothing has crashed since. The next one names itself.
+
+IMPORTANT, still true: THE CAUSE OF ALL THREE OUTAGES IS UNKNOWN. A fourth
+outage happened at the start of this session and did NOT self-recover in five
+minutes despite the watchdog being deployed - so the process is not reaching
+the watchdog, which points at a boot-time failure or the platform having
+stopped the container. crash_reports is what will answer it. Read db-health
+FIRST at the next outage.
+
+## GOAL 2 — IN PROGRESS. 1 of 7 routes landed.
+
+Landing bc5140d one route per commit, verified on production between each
+(D44). bc5140d did NOT cause the second outage; do not treat it as suspect.
+
+DONE: matches (6a55c54). page/limit/minScore bounded, clamp STATED in the
+response - bc5140d computed a clamp report there and never returned it, which
+is the dead-value defect this sweep exists to remove. Verified on production:
+?limit=100000&page=99999&minScore=50 -> page 50, limit 100, minScore 1, each
+named in `clamped`; an ordinary request untouched.
+
+REMAINING, in this order, one commit each:
+  2. activity      limit (def 8, max 100)
+  3. notifications limit (def 20, max 100)
+  4. inbox         limit (def 50, max 100) + search (boundText) + token
+  5. tracker       search (boundText)
+  6. apply         exclude (boundText 300) + runId (boundInt)
+  7. jobs          LAST and largest: page/limit via boundPaging, search/company/
+                   location/source/scope/jobType via boundText, minScore via
+                   boundFloat, keywords/exclude via boundText 300, and
+                   region/workArrangement/salary via boundList (bounded on
+                   COUNT as well as length - ?region=a a thousand times builds
+                   a thousand-branch predicate from one URL).
+
+The reference implementation for every one of these is `git show bc5140d`.
+State the clamp in each response; do not repeat the matches mistake of
+computing it and dropping it.
+
+tools/check-query-bounds.js is in the tree but NOT in CI or ship.sh yet - six
+routes are still unbounded so it fails by design. Add it to both with route 7.
+Before trusting it, close its PARTIAL known-positive proof: mutating jobs.js to
+restore the historical unbounded paging made it report `limit` but not `page`.
+Find out why. Its stated limits live in its own header; keep them there.
+
+Then: A7.13, A7.19, Wave C, B1-B5.
+
+STILL BLOCKED, operator: submissions HALTED, and healthcheckPath on the API
+service (both in BLOCKED.md). Item A's remaining steps gated on the halt.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
