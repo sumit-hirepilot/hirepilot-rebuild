@@ -286,8 +286,23 @@ router.post('/:id/retry', verifyToken, async (req, res) => {
       });
     }
 
+    /*
+     * Retrying puts it back in the queue. It does not mark it applied.
+     *
+     * This wrote status='applied'. A failed application is one where nothing
+     * reached the employer - that is what 'failed' means here, and the tracker
+     * says so in as many words - so the row carries no submitted_at, no
+     * verified_at and no confirmation. That is exactly the row
+     * applications_applied_requires_submission refuses, so the statement could
+     * only ever raise and the Retry button could only ever 500.
+     *
+     * Same defect as the approve path (D37), same cause: the constraint was
+     * right and the write path had never caught up. And the same second error
+     * underneath it - "retry" cannot mean "assert the employer received it",
+     * because retrying is precisely the admission that they did not.
+     */
     const result = await query(
-      `UPDATE applications SET status = 'applied', failure_reason = NULL,
+      `UPDATE applications SET status = 'approved', failure_reason = NULL,
        last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND user_id = $2 RETURNING *`,
       [req.params.id, req.user.id]
@@ -295,7 +310,7 @@ router.post('/:id/retry', verifyToken, async (req, res) => {
 
     await query(
       `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
-       VALUES ($1, 'failed', 'applied', CURRENT_TIMESTAMP)`,
+       VALUES ($1, 'failed', 'approved', CURRENT_TIMESTAMP)`,
       [req.params.id]
     );
 

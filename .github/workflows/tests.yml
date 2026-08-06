@@ -31,7 +31,7 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 254
+        run: node tools/run-suite.js backend 258
 
       # A guard that exists and is not invoked is indistinguishable from no
       # guard, and the suite passes either way because it tests the function
@@ -44,6 +44,12 @@ jobs:
       # silently, because no suite on either side of the wire sees both.
       - name: Every frontend /api call has a route behind it
         run: node tools/check-frontend-endpoints.js
+
+      # A write that cannot satisfy a live constraint is not a latent bug: it
+      # is a guaranteed 500 behind whichever control calls it. Two shipped that
+      # way, both found by sweeping rather than by clicking.
+      - name: Every write can satisfy the live constraints
+        run: node tools/check-write-paths.js
 
       # And the endpoint tests must be able to TELL. Each one is re-run with
       # its guard's call removed; a test that stays green proves only that the

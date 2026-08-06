@@ -34,30 +34,34 @@ floor_for() {
   echo "$n"
 }
 
-echo "== 1/8 no mutation marker or audit artifact =="
+echo "== 1/9 no mutation marker or audit artifact =="
 node tools/check-no-mutation-artifacts.js
 
 # A guard nothing calls is indistinguishable from no guard, and the suite is
 # green either way because it tests the function and not the path.
-echo "== 2/8 every guard has a live caller =="
+echo "== 2/9 every guard has a live caller =="
 node tools/guard-wiring.js --strict
 
 # A caller whose target is gone fails silently until someone clicks it.
-echo "== 3/8 every frontend /api call has a route behind it =="
+echo "== 3/9 every frontend /api call has a route behind it =="
 node tools/check-frontend-endpoints.js
 
-echo "== 4/8 backend suite =="
+# A write that cannot satisfy a live constraint is a guaranteed 500.
+echo "== 4/9 every write can satisfy the live constraints =="
+node tools/check-write-paths.js
+
+echo "== 5/9 backend suite =="
 node tools/run-suite.js backend "$(floor_for backend)"
 
-echo "== 5/8 frontend suite =="
+echo "== 6/9 frontend suite =="
 node tools/run-suite.js frontend "$(floor_for frontend)"
 
 # And the endpoint tests have to be able to TELL. Each is re-run with its
 # guard's call removed; one that stays green proves only that the route replies.
-echo "== 6/8 endpoint guard tests go red when the guard is unwired =="
+echo "== 7/9 endpoint guard tests go red when the guard is unwired =="
 node tools/prove-endpoint-guards-red.js
 
-echo "== 7/8 commit =="
+echo "== 8/9 commit =="
 git add -A
 # Nothing staged is not a failure - the gate still had to pass to get here.
 if git diff --cached --quiet; then
@@ -75,7 +79,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-echo "== 8/8 push =="
+echo "== 9/9 push =="
 git push
 
 echo

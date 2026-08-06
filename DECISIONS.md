@@ -677,3 +677,22 @@ D37 — Approving a draft releases it to be sent. It never marks it applied.
       rather than by clicking it. Two paths, one rule, both asserted on the
       status ARGUMENT rather than on the response, because the response looked
       fine while the row was wrong.
+
+D38 — A write path is not proven unless it can satisfy the constraints that
+      exist. One that cannot is not a latent bug; it is a guaranteed 500
+      hiding behind whichever control calls it.
+      Two shipped that way, and neither was ever clicked: approve (D37) and
+      retry, both writing status='applied' on rows carrying no submission
+      evidence - exactly what applications_applied_requires_submission refuses.
+      Sweeps run on an allowlist of controls, so an unclicked button is a blind
+      spot no amount of response-shape testing reaches, because the response is
+      never produced.
+      tools/check-write-paths.js evaluates every INSERT and UPDATE against the
+      constraint predicates, pinned from the copies db-health reads back. It
+      runs in CI and in ship.sh, and is proved on the known positive by
+      restoring the historical approve statement.
+      Underneath both was the same second error: "retry" cannot mean "assert
+      the employer received it", because retrying is the admission that they
+      did not. A failed application is one where nothing reached anyone. Retry
+      now returns the row to 'approved' - back in the queue, which is what the
+      button has always said it does.

@@ -145,3 +145,62 @@ describe('A7.18 — approving many at once', () => {
     expect(query.mock.calls.filter((c) => /UPDATE applications/.test(c[0]))).toHaveLength(0);
   });
 });
+
+describe('A7.18 carry-forward — retrying puts it back in the queue', () => {
+  /*
+   * Found by sweeping every write against the constraints rather than by
+   * clicking: POST /api/applications/:id/retry wrote status='applied'. A
+   * failed application is one where nothing reached the employer - that is
+   * what 'failed' means, and the tracker says so - so the row carries no
+   * evidence at all and the statement could only ever raise.
+   *
+   * Same defect as approve, and the same second error underneath it: retry
+   * cannot mean "assert the employer received it", because retrying is the
+   * admission that they did not.
+   */
+  const failedRow = { id: 5, status: 'failed', is_active: true, job_id: 3 };
+
+  beforeEach(() => {
+    query.mockImplementation((sql) => {
+      if (/SELECT[\s\S]*FROM applications a/i.test(sql)) return Promise.resolve({ rows: [failedRow] });
+      if (/UPDATE applications/.test(sql)) return Promise.resolve({ rows: [{ ...failedRow, status: 'approved' }] });
+      return Promise.resolve({ rows: [] });
+    });
+  });
+
+  it('writes approved, not applied', async () => {
+    const res = await request(app()).post('/api/applications/5/retry').send({});
+    expect(res.status).toBe(200);
+
+    const update = query.mock.calls.find((c) => /UPDATE applications/.test(c[0]));
+    expect(update[0]).toMatch(/status = 'approved'/);
+    expect(update[0]).not.toMatch(/status = 'applied'/);
+  });
+
+  it('produces a row the live constraint accepts, where the old one did not', async () => {
+    await request(app()).post('/api/applications/5/retry').send({});
+    expect(violatesAppliedRequiresSubmission({ status: 'approved', is_manual: null, submitted_at: null })).toBe(false);
+    expect(violatesAppliedRequiresSubmission({
+      status: 'applied', is_manual: null, submitted_at: null,
+      confirmation_captured_at: null, employer_confirmation_id: null, verified_at: null,
+    })).toBe(true);
+  });
+
+  it('records the transition it actually made', async () => {
+    await request(app()).post('/api/applications/5/retry').send({});
+    const history = query.mock.calls.find((c) => /INSERT INTO application_history/.test(c[0]));
+    expect(history[0]).toMatch(/'failed', 'approved'/);
+  });
+
+  it('still refuses to retry an application that did not fail', async () => {
+    query.mockImplementation((sql) => {
+      if (/SELECT[\s\S]*FROM applications a/i.test(sql)) {
+        return Promise.resolve({ rows: [{ ...failedRow, status: 'approved' }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    const res = await request(app()).post('/api/applications/5/retry').send({});
+    expect(res.status).toBe(400);
+    expect(query.mock.calls.filter((c) => /UPDATE applications/.test(c[0]))).toHaveLength(0);
+  });
+});
