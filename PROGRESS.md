@@ -88,6 +88,65 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.25 — CLOSED. Landing truth, pricing, legal pages, footer. Verified on production.
+
+All six claims reproduced against the live page before anything moved. One did
+not hold as filed and is recorded here rather than quietly "fixed": the anchor
+defect is real, but it is in components/Layout.js, not the landing page, and
+the label is "Features" on the SITE-WIDE header - the landing page itself had
+no nav links at all.
+
+  1. ANCHOR — Layout rendered <Link href="/#features">Features</Link>; the only
+     id on the landing page is "pipeline". The single nav link on the site
+     scrolled nowhere. Now "/#pipeline", labelled "How it works" so the label
+     names the destination ("Four honest stages") instead of being a second
+     name for one place. Guarded as a rule: every in-page anchor the layout
+     renders must match an id the landing page defines.
+  2. TWO PRODUCTS — <title> "Job Search on Autopilot" vs og:title "job search
+     with the numbers shown". Reconciled onto numbers-shown, the one the
+     product keeps. PRODUCTION: title === og:title === twitter:title.
+  3. HERO — "actually on autopilot" sat on the same page as "in your review
+     queue waiting for your approval". The product parks drafts on purpose, so
+     the sentence moved. PRODUCTION: phrase absent.
+  4. PRICING — /pricing built. INR primary, USD toggle (clicked on production:
+     ₹0/₹399/₹899 -> $0/$5/$11). Free / Pilot / Copilot. Scoring and its
+     four-weight breakdown free at EVERY tier - charging for the explanation
+     would make the free tier the black box this product argues against.
+     Nothing metered per application. Cancel-in-one-click stated where the
+     money is asked for. Checkout stub clicked on production: "Checkout is not
+     live yet. Nothing has been charged and no payment details were collected."
+     No receipt, no order number, no thank-you - a confirmation for a payment
+     that did not happen is a fabricated record.
+  5. FOOTER — /privacy, /terms, /refund-policy, /contact, all 200, all real
+     prose describing what this product does. Where something is not built
+     (payments) they say so rather than reserving an unused right.
+  6. MOBILE — no app exists. WEAKENED (D23): stated as a capability rather than
+     linked, with a guard asserting no page links an App Store or Play URL, so
+     a dead link cannot appear later.
+
+PRODUCTION: / /pricing /privacy /terms /refund-policy /contact all 200, no
+horizontal overflow at 375 / 768 / 1440, zero console errors.
+
+Two guards initially failed on their own explanatory comments - one tripped on
+the phrase it exists to ban, the other on the word "receipt" inside a comment
+forbidding receipts. They strip comments now: a guard that reads prose is
+testing the wrong text. Same lesson as the pg_indexes guard in A7.17.
+
+153 backend / 126 frontend, 97/97 guards proven red.
+
+### Next goal — A7.5, full CTA and flow sweep (executable cold)
+
+The nav-destination map for all 14 signed-in routes is already recorded below
+under "A7.5 SWEEP". What remains is the BUTTON half: every button on every
+page, signed in, at 375/768/1440 - where it goes, whether the destination
+matches the label, whether the content is consistent with where the user came
+from. Two dead controls were already found and fixed this way (Experience and
+Date posted). Use applyFilter as the model: a control that only calls setState
+is the defect signature.
+
+Then A7.21 (link and anchor audit, signed in and out, plus 20 "Original
+posting" links sampled across sources), A7.10, A7.18, A7.19, Wave C, B1-B5.
+
 ## A7.20 — CLOSED. Every job a user sees carries a score. Verified on production.
 
 Cause confirmed by measurement, not assumed: A7.17 made the index the universe,
