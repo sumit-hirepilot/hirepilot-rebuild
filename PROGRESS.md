@@ -528,6 +528,65 @@ WHAT TO DO IF IT RECURS: capture the failing test NAMES before re-running -
 that is what is missing here. run-suite.js writes a JSON summary to a temp file
 (--outputFile); read it on failure instead of only the counts.
 
+## GOAL 1g — VOLUME. Measured, retention added, NOT fully closed.
+
+MEASURED from the running database (db-health now reports storage):
+  database total          176 MB
+  jobs                    161 MB total - 19 tbl + 14 idx, so ~128 MB is TOAST
+                          (description + requirements held out of line)
+                          28,033 live rows, dead fell 4,803 -> 2,553
+  source_ingestion_runs   6,157 rows, NO retention at all
+  work_mem                4 MB  <- why a window function over 25k rows spilled
+
+DONE: 30-day retention for source_ingestion_runs and for crash_reports memory
+samples; the newest 200 crash rows are kept whatever their age, because the
+reason a process died six weeks ago is still the only record of it. Retention
+failure never stops ingest.
+
+HONEST STATUS: retention pruned ZERO rows so far - nothing is older than 30
+days yet. It is preventive, not curative. The database is still 176 MB. That is
+correct and worth stating plainly: the 53100 was caused by the temp-file SPILL,
+not by steady-state data, and the spill is gone (1f).
+
+NOT ESTABLISHED: the volume's total size and free space. Postgres cannot see
+it, and the Railway canvas shows a warning on postgres-volume without a figure
+I could read. Prior note says 500 MB. So "176 MB used of ~500 MB" is an
+inference, not a measurement. Getting the real number needs the Railway volume
+page - operator, BLOCKED.md.
+
+## GOAL 1j — partially done.
+
+DONE, and it explains two sessions of confusion: the gate now names failures,
+and the first named one was
+  adminGrant.test.js :: refuses a normal signed-in user - timeout 5000 ms
+It passes 3/3 alone, fails only under full-suite parallelism. Jest's default 5s
+is a tight budget for a supertest round trip with workers competing for CPU;
+nothing in that request touches a real network or database. testTimeout is now
+20s on BOTH suites - global, not per test, because the two frontend failures
+were never identified and any test could be next. Three clean runs each side.
+
+STILL TO DO in 1j: CI assertion that peak RSS during ingest stays under 500 MB;
+a 50-concurrent smoke load test in CI; a disk free-space threshold alert.
+
+## REMAINING, in order
+
+ 1h  LATENCY. p95 3,844 ms at 200 concurrent, 8,849 at 500, 17,487 at 1,000.
+     Nothing fails; it becomes unusable. Target p95 < 2s at 200. MEASURE FIRST -
+     the EXPLAINs in feedPlan and the extra COUNTs are candidates, the pool is
+     NOT (proved innocent in 1f). Count queries per /api/jobs request before
+     changing anything.
+ 1i  SWEEP THE THREE CLASSES, each with a CI check:
+     - computed values never used (3 found so far: bc5140d's clamp report,
+       plans.can()'s fallback, the ROW_NUMBER that was the feed ceiling)
+     - unbounded loads (calculateMatchesForUser 25,400 rows; 12-source
+       concurrent ingest; fetchAllForPlatform over every ATS company,
+       greenhouse alone 10,180)
+     - swallowed errors (the feed's "Failed to fetch jobs" hid a disk-full
+       error through five outages)
+ 1j  remainder above.
+ 2   bounds sweep, 6 of 7 routes, jobs last, one commit each.
+ Then A7.13, A7.19, Wave C, B1-B5.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
