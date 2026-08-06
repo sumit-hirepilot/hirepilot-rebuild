@@ -97,6 +97,36 @@ still work (crash rows persist, 25,399 jobs readable), so there is headroom,
 but it is thin. Removing the spill removed this symptom without giving the
 database more room. Pruning is a separate goal.
 
+## Feature 1 (C1a live counts) — load test after deploy
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | **1,230 ms** | 276 MB |
+| 200 | 600 | 600 | 0 | **2,451 ms** | 299 MB |
+| 500 | 1,500 | 1,500 | 0 | **6,007 ms** | 351 MB |
+
+No regression. Slightly better than the pre-feature baseline at every step
+(1,432 / 2,679 / 6,366 ms), zero failures throughout, RSS well under the
+800 MB abort threshold.
+
+### A measurement discipline this run taught
+
+The FIRST run after the deploy, 90 seconds in, produced nonsense: p95 18,441 ms
+at 50 users, 26,688 ms at 200 — then **12,112 ms at 1,000 users with zero
+failures**. Worse at 50 than at 1,000 is not a load curve; it is a contaminated
+measurement.
+
+The cause was the post-deploy ingest cycle competing for the database. Read at
+`uptimeSeconds 593` the numbers were normal again.
+
+**Do not load-test within ~5 minutes of a deploy.** Check `/api/health`
+`uptimeSeconds` first, and treat a curve that improves as concurrency rises as
+evidence the instrument is wrong rather than the app being fast.
+
+Had the first run been believed, it would have read as a 10x regression at 200
+concurrent and this feature would have been rolled back for a fault it does not
+have.
+
 ## After GOAL 1h — the COUNT cache
 
 A feed request runs exactly **two** queries. The EXPLAINs suspected earlier are
