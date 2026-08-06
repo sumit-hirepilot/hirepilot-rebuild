@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [matchTotalRaw, setMatchTotalRaw] = useState(null);
   const [appStats, setAppStats] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [loadError, setLoadError] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,7 +82,11 @@ export default function Dashboard() {
           setProfile(profileData);
         }
       } catch (err) {
+        // Item 5 — the dashboard had no error state at all: a failed load left
+        // an empty page that reads as "you have nothing" rather than "we could
+        // not ask". Those are different facts and only one of them is true.
         console.error('Failed to load dashboard data', err);
+        setLoadError('Could not reach HirePilot to load your dashboard. Check your connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -123,6 +128,15 @@ export default function Dashboard() {
 
       <DashboardLayout title="Dashboard" user={user}>
         <p className={styles.dateLabel}>{dateLabel}</p>
+        {/* Item 5 — say we could not ask, rather than showing an empty
+
+            dashboard that reads as "you have nothing". */}
+
+        {loadError && (
+
+          <p className={styles.loadError} role="alert">{loadError}</p>
+
+        )}
         <h1 className={styles.greeting}>{getGreeting()}, {firstName}</h1>
 
         {profileIncomplete && (

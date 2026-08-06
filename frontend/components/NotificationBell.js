@@ -22,6 +22,18 @@ export default function NotificationBell({ token, base }) {
         setNotifications(data.notifications || []);
         setUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : null);
       }
+    } catch (err) {
+      /*
+       * Item 5 — this was try/finally with no catch, and load() is called
+       * unawaited from an effect AND on a 60-second interval. A dropped
+       * connection therefore threw an unhandled rejection every minute:
+       * invisible to the user, but it is the kind of noise that buries a real
+       * error in a crash reporter, and it failed any test that broke fetch.
+       *
+       * Quiet is right for a header counter - it must not block the page it
+       * sits on - but quiet has to be deliberate.
+       */
+      console.warn('Notifications could not be loaded:', err.message);
     } finally {
       setLoaded(true);
     }

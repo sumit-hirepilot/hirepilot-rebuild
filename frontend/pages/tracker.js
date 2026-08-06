@@ -123,7 +123,7 @@ export default function Tracker() {
   if (!columns) {
     return (
       <DashboardLayout user={user}>
-        <Head><title>Tracker - HirePilot</title></Head>
+        <Head><title>My applications - HirePilot</title></Head>
         <div className={page.loading}>Loading…</div>
       </DashboardLayout>
     );

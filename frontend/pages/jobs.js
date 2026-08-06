@@ -524,7 +524,15 @@ export default function Jobs() {
         setSavedIds(new Set((data.jobs || []).map((j) => j.id)));
       }
     } catch (err) {
+      /*
+       * Item 5 — a thrown fetch is a network failure, and it was only logged.
+       * jobsError was set for a bad HTTP status but not for this, so a dropped
+       * connection left the PREVIOUS list on screen with nothing said - the
+       * user reads stale results as current ones. On a phone network that is
+       * the common case, not the rare one.
+       */
       console.error('Failed to load jobs', err);
+      setJobsError('Could not reach HirePilot. These results may be out of date — check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -1163,6 +1171,13 @@ export default function Jobs() {
           )}
         </div>
 
+        {/* Item 5 — the message itself, not only its effect on the count.
+            jobsError fed countText, which renders "Result count unavailable" -
+            true but thin, and it does not tell a user the LIST below may be
+            stale rather than complete. */}
+        {jobsError && (
+          <p className={page.loadError} role="alert">{jobsError}</p>
+        )}
         <div className={page.headerRow}>
           <h1 className={styles.greeting} style={{ margin: 0 }}>Jobs</h1>
           <span className={page.resultsCount}>

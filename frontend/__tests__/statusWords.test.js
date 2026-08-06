@@ -94,3 +94,21 @@ describe('Wave C — the page a nav item opens is titled the same thing', () => 
     expect(offenders).toEqual([]);
   });
 });
+
+describe('Wave C — the tab title matches the heading', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { stripComments } = require('../test-utils/source');
+
+  it.each([
+    ['apply-queue.js', 'Ready to send'],
+    ['agents.js', 'Saved searches'],
+    ['analytics.js', 'How it is going'],
+    ['tracker.js', 'My applications'],
+  ])('%s titles the tab %s', (file, name) => {
+    // A tab saying "Analytics" over a page headed "How it is going" is the
+    // same contradiction as the nav mismatch, one surface further out.
+    const src = stripComments(fs.readFileSync(path.join(__dirname, '..', 'pages', file), 'utf8'));
+    expect(src).toMatch(new RegExp(`<title>${name} - HirePilot</title>`));
+  });
+});

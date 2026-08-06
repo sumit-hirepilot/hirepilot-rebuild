@@ -66,7 +66,7 @@ export default function Analytics() {
   return (
     <>
       <Head>
-        <title>Analytics - HirePilot</title>
+        <title>How it is going - HirePilot</title>
       </Head>
 
       <DashboardLayout title="Analytics" user={user}>

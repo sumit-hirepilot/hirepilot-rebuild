@@ -117,6 +117,16 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- Item 5: a screen that cannot load says so ---- */
+  { suite: 'loadFailure',
+    test: 'the jobs page says the results may be out of date',
+    file: 'pages/jobs.js',
+    mutate: (s) => s.replace("      setJobsError('Could not reach HirePilot. These results may be out of date — check your connection and try again.');\n", '') },
+  { suite: 'loadFailure',
+    test: 'the dashboard says it could not ask, rather than showing an empty account',
+    file: 'pages/dashboard.js',
+    mutate: (s) => s.replace("        setLoadError('Could not reach HirePilot to load your dashboard. Check your connection and try again.');\n", '') },
+
   { suite: 'statusWords',
     test: 'no page heading still carries the old internal name',
     file: 'pages/apply-queue.js',
