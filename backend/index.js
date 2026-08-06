@@ -129,13 +129,19 @@ function startServer() {
    * is the thing that died, the stderr line is still there and the process
    * still exits on time - see persistCrash's timeout.
    */
-  installCrashLogging({
-    sink: (r) => pool.query(
-      `INSERT INTO crash_reports (event, message, stack, rss_mb, uptime_seconds)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [r.event, r.message || null, r.stack || null, r.rssMb ?? null, r.uptimeSeconds ?? null]
-    ),
-  });
+  /*
+   * Where a crash reason goes so it outlives the container. The same sink
+   * carries the memory trajectory: an OOM kill leaves NO crash record - the
+   * process never runs another instruction - so the only way to see one
+   * coming is a series of samples written while it is still alive.
+   */
+  const crashSink = (r) => pool.query(
+    `INSERT INTO crash_reports (event, message, stack, rss_mb, uptime_seconds)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [r.event, r.message || null, r.stack || null, r.rssMb ?? null, r.uptimeSeconds ?? null]
+  );
+
+  installCrashLogging({ sink: crashSink });
 
   app.listen(PORT, () => {
     console.log(`HirePilot API Server running on port ${PORT}`);
@@ -153,7 +159,7 @@ function startServer() {
    * /api/health answered 200 while /api/jobs was failing, so "is Node alive"
    * is precisely the question that does not distinguish serving from wedged.
    */
-  startWatchdog(() => pool.query('SELECT 1'));
+  startWatchdog(() => pool.query('SELECT 1'), { sink: crashSink });
 
   runMigrations()
     .then(() => {

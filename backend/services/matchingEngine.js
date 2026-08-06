@@ -205,20 +205,61 @@ const upsertMatchesBatch = async (userId, rows, { onDemand = false } = {}) => {
 
 const calculateMatchesForUser = async (userId) => {
   try {
-    const [context, jobsResult] = await Promise.all([
-      getUserMatchContext(userId),
-      query(
-        `SELECT id, title, description, requirements, salary_min, salary_max, location
-         FROM jobs WHERE is_active = true`
-      ),
-    ]);
+    const context = await getUserMatchContext(userId);
 
-    const scored = [];
-    for (const job of jobsResult.rows) {
-      const score = scoreJobAgainstContext(job, context);
-      if (score.overall_score > MATCH_THRESHOLD) {
-        scored.push({ jobId: job.id, ...score });
+    /*
+     * GOAL 1c — read the index in BOUNDED CHUNKS, not all at once.
+     *
+     * This was a single `SELECT id, title, description, requirements, ...
+     * FROM jobs WHERE is_active = true` with no LIMIT. node-postgres buffers a
+     * result set completely before handing it back, so every call materialised
+     * all ~25,400 active rows in one array - including description and
+     * requirements, the two largest columns in the table - and then built a
+     * second array from them.
+     *
+     * That is the first thing found that fits the outages: a crash record of
+     * 551 MB RSS at ten seconds of uptime, no crash log (an OOM kill leaves
+     * none - the process never runs another instruction), no watchdog recovery
+     * (it exits a wedged process; it cannot survive being killed), and
+     * recovery only on redeploy. It is reachable from a plain feed read, since
+     * scoreIfNeverScored calls this on a user's first /api/matches.
+     *
+     * Chunked by id, which is indexed and total-ordered, so no row is seen
+     * twice or missed as the table changes underneath a long run - OFFSET
+     * paging over a live table cannot promise that. Only the survivors are
+     * retained, and they are trimmed back to the cap as we go, so peak memory
+     * is one chunk plus at most MATCH_STORE_LIMIT rows regardless of index
+     * size.
+     */
+    const CHUNK = Number(process.env.MATCH_SCAN_CHUNK) || 2000;
+    const RETAIN = MATCH_STORE_LIMIT * 2; // headroom so a trim cannot drop a row that would have made the cut
+    let scored = [];
+    let afterId = 0;
+
+    for (;;) {
+      const chunk = await query(
+        `SELECT id, title, description, requirements, salary_min, salary_max, location
+           FROM jobs WHERE is_active = true AND id > $1
+          ORDER BY id ASC LIMIT $2`,
+        [afterId, CHUNK]
+      );
+      if (!chunk.rows.length) break;
+
+      for (const job of chunk.rows) {
+        const score = scoreJobAgainstContext(job, context);
+        if (score.overall_score > MATCH_THRESHOLD) {
+          scored.push({ jobId: job.id, ...score });
+        }
       }
+      afterId = chunk.rows[chunk.rows.length - 1].id;
+
+      // Trim as we go: without this a permissive threshold rebuilds the very
+      // unbounded array this change exists to remove.
+      if (scored.length > RETAIN) {
+        scored.sort((a, b) => b.overall_score - a.overall_score);
+        scored = scored.slice(0, RETAIN);
+      }
+      if (chunk.rows.length < CHUNK) break;
     }
 
     scored.sort((a, b) => b.overall_score - a.overall_score);

@@ -178,14 +178,28 @@ function startWatchdog(probe, opts = {}) {
   const timer = setInterval(tick, cfg.intervalMs);
   if (timer.unref) timer.unref();
 
-  // A slow memory climb is the one failure shape that leaves no other trace.
+  /*
+   * A slow memory climb is the one failure shape that leaves no other trace -
+   * and an OOM kill leaves no crash record at all, because the process never
+   * runs another instruction. So the TRAJECTORY is persisted, not just the
+   * final value: without it the only evidence is one RSS figure taken at the
+   * moment something else happened to notice.
+   */
   const mem = setInterval(() => {
     const u = process.memoryUsage();
-    log('info', 'memory', {
+    const sample = {
+      event: 'memory',
       rssMb: Math.round(u.rss / 1048576),
       heapUsedMb: Math.round(u.heapUsed / 1048576),
-      heapTotalMb: Math.round(u.heapTotal / 1048576),
-    });
+      uptimeSeconds: Math.round(process.uptime()),
+    };
+    log('info', 'memory', sample);
+    if (cfg.sink) {
+      persistCrash(
+        { ...sample, message: `heapUsed ${sample.heapUsedMb}MB`, stack: null },
+        { sink: cfg.sink }
+      ).catch(() => {});
+    }
   }, cfg.memoryLogEveryMs);
   if (mem.unref) mem.unref();
 

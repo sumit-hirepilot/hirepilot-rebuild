@@ -794,3 +794,31 @@ D45 — A crash reason that does not outlive the container has not been
       VERIFIED by crashing a real process and reading the reason back after it
       was gone: exit code 1, event, message, first stack frame, RSS and uptime
       all present.
+
+D46 — The match scan read the entire index into memory, and it is the first
+      thing found that fits every symptom of the outages.
+      calculateMatchesForUser ran `SELECT id, title, description, requirements,
+      salary_min, salary_max, location FROM jobs WHERE is_active = true` with
+      no LIMIT. node-postgres buffers a result set completely before returning
+      it, so each call materialised all ~25,400 active rows in one array -
+      including description and requirements, the two largest columns - and
+      built a second array from them. It is reachable from an ordinary feed
+      read: scoreIfNeverScored calls it on a user's first /api/matches.
+      Fits all of it: a crash record of 551 MB RSS at ten seconds of uptime; no
+      crash log, because an OOM kill leaves none - the process never runs
+      another instruction; no watchdog recovery, because the watchdog exits a
+      wedged process and cannot survive being killed by the platform; recovery
+      only on redeploy, which is a fresh container with a fresh ceiling. And it
+      explains why reverting bc5140d changed nothing: the parameters were never
+      the mechanism.
+      STATED PLAINLY: this is a hypothesis that fits, not a confirmed cause.
+      Confirming it needs the Railway memory graph and the container exit codes
+      (137/OOMKilled), which are an operator dependency - I cannot reach them.
+      Now read in chunks of 2,000 by id. Keyed on id rather than OFFSET because
+      OFFSET over a table being written cannot promise a row is neither skipped
+      nor repeated. Survivors are trimmed to the cap as the scan proceeds, so
+      peak memory is one chunk plus the cap regardless of index size - without
+      that trim a permissive threshold rebuilds the unbounded array the change
+      exists to remove.
+      The memory TRAJECTORY is persisted alongside crash reasons, because the
+      final value alone cannot show a climb, and an OOM leaves nothing else.
