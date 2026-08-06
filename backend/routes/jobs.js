@@ -578,7 +578,24 @@ async function feedPlan(userId, { dateFilter = false } = {}) {
       : 'WHERE is_active = true';
     const result = await query(
       `EXPLAIN (ANALYZE, FORMAT JSON)
-       WITH ranked AS (
+       /*
+       * GOAL 1f — no ROW_NUMBER() OVER (PARTITION BY jobs.source ...) here any
+       * more, and removing it is the fix.
+       *
+       * A7.9 moved source diversity out of SQL into feedDiversity and removed
+       * the WHERE that consumed source_rank. The window function itself was
+       * left behind, so every feed request sorted and partitioned all 25,418
+       * rows to compute a column nothing read - a computed value never used,
+       * which is a defect rather than dead weight.
+       *
+       * It is also what took the endpoint down. A window function over the
+       * whole index does not fit in work_mem, so Postgres spilled it to
+       * base/pgsql_tmp, and with the volume full those writes failed:
+       * SQLSTATE 53100, "No space left on device", on 21 of 30 concurrent
+       * requests. Read out of crash_reports on production rather than guessed -
+       * the route used to swallow it behind "Failed to fetch jobs".
+       */
+      WITH ranked AS (
          SELECT jobs.id, jobs.source, jobs.posted_at, jm.overall_score,
                 ROW_NUMBER() OVER (
                   PARTITION BY jobs.source
@@ -1126,11 +1143,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
                ${v.tierCaseExpr} AS match_tier,
                jm.overall_score, jm.skills_match_score, jm.experience_match_score,
-               jm.location_match_score, jm.salary_match_score,
-               ROW_NUMBER() OVER (
-                 PARTITION BY jobs.source
-                 ORDER BY jm.overall_score DESC NULLS LAST, jobs.posted_at DESC NULLS LAST, jobs.id
-               ) AS source_rank
+               jm.location_match_score, jm.salary_match_score
           FROM jobs
           LEFT JOIN job_matches jm
             ON jm.job_id = jobs.id AND jm.user_id = $${uIdx}

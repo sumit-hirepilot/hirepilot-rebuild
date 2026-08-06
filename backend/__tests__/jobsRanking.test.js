@@ -103,9 +103,20 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
      * ORDER - score first, unscored last - and diversity is asserted where it
      * now lives, on the served page, in feedPaginationCoherence.
      */
+    /*
+     * GOAL 1f removed the window function too. A7.9 had already deleted the
+     * WHERE that consumed source_rank; the ROW_NUMBER() was left computing a
+     * column nothing read, and sorting all 25,418 rows per request to do it.
+     * That spilled to base/pgsql_tmp and, with the volume full, returned
+     * SQLSTATE 53100 on 21 of 30 concurrent requests.
+     *
+     * So asserting the window function is present would now be asserting the
+     * defect. What the SQL still owes is the ORDER - diversity is asserted
+     * where it lives, on the served page, in feedPaginationCoherence.
+     */
     const pageSql = query.mock.calls[1][0];
-    expect(pageSql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
-    expect(pageSql).not.toMatch(/source_rank\s*<=/);
+    expect(pageSql).not.toMatch(/ROW_NUMBER\(\) OVER/);
+    expect(pageSql).not.toMatch(/source_rank/);
     expect(pageSql).toMatch(/overall_score DESC NULLS LAST/);
     expect(pageSql).not.toMatch(/ORDER BY source_rank/);
   });
