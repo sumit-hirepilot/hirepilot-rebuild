@@ -344,6 +344,64 @@ STILL BLOCKED, operator: production submissions are HALTED; neither lever
 available to me can lift it. Item A's remaining steps are gated on it.
 Re-checked at every goal boundary.
 
+## GOAL 1 — CLOSED. Crash visibility and self-healing. Verified.
+
+CORRECTION TO THE PREVIOUS ENTRY, and it matters: the API went down a THIRD
+time, on the reverted code, which does not contain bc5140d. So bc5140d was not
+the cause of the second outage, my revert was reasoning from correlation, and
+the real cause is STILL UNKNOWN. The previous handoff's ranked suspect list is
+therefore worthless - it was ranking suspects inside a change that was not
+responsible.
+
+SHIPPED (c1cc33a):
+ - installCrashLogging: uncaughtException, unhandledRejection, SIGTERM/SIGINT
+   and exit each log a stack or a reason before the process dies. The first two
+   terminate Node by default and neither left a line behind, which is exactly
+   why three outages were diagnosed from the outside.
+ - startWatchdog: probes `SELECT 1` every 30s, 8s timeout, exits non-zero after
+   3 consecutive failures so the platform restarts the instance. It forgets
+   failures on recovery, so unrelated blips cannot accumulate into a restart
+   loop.
+ - The probe is a QUERY, not a ping. During outage 2 /api/health answered 200
+   while /api/jobs failed; "is Node alive" cannot tell serving from wedged.
+ - Env-tunable (WATCHDOG_INTERVAL_MS / TIMEOUT_MS / FAILURES) so it can be
+   exercised on demand.
+
+WHY NOT A RAILWAY healthcheckPath: a railway.json at the repo root would apply
+to whichever service builds from that root, and the frontend builds from the
+same repo. I cannot see the Railway service settings from here, so adding it
+risked breaking the frontend deploy to fix the backend. The Docker HEALTHCHECK
+that already exists does nothing because Railway ignores Docker health status.
+Logged as an operator action in BLOCKED.md.
+
+VERIFIED: the real server booted against an unreachable database, bound its
+port, failed the probe twice, logged the reason, exited 1. Production recovered
+on the deploy and is serving.
+
+## NEXT GOAL — GOAL 2, re-land the request-bounds sweep. Executable cold.
+
+The reverted work is in bc5140d. It is NOT known to be faulty - the outage it
+was blamed for recurred without it. Re-land it anyway one route per commit,
+verified live between each, per D44.
+
+Order: matches -> activity -> notifications -> inbox -> tracker -> apply ->
+jobs (jobs last, it is the largest edit and the one under load).
+
+Before re-landing, close the checker's known gap: tools/check-query-bounds.js
+proved PARTIAL on its known positive - mutating jobs.js to restore the
+historical unbounded paging made it report `limit` but not `page`. Find out why
+before trusting it. Its limits are written in its own header; keep them there.
+
+Findings that stand: thirteen unbounded parameters across five files
+(minScore, keywords, exclude, region, workArrangement, salary, ranked, source,
+scope, jobType, apply's exclude/runId, inbox's token), unbounded limits on four
+routes, and the ?limit= defect where Number('') is 0 and 0 is finite.
+
+Then: A7.13, A7.19, Wave C, B1-B5.
+
+STILL BLOCKED, operator: submissions HALTED; neither lever available to me can
+lift it. Item A's remaining steps gated on it. Re-checked every goal boundary.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).

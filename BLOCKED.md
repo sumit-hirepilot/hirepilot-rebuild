@@ -2,6 +2,23 @@
 
 Goals that failed five attempts, with full diagnosis. Retried at end of wave.
 
+## Railway healthcheckPath — operator action
+
+The API has gone down three times and never restarted itself. c1cc33a adds a
+watchdog that exits the process when it stops serving, which the platform does
+restart - that is the part I can do from code.
+
+What I cannot do from here: set a Railway healthcheckPath. Config-as-code lives
+in a railway.json at the service root, and the frontend builds from the same
+repo root, so adding one risked breaking the frontend deploy to fix the backend
+- and I cannot see the service settings to check. The Dockerfile HEALTHCHECK
+that already exists does nothing, because Railway ignores Docker health status.
+
+What the operator should do: set healthcheckPath to /api/health on the API
+service, and a restart policy of ON_FAILURE. Belt and braces with the watchdog,
+and it covers the case where the process is alive but never reaches the
+watchdog at all.
+
 ## LIVE PRODUCTION STATE — SUBMISSIONS ARE HALTED, and I cannot lift it
 
 Confirmed on production today, not assumed: POST /api/apply/queue/<id>/start
