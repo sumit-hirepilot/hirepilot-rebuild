@@ -96,6 +96,64 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## ITEM 0 — CLOSED. Auto-Pilot on, constrained. Verified on production.
+
+Real applications go to real employers under testers' names, so every claim
+below was proved end to end rather than reasoned about.
+
+KILL SWITCH — flag name: `submissions_halted`, row in `system_flags`.
+  Three levers: POST /api/apply/admin/halt with x-admin-secret
+  (ADMIN_HALT_SECRET), the same endpoint from the admin account
+  (users.is_admin, seeded to the lowest user id), or SUBMISSIONS_HALTED=1.
+  Fails CLOSED - unreadable flag halts submission, an admin lookup that errors
+  denies the caller.
+  PROVED ON PRODUCTION: halted via the admin account, then POST
+  /queue/<approved id>/start returned 429 "Submission is paused for all
+  accounts." Resumed afterwards; the same call now returns 409, the ordinary
+  not-approved answer.
+  NOTE: ADMIN_HALT_SECRET is NOT set - the app's Railway project is not under
+  the logged-in account (BLOCKED.md). The admin-account lever is what works
+  today and it is proven.
+
+DAILY CAP — 5 per user per day, at the one transition to 'submitting'. Counts
+  'submitting' as well as 'submitted' so parallel starts cannot all pass at
+  once. auto_apply_limit_per_day is user-settable and the operator account sat
+  at 50; the write path and the runner now clamp to the ceiling.
+
+A7.8 TIE-BREAK — PROVED, with submission halted first.
+  Bulk prepare twice, identical inputs, minScore 0.6, MAX_BULK 50 so the limit
+  genuinely cuts:
+      run 1  queued 48, skipped 1 already-existing
+      run 2  queued  0, skipped exactly the same 49 job ids
+  Non-deterministic ordering would have selected different jobs at the limit
+  boundary and created new rows. It created none. The 48 test rows were then
+  skipped and the account is back to its exact prior state: 6 needs_user,
+  6 approved.
+
+A4 RECEIPT — was NOT rendering. The endpoint has existed since A4 carrying
+  fields sent, answers given, resume SHA-256 and the platform response, and
+  nothing displayed it. Built and shipped: on every application card, four
+  distinct states (record / none-recorded-with-the-server's-reason / display
+  failure / absent value), and a display failure is never presented as a
+  missing record.
+
+TAILORING GUARDS — ran against a real resume, and one was badly broken.
+  All three fire on what they exist to stop. But honest tailoring was ALSO
+  blocked: normalise keeps `.` and `%` because they matter inside a token
+  (12%, node.js, c++) and left them on the END of ordinary words, so the corpus
+  held "12%." and "teams." while an addition offered "12%" or "redesign.".
+  The guard called the user's OWN figure an invented number. A guard that
+  blocks everything is as useless as one that blocks nothing - it would have
+  meant tailoring never worked for testers, or someone routing around it.
+  Fixed, pinned in both directions.
+
+ADAPTERS — Greenhouse only. Lever and Ashby stay out of SUPPORTED_ATS; neither
+  has run against a live form. Pinned by a test.
+
+Full configuration recorded as D27.
+
+185 backend / 166 frontend, 114/114 guards proven red.
+
 ## A7.9 — REPRODUCED, designed, NOT SHIPPED. Next goal, executable cold.
 
 The URL round-trip half of A7.9 is closed (recorded below). This is the other

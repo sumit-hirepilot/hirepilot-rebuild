@@ -65,3 +65,18 @@ pass's.
 Holding pattern in force: nothing new ships against any ATS; Lever and Ashby
 stay disabled; Lever/Ashby terms unresearched and must be read before either is
 re-enabled. Full findings in SUBMISSION_AUDIT.md.
+
+
+## ADMIN_HALT_SECRET cannot be set from this machine — operator action
+
+The kill switch has three levers. Two of them need an environment variable on
+the API service (ADMIN_HALT_SECRET, or SUBMISSIONS_HALTED=1), and the app's
+Railway project is not under the account this machine is logged into - `railway
+list` shows only hirepilot-site and regintel-ai.
+
+Owning goal: Item 0. Not stalling on it - the admin-account lever works today
+and is proven on production, so the switch is usable.
+
+What the operator should do: set ADMIN_HALT_SECRET on the API service. That
+restores a lever that works even if the login system is the thing that has
+failed, which is the scenario the account-based lever cannot cover.
