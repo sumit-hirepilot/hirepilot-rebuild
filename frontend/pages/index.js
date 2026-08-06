@@ -165,7 +165,12 @@ export default function Home({ stats = null }) {
   return (
     <>
       <Head>
-        <title>HirePilot - Job Search on Autopilot</title>
+        {/* A7.25 — this said "Job Search on Autopilot" while og:title said "job
+            search with the numbers shown". One page cannot describe two
+            products, and only one of those two is what ships: applications are
+            drafted and wait for your approval. The numbers-shown framing is
+            the one the product keeps. */}
+        <title>HirePilot — job search with the numbers shown</title>
         <meta name="description" content="Job search with the numbers shown. Every match score breaks down into its four weights, every resume edit is checked against your own material, and an application only counts as applied once the employer confirms it." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -194,7 +199,11 @@ export default function Home({ stats = null }) {
             <div className={styles.heroContent}>
               <div>
                 <p className={styles.label}>REAL JOBS · REAL SCORING · ONE TRACKER</p>
-                <h1>Your job search, actually on autopilot.</h1>
+                {/* A7.25 — was "actually on autopilot", on the same page that says
+                  applications sit "in your review queue waiting for your
+                  approval". The product parks drafts for approval on purpose,
+                  so the sentence moved rather than the product. */}
+                <h1>Your job search, with every number shown.</h1>
                 <p className={styles.subtitle}>
                   HirePilot indexes real openings from every source it watches, scores each one
                   against your real resume, and tailors your resume before you apply — with every
@@ -421,6 +430,13 @@ export default function Home({ stats = null }) {
         <section className={styles.cta}>
           <div className="container">
             <h2>Ready for lift-off.</h2>
+            {/* A7.25 — mobile, stated as what it is. There is no app, and
+                BACKLOG_MOBILE.md is explicit that surfacing store links for one
+                would be a claim the product cannot keep. */}
+            <p className={styles.mobileNote}>
+              HirePilot runs in your mobile browser — the whole product, nothing to install.
+              Submitting an application uses the Chrome extension, which is desktop-only.
+            </p>
             <Link href="/signup" className="btn-primary">
               Start Free
             </Link>

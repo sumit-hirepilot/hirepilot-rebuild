@@ -117,6 +117,37 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- A7.25: landing truth and completeness ---- */
+  { suite: 'landingTruth',
+    test: 'has no nav link pointing at an id the target page does not define',
+    file: 'components/Layout.js',
+    mutate: (s) => s.replace('href="/#pipeline"', 'href="/#features"') },
+  { suite: 'landingTruth',
+    test: 'states the same product in the title and the social card',
+    file: 'pages/index.js',
+    mutate: (s) => s.replace('<title>HirePilot — job search with the numbers shown</title>',
+      '<title>HirePilot - Job Search on Autopilot</title>') },
+  { suite: 'landingTruth',
+    test: 'does not promise autopilot on a page that also says you approve every send',
+    file: 'pages/index.js',
+    mutate: (s) => s.replace('<h1>Your job search, with every number shown.</h1>',
+      '<h1>Your job search, actually on autopilot.</h1>') },
+  { suite: 'landingTruth',
+    test: 'does not imply a charge occurred at a checkout that cannot charge',
+    file: 'pages/pricing.js',
+    mutate: (s) => s.replace('Checkout is not live yet.', 'Payment successful') },
+  { suite: 'landingTruth',
+    test: 'never meters per application, and never charges for a score',
+    file: 'pages/pricing.js',
+    mutate: (s) => s
+      .replace('<strong>Nothing here is charged per application</strong>', 'Priced per application')
+      .replace('Never per application', 'Metered per application')
+      .replace('Applications are not metered on any plan.', 'Applications are metered on every plan.') },
+  { suite: 'landingTruth',
+    test: 'says plainly that it runs in a mobile browser',
+    file: 'pages/index.js',
+    mutate: (s) => s.replace('HirePilot runs in your mobile browser', 'HirePilot runs anywhere') },
+
   { suite: 'renderState',
     test: 'never prints a bare match score without its unit',
     file: 'pages/dashboard.js',

@@ -542,3 +542,13 @@
   font-size: 12px; color: var(--primary);
 }
 .matchWeight { font-weight: 700; color: var(--text); }
+
+/* A7.25 — the mobile statement. Quiet, because it is a clarification rather
+   than a feature claim. */
+.mobileNote {
+  margin: 0.75rem auto 0;
+  max-width: 34rem;
+  font-size: 0.9375rem;
+  opacity: 0.75;
+  line-height: 1.6;
+}

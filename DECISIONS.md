@@ -326,3 +326,20 @@ shown, with the reason, and `datePosted=unknown` reaches them in one click.
 
 Revisit if himalayas exposes a real publication date field. Not by parsing a
 page that is telling us not to.
+
+
+## D23 — WEAKENED: mobile is described, not linked
+
+A7.25 asks for the mobile app to be surfaced on the site. There is no mobile
+app. BACKLOG_MOBILE.md says so explicitly and names the consequence: surfacing
+store links for one "would be a claim the product cannot keep".
+
+The full-strength version of "surface the app" is a link to an app. Since that
+link would be a lie, the closest full-strength version is to state the truth
+plainly on the landing page - HirePilot runs in a mobile browser, the whole
+product, nothing to install; submitting uses the Chrome extension, which is
+desktop-only. A guard asserts no page links an App Store or Google Play URL, so
+this cannot be quietly "fixed" later by adding a dead link.
+
+WEAKENED: mobile surfaced as a capability statement rather than an app link.
+Reversible the day an app exists, and the guard is what makes that day visible.

@@ -56,7 +56,14 @@ export default function Layout({ children }) {
                 </>
               ) : (
                 <>
-                  <Link href="/#features">Features</Link>
+                  {/* A7.25 — this pointed at /#features and the landing page
+                      has no such id; the only nav link on the site scrolled
+                      nowhere. The section it means is "Four honest stages",
+                      whose own CTA already reads "See how it works" - so the
+                      label matches the destination now instead of inventing a
+                      second name for it. */}
+                  <Link href="/#pipeline">How it works</Link>
+                  <Link href="/pricing">Pricing</Link>
                   <Link href="/login" className="btn-primary">
                     Sign In
                   </Link>
@@ -83,6 +90,15 @@ export default function Layout({ children }) {
       <footer className={styles.footer}>
         <div className="container">
           <p>HirePilot. Built for people who are good at their jobs, not job hunting.</p>
+          {/* A7.25 — a product that asks for money and holds a resume needs
+              these reachable from every page, not filed somewhere. */}
+          <nav className={styles.footerLinks} aria-label="Footer">
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/privacy">Privacy policy</Link>
+            <Link href="/terms">Terms of service</Link>
+            <Link href="/refund-policy">Refunds &amp; cancellation</Link>
+            <Link href="/contact">Contact</Link>
+          </nav>
           {/* Computed, not typed. A stale year is a small lie on a page arguing
               that none of its numbers are invented. */}
           <p style={{ fontSize: '0.875rem' }}>
