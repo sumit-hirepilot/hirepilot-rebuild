@@ -88,6 +88,90 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.20 — CLOSED. Every job a user sees carries a score. Verified on production.
+
+Cause confirmed by measurement, not assumed: A7.17 made the index the universe,
+correctly, but scoring runs periodically, so a job ingested since the last
+sweep has no score for this user - and "past 24 hours" selects exactly those
+rows.
+
+  BEFORE (production)            AFTER
+  default feed   0 of 20         0 of 20
+  24h filter    20 of 20         0 of 20
+  keyword        0 of 20         0 of 20
+  keyword + 24h  2 of 4          0 of 4
+
+The page is scored on the way out: after the filters choose the rows, before
+the order is decided, for the twenty rows on the page and not the 24,800 behind
+them. Persisted, so once per user per job. Deliberately NOT filtered by
+MATCH_THRESHOLD - a row the user is looking at needs a score whatever it is,
+and dropping the weak ones would re-score them on every page view while still
+leaving them blank on screen.
+
+ORDER. Rows arrive from SQL ordered by a score they do not yet have, so the
+page is re-sorted once the scores exist - otherwise the newest job, by
+definition the least likely to have been scored, ranks below every stale one
+under "Newest first". That needs a comparator agreeing exactly with the SQL
+ORDER BY, and writing the order twice is how A7.17's ranking paths drifted.
+backend/services/jobOrder.js declares it once and renders both. That also
+closes A7.8's shared-helper concern for this list.
+
+WITHHELD, NOT BLANK. A row that still cannot be scored is dropped from a ranked
+view and counted in ranking.withheldUnscored - a user who reached the list by
+matching must not be handed a row nothing matched. Constraint 1.
+
+EVICTION. calculateMatchesForUser deletes everything outside its top-500, which
+would have wiped on-demand scores within the hour. job_matches.on_demand marks
+them, the sweep skips them, and they carry their own bound (2,000 per user,
+newest kept) because the volume has been filled once already.
+
+p95 MEASURED, warm, before -> after:
+  default p50 0.413 -> 0.406 | 24h p50 0.354 -> 0.349 | keyword p50 1.345 -> 1.329
+Unchanged. The first reading after deploy showed 40s timeouts on the default
+feed; that was the service restarting, and re-measuring warm is the difference
+between a finding and a false alarm.
+
+ACCEPTANCE, on production, at 375 / 768 / 1440, no horizontal overflow, and
+zero console errors on a FRESH document:
+  /dashboard  5 rows, 5 scores | /jobs 20/20 | /jobs?datePosted=24h 20/20
+  /jobs?keywords=designer 20/20 | keywords+24h 4/4
+  unscoredInPage 0 and withheldUnscored 0 on every one.
+
+Also fixed here: the dashboard printed "75" with no unit, contradicting the
+rule jobs.js states explicitly - a bare number is not a score, the % carries
+the meaning. Guarded across every page.
+
+A NOTE ON THE CONSOLE CHECK. The first read showed a wall of CORS failures
+against /api/notifications, /api/profile, /api/matches. They were deploy-window
+artifacts held in an old tab's buffer: cors() is wide open, every preflight
+returns 204 with access-control-allow-origin, and a fresh document logs
+nothing. A retained buffer reads as a live error - check on a new document.
+
+153 backend / 109 frontend, 91/91 guards proven red.
+
+## A7.4b — CLOSED. The stored screening reasons, corrected.
+
+PATCH /api/apply/queue/:id/questions persists each reason into
+applications.screening_answers, so A7.4's generator fix did not change rows
+already written. Reproduced: GET /api/apply/blockers returned 8 affected
+questions across 6 applications.
+
+Regenerated, not patched: the stored question carries `suggestion` - the saved
+answer the corrected sentence names - so the new reason is built by the
+generator's own function, now the single definition of that sentence. Only
+`reason` is written; answers are the user's own data and a demographic answer
+must never be rewritten by a migration. Idempotent, anchored, and it declines
+to guess when there is no saved answer to name.
+
+Recorded in data_corrections before applying AND the applied rowCount returned,
+because A7.2 reported 399 rows corrected while changing none.
+
+PRODUCTION: field-integrity staleScreeningReasons {applications: 0,
+questions: 0}; /api/apply/blockers carries no key; the page now reads
+Your saved answer ("Decline To Self Identify") is not one of this form's
+options - which is also the more useful sentence, since it names the thing the
+user has to act on.
+
 ## A7.4 — CLOSED for generated text. One data correction still open (specified below).
 
 REPRODUCED FIRST, and the filed symptom did not hold where it was filed. The
@@ -576,7 +660,9 @@ identical response SHAPE every time, `ranking` always present.
   `frontend/scripts/prove-guards-red.js`.
 - Verified locally AND on production.
 
-Then: A7.5 (full sweep), A7.4, A7.8, A7.10, A7.18, Wave C, then B1-B5.
+Then: A7.25 (landing truth + pricing + footer), A7.5 (full sweep), A7.21 (link audit),
+A7.10, A7.18, A7.19, Wave C, then B1-B5.
+(A7.20, A7.4b, A7.4, A7.17, A7.13, A7.11, A7.14, A7.6, A7.9 CLOSED; A7.8 closed for the jobs list.)
 (A7.17, A7.13, A7.11, A7.14, A7.6, A7.9 CLOSED and verified on production.
 A7.5 partially closed - the two dead controls; the full sweep is still open.)
 
