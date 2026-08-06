@@ -37,7 +37,20 @@ app.get('/', (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
-    res.json({ status: 'ok', timestamp: result.rows[0] });
+    /*
+     * GOAL 1e — RSS on demand, because the load test needs a reading per step
+     * and the watchdog only samples every five minutes. The ceiling is 1 GB
+     * (Railway trial plan limit), so this is the number that decides whether
+     * the process survives a given level of concurrency.
+     */
+    const mem = process.memoryUsage();
+    res.json({
+      status: 'ok',
+      timestamp: result.rows[0],
+      rssMb: Math.round(mem.rss / 1048576),
+      heapUsedMb: Math.round(mem.heapUsed / 1048576),
+      uptimeSeconds: Math.round(process.uptime()),
+    });
   } catch (err) {
     console.error('Health check failed:', err);
     res.status(500).json({ status: 'error', error: err.message });
