@@ -220,6 +220,35 @@ available to me can lift it. Item A's remaining steps (queue an application,
 A4 receipt, tracker, 1440 pass, restore the account) are gated on it.
 Re-checked at every goal boundary this session.
 
+## INCIDENT — API 502, self-inflicted, during A7.11 measurement.
+
+WHAT HAPPENED. While measuring the date filter on production I paged deep into
+the feed to inspect the tail: sort=recent&datePosted=7&limit=100&page=250, and
+again at 254. That is OFFSET 24,900 with limit 100 over a CTE that ranks the
+whole 25,418-row index, three times in succession. The API stopped responding
+immediately afterwards - Railway's edge returning "Application failed to
+respond", the container not answering at all, while the frontend stayed up.
+It did not recover on its own within six minutes of polling.
+
+The API had been verified healthy after the b8b70c7 deploy and answered many
+requests during this same session, so the deploy is not the suspect. The deep
+pages are.
+
+WHAT IT SAYS ABOUT THE PRODUCT, not just about me. A user cannot type
+page=250, but nothing stops them: `page` is taken from the query string and
+used directly, and the feed has no upper bound on page or on limit. A single
+request can therefore ask the database to rank and skip the entire index. That
+is a denial-of-service surface reachable from a URL bar, and it is the same
+class as everything else this week - an input nobody clicked, so nobody found
+it.
+
+FIX, next goal: bound page and limit server-side, state the clamp in the
+response rather than silently truncating, and add the endpoint test that a
+request past the bound is refused or clamped rather than executed. A7.9's
+diversity window already bounds the fetch INSIDE the window; past it the code
+falls back to plain LIMIT/OFFSET with no ceiling, which is exactly the path
+that was hit.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
