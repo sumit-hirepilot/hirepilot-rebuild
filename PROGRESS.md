@@ -167,6 +167,59 @@ GUARD: feedPaginationCoherence.test.js, on the property not the SQL, on the
 pure function AND through GET /api/jobs. Proved red - the old cap approach
 fails the same assertion and reproduces the unreachable rows.
 
+## SCHEMA READ-BACK + A7.18 — CLOSED. Verified on production.
+
+DATABASE CLAIMS (new standing rule, applied retroactively). Regexing
+migrations.js proves a statement is WRITTEN, never that it RAN - runMigrations
+logs a failure and continues, so the test is green either way. The indexes had
+the read-back half via db-health; the CHECK constraints did not, and neither did
+submission_receipts, its immutability TRIGGER, or its unique index - the three
+things standing behind "applied requires a submission record". A trigger that
+never got created leaves receipts editable and the source test still passes.
+services/schemaClaims.js declares all 8 claims (tables, indexes + uniqueness,
+constraints, triggers, and one column default whose ABSENCE is the claim:
+applications.applied_at). GET /api/jobs/db-health reports them.
+READ BACK FROM PRODUCTION: all 8 present, allSchemaClaimsPresent true.
+The reporter is proved on a known negative per kind - which caught a real flaw
+in it: the uniqueness check matched "unique" anywhere in the definition, and the
+index is NAMED ..._app_unique, so it read a plain index as unique.
+
+A7.18 — select-all on the review queue. Twenty clicks to clear a page is a
+queue people stop clearing. Ticks the page, shows a partial selection as
+indeterminate rather than rounding it, sends ONE request; the bulk UPDATE is
+scoped by user_id AND status='pending_review' in the statement itself, and ids
+that did not move are named rather than dropped from the count.
+FOUND ON THE WAY, larger than the feature: POST /applications/:id/approve wrote
+status='applied'. A draft has no submitted_at/verified_at/confirmation and is
+not manual - exactly what applications_applied_requires_submission refuses. The
+UPDATE could only ever raise, so the button could only ever 500, while the copy
+promised "approve to actually mark them applied". Both approve paths now write
+'approved'; the copy says nothing is applied until a receipt returns. D37.
+VERIFIED ON PRODUCTION: approve-bulk 400s an empty list, and reports
+unchanged:[999999999] for a row the caller does not own.
+
+## NEXT GOAL — A7.11, executable cold.
+
+himalayas supplies no posted_at for 4,663 rows, 19% of the index. Silently
+dropping a fifth of the index out of a recency sort is not an option.
+Two acceptable outcomes, in order of preference:
+  1. Backfill posted_at from the original posting URL at ingest.
+  2. State the exclusion in the UI, on the surface where the sort is chosen.
+D25 applies: a status code never retires a source or a posting - a 403/429 on
+the posting URL means "cannot tell", not "no date".
+Reproduce the 4,663 count on production before changing anything. The count is
+already surfaced as ranking.undatedTotal - read it back rather than trusting
+this note.
+Then A7.13, A7.19 (assessment table first: live, not duplicate, machine-readable
+permission signal, not paywalled, posted_at per row, employer board not a
+bidding marketplace; India sources rank ahead of any Western remote board),
+then Wave C (C1+C1a+C1b, C2-C5), then B1-B5.
+
+STILL BLOCKED, operator: production submissions are HALTED and neither lever
+available to me can lift it. Item A's remaining steps (queue an application,
+A4 receipt, tracker, 1440 pass, restore the account) are gated on it.
+Re-checked at every goal boundary this session.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
