@@ -696,3 +696,19 @@ D38 — A write path is not proven unless it can satisfy the constraints that
       did not. A failed application is one where nothing reached anyone. Retry
       now returns the row to 'approved' - back in the queue, which is what the
       button has always said it does.
+
+D39 — Paging is bounded server-side, and the bound is stated.
+      `page` and `limit` came off the query string and were used directly, with
+      no ceiling on either, so one request could ask the database to rank and
+      skip the whole index. GET /api/jobs?limit=100&page=250 is OFFSET 24,900
+      over a CTE ranking 25,418 rows; three in succession took the production
+      API down, and it did not recover on its own - it needed a redeploy. I
+      typed those requests during A7.11 measurement, but nothing stopped a user
+      typing them: it was a denial of service reachable from the URL bar, and
+      the same class as the rest of this week - an input nobody clicked, so
+      nobody found it.
+      limit caps at 100, offset at 5,000. Clamped rather than refused, and
+      REPORTED in `paging` rather than silently truncated: a response that hands
+      back page 50 while calling it page 250 is the A7.9 defect wearing a
+      different hat. `total` still counts every row, so the bound hides nothing,
+      and rows past it stay reachable by filtering or sorting.

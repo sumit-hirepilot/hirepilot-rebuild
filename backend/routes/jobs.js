@@ -779,9 +779,43 @@ const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, appl
 router.get('/', attachUserIfPresent, async (req, res) => {
   try {
     const {
-      page = 1, limit = 20, search, source, location, experience, includeRelated,
+      page: rawPage = 1, limit: rawLimit = 20, search, source, location, experience, includeRelated,
       scope, datePosted, jobType, company,
     } = req.query;
+
+    /*
+     * Bounded, because these came straight off the query string and were used
+     * as-is. `page=250&limit=100` is OFFSET 24,900 over a CTE that ranks the
+     * whole index; three of those in succession took the production API down
+     * hard enough that it did not recover on its own. A user cannot type that
+     * by accident, but nothing stopped them typing it, which made a
+     * denial-of-service reachable from the URL bar. Same class as the rest of
+     * this week: an input nobody clicked, so nobody found it.
+     *
+     * Clamped rather than refused, and STATED rather than silently truncated -
+     * a page that quietly hands back different rows than were asked for is the
+     * A7.9 defect again. Rows past the bound are still reachable by filtering
+     * or sorting, and `total` still counts them honestly.
+     */
+    const MAX_LIMIT = 100;
+    const MAX_OFFSET = 5000;
+
+    const requestedLimit = Math.floor(Number(rawLimit));
+    const limit = Math.min(Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 20), MAX_LIMIT);
+
+    const requestedPage = Math.floor(Number(rawPage));
+    const maxPage = Math.max(1, Math.floor(MAX_OFFSET / limit));
+    const page = Math.min(Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1), maxPage);
+
+    const paging = {
+      page,
+      limit,
+      maxPage,
+      requestedPage: Number.isFinite(requestedPage) ? requestedPage : 1,
+      clamped: Number.isFinite(requestedPage) ? requestedPage > maxPage : false,
+      limitClamped: Number.isFinite(requestedLimit) ? requestedLimit > MAX_LIMIT : false,
+    };
+
     const offset = (page - 1) * limit;
 
     /*
@@ -1339,8 +1373,14 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     res.json({
       total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page,
+      limit,
+      /*
+       * A7.11 incident — what the server actually did with the paging the
+       * caller asked for. Silence here is how a clamped page reads as a real
+       * one and a client pages forever into rows it will never be given.
+       */
+      paging,
       jobs: decorate(jobs),
       noExactMatches,
       relatedJobs: decorate(relatedJobs),
