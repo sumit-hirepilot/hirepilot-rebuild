@@ -22,6 +22,19 @@ const runAutoApplyForUser = async (user) => {
     return { applied: 0, flagged: 0, skipped: 0, pendingReview: 0 };
   }
 
+  /*
+   * Item 4 — the tier gate, which was written and never called.
+   *
+   * plans.can(userId, 'autoApply') existed and nothing invoked it, so a user
+   * on a tier without auto-apply ran auto-apply: the preference alone decided.
+   * A capability that is sold per tier has to be checked where the capability
+   * runs, not where it is displayed.
+   */
+  const { can } = require('../routes/plans');
+  if (!(await can(user.id, 'autoApply'))) {
+    return { applied: 0, flagged: 0, skipped: 0, pendingReview: 0, blocked: 'tier' };
+  }
+
   // Item 0 — the server ceiling wins over any per-user preference.
   const dailyLimit = Math.min(prefs.auto_apply_limit_per_day || 5, MAX_DAILY_SUBMISSIONS);
   const minScore = prefs.auto_apply_min_score != null ? Number(prefs.auto_apply_min_score) : 0.75;

@@ -117,6 +117,22 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- Item 4: credits and tiers enforce server-side ---- */
+  { suite: 'submissionGate', dir: 'backend', base: true,
+    test: 'refuses a submission when the allowance is exhausted',
+    file: 'backend/services/submissionGate.js',
+    mutate: (s) => s.replace('if (credits && Number.isFinite(credits.remaining) && credits.remaining <= 0) {',
+      'if (false) {') },
+  { suite: 'submissionGate', dir: 'backend', base: true,
+    test: 'refuses rather than granting unlimited use when the check itself fails',
+    file: 'backend/services/submissionGate.js',
+    mutate: (s) => s.replace("return { allowed: false, reason: 'credit_check_failed', message: 'Could not confirm your remaining applications.' };",
+      '/* fall through */') },
+  { suite: 'submissionGate', dir: 'backend', base: true,
+    test: 'auto-apply asks whether the plan includes it',
+    file: 'backend/services/autoApplyEngine.js',
+    mutate: (s) => s.replace("if (!(await can(user.id, 'autoApply'))) {", 'if (false) {') },
+
   { suite: 'emptyStateCopy',
     test: 'offers to remove exactly the filter it blamed',
     file: 'pages/jobs.js',

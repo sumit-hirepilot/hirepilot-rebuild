@@ -68,6 +68,33 @@ async function checkSubmissionAllowed(userId) {
   if (await submissionsHalted()) {
     return { allowed: false, reason: 'halted', message: 'Submission is paused for all accounts.' };
   }
+
+  /*
+   * Item 4 — credits, enforced here rather than only counted afterwards.
+   *
+   * spend() runs after a verified receipt and deliberately never blocks: by
+   * then the application has already reached the employer, and refusing to
+   * record it would lose the only thing worth keeping. That makes it a ledger,
+   * not a limit. The limit has to be checked BEFORE the work, and this is the
+   * one place every submission passes through.
+   */
+  try {
+    const { readCredits } = require('../routes/plans');
+    const credits = await readCredits(userId);
+    if (credits && Number.isFinite(credits.remaining) && credits.remaining <= 0) {
+      return {
+        allowed: false,
+        reason: 'no_credits',
+        used: credits.used,
+        cap: credits.total,
+        message: `You have used all ${credits.total} applications on your plan this month.`,
+      };
+    }
+  } catch (err) {
+    // A credit check that cannot run must not silently grant unlimited use.
+    console.error('submissionGate: credit check failed, refusing:', err.message);
+    return { allowed: false, reason: 'credit_check_failed', message: 'Could not confirm your remaining applications.' };
+  }
   const used = await submittedToday(userId);
   if (used >= MAX_DAILY_SUBMISSIONS) {
     return {

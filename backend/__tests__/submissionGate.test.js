@@ -176,3 +176,69 @@ describe('Item 0 — an authorisation check that errors is a denial', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('Item 4 — credits are a limit, not just a counter', () => {
+  const gateMod = require('../services/submissionGate');
+
+  it('refuses a submission when the allowance is exhausted', async () => {
+    query.mockImplementation((sql) => {
+      if (/FROM system_flags/.test(sql)) return Promise.resolve({ rows: [{ value: 'false' }] });
+      if (/credits_total, credits_used/.test(sql) || /plan_tier/.test(sql)) {
+        return Promise.resolve({ rows: [{ plan_tier: 'starter', credits_total: 600, credits_used: 600 }] });
+      }
+      if (/COUNT\(\*\)::int AS n FROM applications/.test(sql)) return Promise.resolve({ rows: [{ n: 0 }] });
+      return Promise.resolve({ rows: [] });
+    });
+    const res = await gateMod.checkSubmissionAllowed(42);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('no_credits');
+  });
+
+  it('refuses rather than granting unlimited use when the check itself fails', async () => {
+    // A limit that opens when it cannot be read is not a limit.
+    query.mockImplementation((sql) => {
+      if (/FROM system_flags/.test(sql)) return Promise.resolve({ rows: [{ value: 'false' }] });
+      return Promise.reject(new Error('db down'));
+    });
+    const res = await gateMod.checkSubmissionAllowed(42);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('credit_check_failed');
+  });
+
+  it('allows a submission while credits remain', async () => {
+    query.mockImplementation((sql) => {
+      if (/FROM system_flags/.test(sql)) return Promise.resolve({ rows: [{ value: 'false' }] });
+      if (/credits_total, credits_used/.test(sql) || /plan_tier/.test(sql)) {
+        return Promise.resolve({ rows: [{ plan_tier: 'starter', credits_total: 600, credits_used: 3 }] });
+      }
+      if (/COUNT\(\*\)::int AS n FROM applications/.test(sql)) return Promise.resolve({ rows: [{ n: 0 }] });
+      return Promise.resolve({ rows: [] });
+    });
+    const res = await gateMod.checkSubmissionAllowed(42);
+    expect(res.allowed).toBe(true);
+  });
+
+  it('spends a credit only on a verified receipt, never on an attempt', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'apply.js'), 'utf8');
+    // The single spend call sits behind the evidence check, so a failed or
+    // stalled application costs nothing.
+    const calls = src.match(/spendCredit\([^)]*\)/g) || [];
+    expect(calls).toHaveLength(1);
+    const idx = src.indexOf('spendCredit(');
+    const before = src.slice(Math.max(0, idx - 900), idx);
+    expect(before).toMatch(/status = 'submitted'|r\.rows\.length/);
+  });
+});
+
+describe('Item 4 — the tier gate is actually checked', () => {
+  it('auto-apply asks whether the plan includes it', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'autoApplyEngine.js'), 'utf8');
+    // `can` existed and nothing called it: the preference alone decided.
+    expect(src).toMatch(/can\(user\.id, 'autoApply'\)/);
+    expect(src).toMatch(/blocked: 'tier'/);
+  });
+});
