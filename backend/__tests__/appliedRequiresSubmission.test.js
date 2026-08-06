@@ -18,6 +18,7 @@ const express = require('express');
 
 jest.mock('../db', () => ({ query: jest.fn() }));
 jest.mock('../middleware/auth', () => ({
+  attachUserIfPresent: (req, _res, next) => { req.user = req.user || { id: 42 }; next(); },
   verifyToken: (req, _res, next) => { req.user = { id: 42, email: 'nobody@example.com' }; next(); },
 }));
 

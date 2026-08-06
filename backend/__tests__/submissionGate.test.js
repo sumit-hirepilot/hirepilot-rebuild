@@ -114,14 +114,32 @@ describe('Item 0 — Greenhouse only', () => {
 });
 
 describe('Item 0 — the switch can actually be flipped', () => {
-  it('refuses when no secret is configured', async () => {
+  it('refuses a caller who is neither the secret holder nor an admin', async () => {
     delete process.env.ADMIN_HALT_SECRET;
+    query.mockResolvedValue({ rows: [{ is_admin: false }] });
     const res = await request(app()).post('/api/apply/admin/halt').send({ halted: true });
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(403);
+  });
+
+  it('lets the admin account pull it with no environment access at all', async () => {
+    /*
+     * The secret needs an env var, and the app's Railway project is not
+     * reachable from the machine that built this. A kill switch nobody can
+     * pull is not a kill switch, so the owner's account is a second lever.
+     */
+    delete process.env.ADMIN_HALT_SECRET;
+    query.mockImplementation((sql) => {
+      if (/SELECT is_admin FROM users/.test(sql)) return Promise.resolve({ rows: [{ is_admin: true }] });
+      return Promise.resolve({ rows: [] });
+    });
+    const res = await request(app()).post('/api/apply/admin/halt').send({ halted: true });
+    expect(res.status).toBe(200);
+    expect(res.body.halted).toBe(true);
   });
 
   it('refuses a wrong secret', async () => {
     process.env.ADMIN_HALT_SECRET = 'right';
+    query.mockResolvedValue({ rows: [{ is_admin: false }] });
     const res = await request(app())
       .post('/api/apply/admin/halt').set('x-admin-secret', 'wrong').send({ halted: true });
     expect(res.status).toBe(403);
@@ -146,5 +164,15 @@ describe('Item 0 — the switch can actually be flipped', () => {
     const res = await request(app())
       .post('/api/apply/admin/halt').set('x-admin-secret', 'right').send({ halted: 'true' });
     expect(res.body.halted).toBe(false);
+  });
+});
+
+
+describe('Item 0 — an authorisation check that errors is a denial', () => {
+  it('does not 500, and does not let anyone through, when the admin lookup fails', async () => {
+    delete process.env.ADMIN_HALT_SECRET;
+    query.mockImplementation(() => Promise.reject(new Error('db down')));
+    const res = await request(app()).post('/api/apply/admin/halt').send({ halted: true });
+    expect(res.status).toBe(403);
   });
 });

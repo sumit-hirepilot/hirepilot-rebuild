@@ -22,6 +22,7 @@ jest.mock('../services/matchingEngine', () => ({
 // Every route under test is authenticated; the identity is not what is being
 // tested, so it is injected rather than exercised.
 jest.mock('../middleware/auth', () => ({
+  attachUserIfPresent: (req, _res, next) => { req.user = req.user || { id: 42 }; next(); },
   verifyToken: (req, _res, next) => { req.user = { id: 42 }; next(); },
 }));
 

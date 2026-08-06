@@ -38,7 +38,7 @@ const {
 } = require('../services/submissionGate');
 const express = require('express');
 const { query } = require('../db');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 const { buildTailoredText } = require('../services/resumeTailorEngine');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
 const { checkAts } = require('../services/atsChecker');
@@ -1055,10 +1055,31 @@ router.post('/queue/:id/skip', verifyToken, async (req, res) => {
  * account system is the thing that is wrong, and it refuses outright if the
  * secret is unset - an unprotected halt endpoint would itself be the incident.
  */
-router.post('/admin/halt', async (req, res) => {
+router.post('/admin/halt', attachUserIfPresent, async (req, res) => {
+  /*
+   * Two independent ways in, because either one alone has a failure mode that
+   * matters: the secret needs environment access nobody may have at the
+   * moment it is needed, and the admin account needs the login system to be
+   * working. Whichever is available is enough.
+   */
   const secret = process.env.ADMIN_HALT_SECRET;
-  if (!secret) return res.status(503).json({ error: 'Halt control is not configured' });
-  if (req.get('x-admin-secret') !== secret) return res.status(403).json({ error: 'Forbidden' });
+  const bySecret = Boolean(secret) && req.get('x-admin-secret') === secret;
+
+  let byAdmin = false;
+  if (!bySecret && req.user?.id) {
+    try {
+      const u = await query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
+      byAdmin = u?.rows?.[0]?.is_admin === true;
+    } catch (err) {
+      // Deny, never 500. An authorisation check that errors is a denial.
+      console.error('halt: admin lookup failed:', err.message);
+      byAdmin = false;
+    }
+  }
+
+  if (!bySecret && !byAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   const halted = req.body && req.body.halted === true;
   await query(

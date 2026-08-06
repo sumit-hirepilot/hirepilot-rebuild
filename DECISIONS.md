@@ -403,3 +403,37 @@ Additionally, before any sweep: Auto-Pilot off server-side, or run against a
 seeded account. The operator's account holds 6 approved applications queued
 with Auto-Pilot on, which is exactly the state where a stray click costs
 something that cannot be taken back.
+
+
+## D27 — the tester-cohort submission configuration
+
+Auto-Pilot stays ON and fully autonomous for 20-30 real testers. Real
+applications reach real employers under testers' names. The full configuration,
+so it can be audited rather than remembered:
+
+  Adapters ....... Greenhouse only. Lever and Ashby stay commented out of
+                   SUPPORTED_ATS; neither has run against a live form. Pinned.
+  Daily cap ...... 5 per user per day, server-side, at the one transition to
+                   'submitting'. Counts 'submitting' as well as 'submitted',
+                   so parallel starts cannot all pass the check at once.
+                   auto_apply_limit_per_day is user-settable and the operator
+                   account sat at 50; the write path and the runner now clamp.
+  Kill switch .... system_flags.submissions_halted, effective on the next
+                   request, no deploy and no restart.
+  Levers ......... (1) POST /api/apply/admin/halt with x-admin-secret, needs
+                   ADMIN_HALT_SECRET in the environment.
+                   (2) The same endpoint from the admin account (users.is_admin,
+                   seeded to the lowest user id, which predates every tester).
+                   (3) SUBMISSIONS_HALTED=1 in the environment.
+  Fail mode ...... CLOSED. Unreadable flag halts submission; an admin lookup
+                   that errors denies the caller.
+
+WHY TWO LEVERS. ADMIN_HALT_SECRET could not be set from this machine - the
+app's Railway project is not under the logged-in account, which lists only
+hirepilot-site and regintel-ai. A kill switch nobody can pull is not a kill
+switch, so the owner's account is a second, environment-free lever. The secret
+path stays for when the login system is what has failed.
+
+Granting is_admin to the lowest user id is a deliberate privilege decision:
+the operator's own account, predating every tester, and no other account gains
+anything.

@@ -702,6 +702,20 @@ const STATEMENTS = [
      ON CONFLICT (key) DO NOTHING`,
 
   /*
+   * Item 0 — an operator lever that needs no environment access.
+   *
+   * ADMIN_HALT_SECRET cannot be set from here: the app's Railway project is
+   * not under the account this machine is logged into. A kill switch nobody
+   * can pull is not a kill switch, so the owner's own account can pull it.
+   *
+   * Seeded to the lowest user id, which is the account that predates every
+   * tester. Additive and idempotent; no other account gains anything.
+   */
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE`,
+  `UPDATE users SET is_admin = TRUE
+     WHERE id = (SELECT MIN(id) FROM users) AND is_admin = FALSE`,
+
+  /*
    * A7.2 (second half) — correct the rows that predate the ingest guard.
    *
    * 181 himalayas rows carry the literal string `name` as company_name. The
