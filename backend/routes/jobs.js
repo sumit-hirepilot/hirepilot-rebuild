@@ -396,7 +396,21 @@ router.get('/field-integrity', async (req, res) => {
       'unknown', 'name', 'title', 'company', 'company_name', 'location', 'nan'];
     const { rows } = await query(
       `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(company_name,''))) = ANY($1))::int AS bad_company,
+              /*
+               * A7.2 — a fabricated value and a missing one are different
+               * states, and only one of them is a lie. "name" claims an
+               * employer that does not exist; NULL claims nothing.
+               *
+               * These were one number, folded together by COALESCE(...,'')
+               * against a list containing the empty string. After the
+               * correction nulled 181 rows the count did not move, so the
+               * instrument could not distinguish corrected from uncorrected.
+               */
+              COUNT(*) FILTER (
+                WHERE company_name IS NOT NULL
+                  AND LOWER(TRIM(company_name)) = ANY($1)
+              )::int AS bad_company,
+              COUNT(*) FILTER (WHERE company_name IS NULL OR TRIM(company_name) = '')::int AS absent_company,
               COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(title,''))) = ANY($1))::int        AS bad_title,
               COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(location,''))) = ANY($1))::int     AS bad_location
          FROM jobs WHERE is_active = true`,
@@ -406,7 +420,8 @@ router.get('/field-integrity', async (req, res) => {
       `SELECT source, COUNT(*)::int AS bad
          FROM jobs
         WHERE is_active = true
-          AND LOWER(TRIM(COALESCE(company_name,''))) = ANY($1)
+          AND company_name IS NOT NULL
+          AND LOWER(TRIM(company_name)) = ANY($1)
         GROUP BY source ORDER BY bad DESC`,
       [placeholders]
     );
@@ -442,9 +457,23 @@ router.get('/field-integrity', async (req, res) => {
         GROUP BY source ORDER BY still_live DESC, withheld DESC`
     );
 
+    /*
+     * A7.2 — read the correction back rather than trusting that it ran.
+     * runMigrations logs a failed statement and prints "Migrations complete",
+     * so a correction that never applied is indistinguishable from one that
+     * did. Containment is not existence.
+     */
+    const { rows: corrections } = await query(
+      `SELECT correction, row_count, applied_at
+         FROM data_corrections
+        WHERE correction = 'a7.2-null-unparsed-company'
+        ORDER BY applied_at DESC LIMIT 1`
+    );
+
     res.json({
       ...rows[0],
       badCompanyBySource: bySource,
+      correctionApplied: corrections[0] || null,
       nonJobRows: nonJob,
       dateCoverage: {
         undated: undatedTotal,

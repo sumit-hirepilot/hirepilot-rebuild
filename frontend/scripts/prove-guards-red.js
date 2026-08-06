@@ -121,6 +121,16 @@ const CASES = [
     file: 'pages/dashboard.js',
     mutate: (s) => s.replace("{parsedOr(m.company_name, 'Company not stated')}", '{m.company_name}') },
 
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'counts a stored garbage token separately from a missing value',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace('WHERE company_name IS NOT NULL\n                  AND LOWER',
+      'WHERE TRUE\n                  AND LOWER') },
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'reports what the correction actually did',
+    file: 'backend/routes/jobs.js',
+    mutate: (s) => s.replace("FROM data_corrections", 'FROM jobs') },
+
   /* ---- A7.5: a filter control that changes nothing ---- */
   { suite: 'filterControlsApply',
     test: 'applies the date window when it is chosen',

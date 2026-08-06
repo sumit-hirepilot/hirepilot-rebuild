@@ -97,3 +97,36 @@ describe('A7.2 — legacy unparsed companies are corrected, not just counted', (
     expect(NOT_PARSED.has('company')).toBe(true);
   });
 });
+
+describe('A7.2 — the instrument can tell a fabricated value from an absent one', () => {
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'jobs.js'), 'utf8');
+  // Anchored on the alias and read BACKWARDS: the predicate precedes it, so a
+  // forward window from indexOf('bad_company') contains the next column's
+  // filter instead of this one's.
+  const alias = routes.indexOf('AS bad_company');
+  const block = routes.slice(Math.max(0, alias - 700), alias + 400);
+
+  it('counts a stored garbage token separately from a missing value', () => {
+    /*
+     * bad_company used COALESCE(company_name,'') against a token list that
+     * contains the empty string, so a row whose company is NULL counts as bad.
+     * After the correction nulled 181 rows the number did not move, and the
+     * metric could not distinguish "corrected" from "never corrected" - a
+     * measurement that cannot see the change it exists to measure.
+     *
+     * They are different states and only one is a lie: "name" claims an
+     * employer that does not exist, NULL claims nothing.
+     */
+    expect(block).toMatch(/absent_company/);
+    // The fabricated-value count must not fold NULL in.
+    // The predicate precedes its alias in SQL, so this reads in that order.
+    expect(block).toMatch(/company_name IS NOT NULL[\s\S]{0,200}AS bad_company/);
+  });
+
+  it('reports what the correction actually did', () => {
+    // Recorded is not applied. This reads the audit row back, so the claim is
+    // checkable against the running database rather than the boot log.
+    expect(routes).toMatch(/FROM data_corrections/);
+    expect(routes).toMatch(/a7\.2-null-unparsed-company/);
+  });
+});
