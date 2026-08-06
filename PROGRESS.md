@@ -96,6 +96,45 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.8 — CLOSED. One declaration for the order that decides what gets applied to.
+
+A7.7 fixed non-deterministic ordering for the browsable feed. Two queries kept
+the defect, and on these the consequence is not cosmetic:
+
+  apply.js         "apply to all matching" -> ORDER BY overall_score DESC
+                   LIMIT MAX_BULK
+  autoApplyEngine  Auto-Pilot's candidates -> ORDER BY jm.overall_score DESC
+                   LIMIT 50
+
+Both cut a ranked list at a limit, and the score is a weighted sum of four
+coarse components, so ties are common. Which jobs fell inside the limit was
+whatever the plan produced - two identical requests could queue two different
+sets of employers, with no explanation available for why one was chosen. On the
+feed that reads as a strange order; here the product applies to a different
+company.
+
+CANDIDATE_ORDER in backend/services/jobOrder.js declares it once (score, then
+job_id as the unique final key) and both callers render it, aliased where
+needed. Four more LIMIT-ed queries in the same files also ended without a
+unique key - resume selection, last run, question variations, skills - and were
+given one rather than argued to be probably fine.
+
+Not verified by triggering a bulk prepare, deliberately: that queues real
+applications. Verified that the deployed feed returns byte-identical ordering
+across repeated calls, and by the guards.
+
+THREE OF MY OWN INSTRUMENTS FAILED IN THIS GOAL, each caught by the mutation
+audit refusing to call a guard proven:
+  - A grep using [^`\n] in POSIX ERE - which excludes the literal letter "n" -
+    reported no offenders while one existed.
+  - "takes the order from the shared declaration" matched the helper name
+    anywhere in the file, so an unused import satisfied it.
+  - The unique-key pattern listed column names and rejected concept_id, because
+    \bid\b does not match inside an underscored word.
+That is D24 three more times in one goal. The audit is what caught all three.
+
+161 backend / 161 frontend, 108/108 guards proven red.
+
 ## A7.21 — CLOSED. Link and anchor audit, signed in and out, three widths.
 
 29 route/width combinations audited on production. Instrument proved on a known
