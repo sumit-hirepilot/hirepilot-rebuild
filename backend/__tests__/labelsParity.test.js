@@ -35,12 +35,36 @@ describe('A7.4 — backend and frontend humanise identically', () => {
 });
 
 describe('A7.4 — a demographic key is never quoted back at the user', () => {
-  it('prefers the concept label written for people', () => {
-    expect(questionLabel({ conceptLabel: 'Race and Ethnicity', matchedQuestion: 'are_you_hispanic_latino' }))
-      .toBe('Race and Ethnicity');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'services', 'screeningPrefill.js'), 'utf8'
+  );
+
+  it('names the answer that did not fit, not the question key it came from', () => {
+    /*
+     * The page read: Your saved answer to "are_you_hispanic_latino" is not one
+     * of this form's options. Preferring conceptLabel did not fix it - the
+     * stored concept labels ARE those keys, so the first attempt printed the
+     * same token by a different route.
+     *
+     * Naming the question was the wrong idea. What the user needs in order to
+     * act is the answer that did not fit, so they can choose the option that
+     * matches it - which the sibling branch already did.
+     */
+    const reasons = src.match(/reason: `Your saved answer[^`]*`/g) || [];
+    expect(reasons.length).toBeGreaterThanOrEqual(2);
+    for (const r of reasons) {
+      expect(r).not.toMatch(/matchedQuestion|conceptLabel|questionLabel/);
+    }
   });
 
-  it('humanises a bare key rather than printing it', () => {
+  it('says the same thing in both branches', () => {
+    // Two messages for one situation is two situations to a reader.
+    const reasons = src.match(/reason: `Your saved answer[^`]*`/g) || [];
+    const shapes = new Set(reasons.map((r) => r.replace(/\$\{[^}]*\}/g, 'X')));
+    expect(shapes.size).toBe(1);
+  });
+
+  it('still humanises a bare key wherever one is displayed', () => {
     const out = questionLabel({ matchedQuestion: 'are_you_hispanic_latino' });
     expect(out).not.toMatch(/_/);
     expect(out).toBe('Are you hispanic latino');

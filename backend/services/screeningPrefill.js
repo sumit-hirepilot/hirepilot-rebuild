@@ -14,7 +14,6 @@
  */
 
 const { resolve: resolveFromKnowledge, ASK_THRESHOLD } = require('./questionKnowledge');
-const { questionLabel } = require('./labels');
 
 // Maps a job's location string onto a country so work-authorisation and
 // sponsorship questions can be answered per posting rather than globally.
@@ -248,10 +247,21 @@ function prefillAnswers(questions, profile, jobContext = {}) {
             answer: null,
             source: 'requires_user',
             suggestion: similar.answer,
-            // A7.4 - matchedQuestion may be a stored profile KEY. Quoting
-            // "are_you_hispanic_latino" back at someone is bad everywhere and
-            // worse beside a demographic question.
-            reason: `Your saved answer to "${questionLabel(similar).slice(0, 70)}" is not one of this form's options.`,
+            /*
+             * A7.4 - names the ANSWER, not the question it came from.
+             *
+             * This quoted matchedQuestion, which holds a stored profile key,
+             * so the page read: Your saved answer to
+             * "are_you_hispanic_latino" is not one of this form's options.
+             * Preferring conceptLabel did not help - the stored concept labels
+             * ARE those keys.
+             *
+             * Naming the question was the wrong idea anyway. What the user
+             * needs in order to act is the answer that did not fit, so they
+             * can pick the option that matches it. That is what the sibling
+             * branch below already says, and now both agree.
+             */
+            reason: `Your saved answer ("${String(similar.answer).slice(0, 70)}") is not one of this form's options.`,
           };
         }
         return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion,
