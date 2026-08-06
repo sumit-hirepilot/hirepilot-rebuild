@@ -552,3 +552,59 @@ D32 — A guard that exists and is not invoked is indistinguishable from no
       so no diff could ever contain a removal and the rule had a green test
       over zero live executions. "Tailoring may only add" is asserted where it
       is observable, on the engine's output.
+
+D33 — A rule is not proven by a passing test. It is proven by a test that
+      fails when the rule is removed AND by evidence the rule is reachable
+      from a live call path.
+      Precedent: resumeGuard's no_deletion rule was structurally incapable of
+      firing - verifyAdditions passes an empty current text, so no diff could
+      ever contain a removal. Green test, zero live executions, for as long as
+      it existed. Not a broken instrument: a wired guard with a dead rule.
+      Swept every wired guard's branches for the same shape. Two more found,
+      and both failed OPEN, which is why unreachable is not merely untidy:
+        - plans.can() ended `return true` for any capability other than
+          autoApply. No live caller passes anything else, so it never ran - but
+          the first can(id, 'exportPdf') added without a TIERS entry would have
+          granted it to every account while reading like an enforced gate. Now
+          refuses and logs.
+        - resumeGuard's `if (num && !corpus.numbers.has(num))` could not have a
+          false `num`: reaching it means a digit matched, and neither the
+          replace nor trimToken can remove every digit. Verified over every
+          token the live path can produce from a 3-character alphabet - 2835
+          digit-bearing tokens, zero empties. Had it ever been false it would
+          have skipped the invented-number check, the one rule here that exists
+          because a fabricated metric is the worst thing this product could
+          write. Condition removed.
+      CHECK constraints were the same story one layer down. Both application
+      constraints were asserted by regexing migrations.js for the constraint
+      text, which proves the statement is WRITTEN and cannot prove it RAN -
+      runMigrations logs a failed statement and continues, so an ADD CONSTRAINT
+      that threw is indistinguishable from one that worked, and the test is
+      green either way. The indexes already had the second half: declared in a
+      test, then read back from pg_indexes through /api/jobs/db-health. The
+      constraints now get it too - db-health reports pg_constraint with each
+      predicate, and the reporter is itself proved on a known negative.
+
+D34 — A caller whose target is gone is the same defect as a rule nothing can
+      reach, pointed the other way.
+      "Download PDF" on the resume page called GET
+      /api/resume/tailored/:id/pdf. That route was deleted in 5dddb82, which
+      deliberately replaced server-side rendering with printing from the
+      editor - but the two buttons calling it were never touched. They have
+      returned 404 from that commit onward. Reproduced on production before
+      changing anything. Nothing caught it because no suite on either side of
+      the wire sees both: the backend suite does not know the frontend exists,
+      and the frontend suite mocks fetch.
+      tools/check-frontend-endpoints.js resolves what the backend mounts and
+      serves, flattens path parameters, and fails on any /api call with no
+      route behind it. Proved on the known positive by restoring the historical
+      call. Its first cut resolved zero mounts - because app.use names a
+      variable rather than an inline require - and reported all 90 calls as
+      broken; it now refuses to report anything if it resolves no mounts at
+      all, because a checker that flags everything is as useless as one that
+      flags nothing and considerably more convincing.
+      The buttons now download the tailored TEXT, which is what the product
+      actually holds for that row, under that name. Not re-pointed at the
+      editor: the editor prints the user's resume document and this is a
+      tailored variant of it, so that would download something other than what
+      the button says.

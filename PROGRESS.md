@@ -53,6 +53,11 @@ nothing is done until verified locally AND on production.
  - Sweeps use an ALLOWLIST of known-safe controls; a denylist fails open, and
    the failure mode is an unrecoverable submission. Auto-Pilot off, or a seeded
    account, before any sweep. D26.
+ - A rule is not proven by a passing test. It is proven by a test that fails
+   when the rule is removed AND by evidence the rule is reachable from a live
+   call path. no_deletion was green over zero live executions for as long as it
+   existed; can()'s fallback and the `num &&` guard clause were both unreachable
+   AND fail-open. D33.
  - A guard is not shipped until an ENDPOINT test proves it fires on real input
    through the real path. A unit test on the function proves the guard works
    and says nothing about whether anything runs it - three shipped that way.

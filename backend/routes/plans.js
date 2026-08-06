@@ -124,7 +124,22 @@ async function can(userId, capability) {
   const r = await query('SELECT plan_tier FROM users WHERE id = $1', [userId]);
   const tier = tierOf(r.rows[0]);
   if (capability === 'autoApply') return tier.autoApply;
-  return true;
+
+  /*
+   * Dead branches — this used to `return true`.
+   *
+   * Every live caller passes 'autoApply', so the fallback was unreachable and
+   * nothing could ever have exercised it. Unreachable would be merely untidy;
+   * the direction is the problem. It answered YES for a capability no tier
+   * defines, so the first time someone added can(id, 'exportPdf') without
+   * adding it to TIERS, every account would have been granted it silently and
+   * the call would have read like an enforced gate.
+   *
+   * A capability nobody has defined is not a capability anybody has. Refusing
+   * makes the branch reachable AND makes the failure loud instead of generous.
+   */
+  console.error(`plans.can: no tier defines "${capability}" - refusing`);
+  return false;
 }
 
 /*

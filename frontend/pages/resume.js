@@ -13,6 +13,31 @@ const TABS = ['Resume Manager', 'Tailor for a Job', 'Cover Letters', 'Screening 
 
 // Downloads a file from an authenticated API endpoint (can't just use a
 // plain <a href> since the request needs a Bearer token).
+/*
+ * The tailored text, saved as a file, from what the page already holds.
+ *
+ * There was a "Download PDF" button here pointing at
+ * GET /api/resume/tailored/:id/pdf. That route was deleted in 5dddb82, which
+ * replaced server-side rendering with the editor printing the document the
+ * user is looking at - but these two callers were never updated, so the button
+ * has returned 404 ever since. Reproduced on production before changing it.
+ *
+ * Not re-pointed at the editor: the editor prints the user's resume DOCUMENT,
+ * and this is a tailored variant of it. Sending them there would download
+ * something other than what the button names, which is the failure this whole
+ * pass is about. The tailored text is the thing the product actually holds for
+ * this row, so that is what the button offers, under its real name.
+ */
+function downloadText(text, filename) {
+  const blob = new Blob([String(text || '')], { type: 'text/plain;charset=utf-8' });
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 async function downloadAuthed(url, token, fallbackFilename) {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return false;
@@ -383,9 +408,9 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
               {t.confirmed_at && (
                 <button
                   className={page.secondaryButton}
-                  onClick={() => downloadAuthed(`${base}/api/resume/tailored/${t.id}/pdf`, token, `tailored-${t.job_title}.pdf`)}
+                  onClick={() => downloadText(t.tailored_summary, `tailored-${t.job_title || 'resume'}.txt`)}
                 >
-                  Download PDF
+                  Download text
                 </button>
               )}
               <button className={page.deleteButton} onClick={() => handleDeleteTailored(t.id)}>Delete</button>
@@ -543,9 +568,9 @@ function TailorForJob({ jobs, token, base, reload }) {
               <div className={page.resumeActions}>
                 <button
                   className={page.secondaryButton}
-                  onClick={() => downloadAuthed(`${base}/api/resume/tailored/${result.id}/pdf`, token, `tailored-${result.jobTitle}.pdf`)}
+                  onClick={() => downloadText(result.tailoredText, `tailored-${result.jobTitle || 'resume'}.txt`)}
                 >
-                  Download tailored PDF
+                  Download tailored text
                 </button>
                 <button
                   className={page.secondaryButton}

@@ -614,11 +614,42 @@ router.get('/db-health', verifyToken, async (req, res) => {
         WHERE schemaname = 'public' AND tablename IN ('jobs', 'job_matches')`
     );
     const present = new Set(result.rows.map((r) => r.indexname));
+
+    /*
+     * Dead branches — the CHECK constraints, read from the running database.
+     *
+     * Both were asserted only by regexing migrations.js for the constraint
+     * text. That proves the statement is WRITTEN, which is not the question:
+     * runMigrations logs a failed statement and continues, so an ADD
+     * CONSTRAINT that failed and one that worked produce identical output, and
+     * the test is green either way. The same reasoning already applies to the
+     * indexes above, which is why they are read from pg_indexes rather than
+     * trusted - the constraints simply never got the same treatment.
+     *
+     * A constraint that is not in the table is not enforcing anything, however
+     * carefully its predicate is written.
+     */
+    const wantedConstraints = [
+      'applications_applied_at_requires_submitted',
+      'applications_applied_requires_submission',
+    ];
+    const cons = await query(
+      `SELECT conname, pg_get_constraintdef(oid) AS def
+         FROM pg_constraint
+        WHERE conrelid = 'applications'::regclass AND contype = 'c'`
+    );
+    const byName = new Map(cons.rows.map((r) => [r.conname, r.def]));
+
     res.json({
       indexes: result.rows,
       expected: wanted.map((name) => ({ name, present: present.has(name) })),
       allPresent: wanted.every((name) => present.has(name)),
       retiredStillPresent: retired.filter((name) => present.has(name)),
+      constraints: cons.rows,
+      expectedConstraints: wantedConstraints.map((name) => ({
+        name, present: byName.has(name), def: byName.get(name) || null,
+      })),
+      allConstraintsPresent: wantedConstraints.every((name) => byName.has(name)),
       plan: await feedPlan(req.user.id),
       planFiltered: await feedPlan(req.user.id, { dateFilter: true }),
     });

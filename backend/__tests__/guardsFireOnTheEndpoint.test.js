@@ -297,6 +297,22 @@ describe('verifyAdditions() fires on PUT /api/resume/:id/document', () => {
     expect(saved.meta.title).toBe('Product Designer');
   });
 
+  it('holds back an invented FIGURE, which is a separate rule from an invented word', async () => {
+    /*
+     * Dead branches — invented_number and untraceable_claim are two rules and
+     * both have to be shown reachable from the live path. This bullet is built
+     * only from words the person already used, so untraceable_claim cannot
+     * fire; the sole thing wrong with it is the number.
+     */
+    const doc = DOC();
+    doc.sections[0].items[0].bullets.push({ id: 'b2', text: 'Led the design system used by 300 product teams.' });
+
+    const res = await put(doc);
+
+    expect(res.body.heldForConfirmation.map((f) => f.id)).toContain('b2');
+    expect(res.body.heldForConfirmation.find((f) => f.id === 'b2').why).toMatch(/300/);
+  });
+
   it('holds back an invented employer, not just an invented sentence', async () => {
     const doc = DOC();
     doc.sections[0].items.push({ id: 'itm2', role: 'Director of Engineering', org: 'Netflix', bullets: [] });

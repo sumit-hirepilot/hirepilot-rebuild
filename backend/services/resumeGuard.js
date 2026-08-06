@@ -175,8 +175,25 @@ function verify(currentText, candidateText, corpus) {
       // Numbers are the strictest case - an invented metric is the most
       // damaging and most likely fabrication.
       if (/\d/.test(tok)) {
+        /*
+         * Dead branches — this was `if (num && !corpus.numbers.has(num))`.
+         *
+         * The `num &&` could never be false. Reaching here means /\d/ matched,
+         * the replace keeps every digit, and trimToken strips only leading
+         * [.+#-] and trailing [.,;:!?] - so at least one digit always survives.
+         * Checked over every token the live path can produce from a 3-character
+         * alphabet of digits, punctuation and letters: 2835 digit-bearing
+         * tokens, zero empty results.
+         *
+         * Unreachable would be untidy on its own. The direction is the point:
+         * had it ever been false it would have SKIPPED the invented-number
+         * check entirely, which is the one rule here that exists because an
+         * invented metric is the most damaging thing a resume generator can
+         * produce. A guard clause that can only ever fail open is not worth
+         * the doubt it creates.
+         */
         const num = trimToken(tok.replace(/[^\d%.+-]/g, ''));
-        if (num && !corpus.numbers.has(num)) {
+        if (!corpus.numbers.has(num)) {
           violations.push({
             rule: 'invented_number',
             text: shown.slice(0, 160),
