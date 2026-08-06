@@ -1022,7 +1022,19 @@ export default function Jobs() {
               populated on under a quarter of rows. India is its own bucket
               rather than being buried inside Asia-Pacific. */}
           <FilterPanel
-            label="Location"
+            /*
+             * "Region", not "Location". This panel sat beside a free-text
+             * Location input carrying the same label, so the filter row showed
+             * two different controls called Location - one matching the raw
+             * location string, one bucketing it into continents. A user cannot
+             * choose between two controls with the same name, and setting both
+             * narrows twice for reasons nothing on screen explains.
+             *
+             * Region is what it actually is: the field is `region`, the code
+             * comment above calls it region, and the hint has always said
+             * "Grouped by region". Only the label disagreed.
+             */
+            label="Region"
             hint="Grouped by region. Postings that only say Remote or Hybrid fall under Not specified."
             selected={regions}
             allOption={{
