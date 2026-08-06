@@ -75,6 +75,60 @@ marketing site both live and functional.
 
 ---
 
+## UNWIRED GUARDS — CLOSED. Every guard has a live caller and an endpoint test.
+Verified on production.
+
+The class: a guard that exists and is not invoked is indistinguishable from no
+guard, and the suite is green either way because it tests the function, not the
+path. Three had shipped that way - plans.can() with no caller, the
+untraceable_claim rule bypassed because POST /api/resume/tailor never called
+verifyAdditions, and resumeGuard.verify exported and invoked by nothing.
+
+Census (tools/guard-wiring.js, acorn-parsed, --strict fails CI): 7 guards, 0
+unwired. Parsed and not grepped for a reason - two regex cuts of it reported the
+very defect it exists to find as WIRED. The first counted `jwt.verify` in
+middleware/auth.js as a call to resumeGuard.verify; the second counted the
+import statement that names a symbol as a use of it. Both would have handed back
+a clean bill of health over a live gap.
+
+FOUND AND FIXED, beyond the three:
+ - PUT /api/resume/:id/document saved req.body.doc verbatim. No guard on the
+   path at all, and the editor writes through it on every save - the widest
+   bypass in the product. Now checked per node, only where the text changed.
+ - That node walk does not reach doc.meta, so a job title could be rewritten
+   unchecked and would head every export. Now checked; an untraceable header
+   reverts, because meta has no pending flag and the only other option is
+   publishing it.
+ - routes/matches.js imported calculateJobMatch and never called it.
+
+RETIRED rather than left: resumeGuard.verify is no longer exported - it is
+verifyAdditions' engine, not a guard of its own. Its no_deletion rule is gone:
+verifyAdditions passes an empty current text, so no diff could ever contain a
+removal, and the rule had a green test over zero live executions. "Tailoring may
+only add" is asserted where it can be observed, on the engine's output.
+
+Untraceable content is held pending, never refused. saveDoc regenerates the flat
+text with pending excluded, and that column is what the extension pastes - so
+nothing unverified reaches an employer while the user's own typing is never
+blocked. The criterion is that nothing unverified is SENT.
+
+PROVED ON PRODUCTION, on the live account: a bullet reading "Managed a team of
+25 engineers at Netflix." plus meta.title "Director of Engineering at Netflix"
+came back as heldForConfirmation with reasons, pendingCount 1, the header
+reverted to "Senior Product Designer", and original_file_text contained neither
+- while keeping the real 12% and design-system content. Document then restored.
+Tailoring re-checked across 12 live jobs: 0 invented, 0 leaked, refusals
+carrying reasons ('Marketing' on job 21229, the exact fabrication that started
+this).
+
+CANNOT REGRESS SILENTLY: guardsFireOnTheEndpoint.test.js drives each endpoint
+with input the guard must refuse AND the honest counterpart;
+tools/prove-endpoint-guards-red.js re-runs it with each guard's call deleted and
+requires red - 5/5 confirmed. Both run in ship.sh and CI. Backend floor 218.
+
+NOTE: production submissions are HALTED and I cannot lift it. See BLOCKED.md,
+first section. This blocks every tester.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).

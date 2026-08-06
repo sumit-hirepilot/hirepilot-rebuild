@@ -2,6 +2,36 @@
 
 Goals that failed five attempts, with full diagnosis. Retried at end of wave.
 
+## LIVE PRODUCTION STATE — SUBMISSIONS ARE HALTED, and I cannot lift it
+
+Confirmed on production today, not assumed: POST /api/apply/queue/<id>/start
+returns 429 `{"reason":"halted"}`. The gate runs before the row is touched, so
+the probe used an id that cannot exist and could not have submitted anything.
+
+**Nothing can submit for any account until this is lifted.** It was set
+deliberately, to walk a fresh account through signup without letting it apply
+to a real employer. Lifting it needs a lever I do not have:
+
+* `ADMIN_HALT_SECRET` is still unset on the API service (see below), so the
+  `x-admin-secret` lever does not exist.
+* The admin-account lever needs users.is_admin, seeded to the LOWEST user id.
+  That is not the walkthrough account (id 5), and I do not have the id-1
+  account's password.
+
+What the operator should do, either one:
+
+1. Sign in as the earliest-registered account and
+   `POST /api/apply/admin/halt` with `{"halted": false}`.
+2. Set `ADMIN_HALT_SECRET` on the API service, then the same call with an
+   `x-admin-secret` header. This is worth doing anyway - it is the lever that
+   works when the account system is the thing that is wrong.
+
+Deliberately NOT fixed from here: the honest fix is an operator credential, and
+any new way to switch a safety halt back on from code would be a second door
+into the kill switch. A halt that is hard to lift is the correct failure
+direction; the defect is that it has only one usable lever, which is exactly
+what item 2 above fixes.
+
 ## Carried in from prior work (not yet counted against the 5-attempt rule)
 
 ### #44 — Checkr submit rejected, two different causes
