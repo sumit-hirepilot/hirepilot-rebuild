@@ -475,6 +475,32 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_crash_reports_time ON crash_reports(occurred_at DESC)`,
 
+  /*
+   * work_mem was 4 MB, and the database has spilled 13,326 MB across 3,120
+   * temp files because of it - measured from pg_stat_database, not estimated.
+   * That spill is what failed with 53100 when the volume ran out of room, and
+   * it caused five outages.
+   *
+   * The window function that produced most of it is gone (1f), but 4 MB is the
+   * wrong ceiling regardless: the next sort, join or aggregate that outgrows it
+   * spills exactly the same way, and the jobs table only grows.
+   *
+   * 32 MB is chosen against measured headroom, not by feel. The Postgres
+   * service reports effective_cache_size 5,242,888 kB and shared_buffers
+   * 163,848 kB, so it has gigabytes available - it is a different container
+   * from the 1 GB app. Worst case here is roughly (pool max 15) x (a few sorts)
+   * x 32 MB, comfortably inside that.
+   *
+   * ALTER DATABASE rather than ALTER SYSTEM: it needs no reload, no superuser,
+   * and applies to new connections. Idempotent, and reversible with RESET.
+   */
+  `DO $$
+   BEGIN
+     EXECUTE format('ALTER DATABASE %I SET work_mem = ''32MB''', current_database());
+   EXCEPTION WHEN insufficient_privilege THEN
+     RAISE NOTICE 'work_mem unchanged: insufficient privilege';
+   END $$;`,
+
   /* ---------------------------------------------------------------- *
    * PRD build-out: Inbox, Tracker, Profile defaults, plans & credits
    * ---------------------------------------------------------------- */
