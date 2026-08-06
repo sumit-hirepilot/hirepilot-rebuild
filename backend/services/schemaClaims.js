@@ -130,7 +130,7 @@ async function readBack(query) {
 async function readStorage(query) {
   const [db, tables, settings] = await Promise.all([
     query('SELECT pg_database_size(current_database())::bigint AS bytes'),
-    query(`SELECT relname AS table,
+    query(`SELECT c.relname AS table,
                   pg_total_relation_size(c.oid)::bigint AS total_bytes,
                   pg_relation_size(c.oid)::bigint       AS table_bytes,
                   pg_indexes_size(c.oid)::bigint        AS index_bytes,
