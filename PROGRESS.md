@@ -88,6 +88,67 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.5 — CLOSED. Nav map plus every button, driven on production.
+
+The nav half was already mapped (all 14 routes below). This closes the button
+half: every button on all 13 signed-in routes, clicked, at 375 / 768 / 1440.
+
+  clicked and observed .. 77
+  skipped as unsafe ..... 43  (apply / submit / send / approve / delete /
+                               discard / retry / prepare / run / pay / save)
+  dead controls found ... 1
+
+THE ONE REAL DEFECT. /network "Find contacts": type a company, click, one
+request goes out, nothing renders, no error. POST /api/network/suggest returns
+{ company, areIdentifiedPeople, searches, note } and the page read
+`data.suggestions`. Both halves worked and disagreed about one field name -
+present, functional, blank. Guarded as the contract: the field the page reads
+must be one the endpoint sends, checked against the route source.
+PRODUCTION after: three LinkedIn search links, rel="noreferrer", with the
+"searches to run, not people HirePilot identified" sentence intact.
+
+THE INSTRUMENT WAS THE STORY. The first pass flagged 84 controls as doing
+nothing, because it compared innerText length and the URL - which cannot see a
+drawer open, or a page of twenty similar-length rows change. Re-probed with a
+detector watching the DOM and counting fetches, all of them were alive: View
+Details opens a drawer and fetches twice, pagination re-renders, Auto-Pilot
+toggles and posts, Export CSV requests a file without touching the DOM, and the
+grid/list toggle switches when clicked from the other state. 84 findings, 83 of
+them mine. Measure with something that can see the change.
+
+TWO PROCESS ERRORS, recorded rather than tidied away:
+  - I clicked "Save and continue this application" on production before the
+    exclusion list covered save/update/create. Nothing was submitted -
+    applications remain applied: 0 with no submitted_at, queue unchanged at 6
+    needs_user and 6 approved. The product's own rule (an unanswered question
+    keeps an application parked) is what held. List tightened.
+  - The deploy check grepped the bundle for "searches", which the OLD bundle
+    also contained in unrelated copy ("searches to run against LinkedIn"). It
+    reported DEPLOYED against the old chunk and the fix looked broken on
+    production. Re-checked against the minified form of the actual change
+    (`searches||[]`). An assertion satisfied by an unrelated match, in the
+    deploy check this time.
+
+153 backend / 130 frontend, 99/99 guards proven red.
+
+### Next goal — A7.21, link and anchor audit (executable cold)
+
+- Every <a>, every navigating button, every anchor target, signed IN and signed
+  OUT, at 375 / 768 / 1440. Record label, target, HTTP status, and whether the
+  destination matches the label.
+- Fix: dead anchors, 404s, unexpected external navigation, buttons that
+  navigate nowhere, external links missing rel="noopener"/"noreferrer", and any
+  link reachable at only one breakpoint (the hamburger hides the nav under
+  768 - check what is inside it, not just that it opens).
+- Sample 20 "Original posting" links across sources and confirm each resolves
+  live. Those are the links that take a user to an employer; a 404 there is the
+  product sending someone to a job that no longer exists.
+- Already known good: footer links (/pricing /privacy /terms /refund-policy
+  /contact all 200), the single in-page anchor /#pipeline, and the LinkedIn
+  search links on /network (rel="noreferrer", verified on production).
+
+Then A7.10, A7.18, A7.19, Wave C, B1-B5.
+
 ## A7.25 — CLOSED. Landing truth, pricing, legal pages, footer. Verified on production.
 
 All six claims reproduced against the live page before anything moved. One did
