@@ -34,7 +34,24 @@ const cwd = path.resolve(__dirname, '..', dir);
 const summaryFile = path.join(os.tmpdir(), `jest-summary-${process.pid}-${dir.replace(/\W/g, '')}.json`);
 let failed = false;
 try {
-  execFileSync('npx', ['jest', '--ci', '--json', `--outputFile=${summaryFile}`], {
+  /*
+   * --runInBand: serial, and it is FASTER here - 6s against 12s on the
+   * frontend, 3s against 6s on the backend. These suites are small enough that
+   * worker startup costs more than the parallelism saves.
+   *
+   * It also removes the variable behind a flake I could not settle. The suite
+   * failed 7, then 3, then passed, inside one sitting, with every failing test
+   * passing 3/3 alone. I could NOT reproduce it afterwards: 8 clean runs,
+   * including 3 under six CPU spinners. The failing runs coincided with a
+   * 1,000-connection load test against production - socket and network
+   * contention, not CPU - which my reproduction attempt did not recreate.
+   *
+   * So this is MITIGATION, not a proven fix: it makes the gate deterministic
+   * and happens to be faster. If the flake returns with this in place, the
+   * cause is not worker parallelism and the next suspect is whatever else was
+   * running.
+   */
+  execFileSync('npx', ['jest', '--ci', '--runInBand', '--json', `--outputFile=${summaryFile}`], {
     cwd, stdio: 'inherit', maxBuffer: 64 * 1024 * 1024,
   });
 } catch (err) {
