@@ -822,3 +822,27 @@ D46 — The match scan read the entire index into memory, and it is the first
       exists to remove.
       The memory TRAJECTORY is persisted alongside crash reasons, because the
       final value alone cannot show a climb, and an OOM leaves nothing else.
+
+D47 — Ingest fetched every source concurrently, under a 1 GB ceiling.
+      CAUSE OF ALL FIVE OUTAGES, now confirmed rather than inferred: the
+      Railway service's Replica Limit is Memory 1 GB - the Limited Trial plan
+      ceiling, which cannot be raised without upgrading. The memory graph
+      climbs to ~700 MB and plateaus; the crash record read 551 MB at ten
+      seconds of uptime. Restart policy is on-failure max 10, so the service
+      crash-loops, exhausts its retries and stays dead until a new deploy
+      resets the counter - which is why every recovery looked like it came
+      from a redeploy, and why the watchdog appeared never to work.
+      aggregateJobs ran `Promise.all(SOURCES.map(runSource))` over twelve
+      sources. Measured, not assumed: 9 source fetches in flight at once, each
+      holding that source's rows WITH descriptions. Now 1.
+      The concurrency bought nothing. Ingest runs on a timer; nobody waits for
+      it. It bought only the peak that kills the process.
+      Asserted on OVERLAP rather than on the result, because a sequential and a
+      concurrent run return exactly the same rows - which is why this survived
+      every previous review.
+      Also fixed: the INSERT carried ON CONFLICT (source, external_id), which
+      does not cover jobs_job_url_key. A posting arriving under a new
+      external_id with the same URL threw once per row, every cycle - hundreds
+      of thrown-and-caught errors per run, wasted allocation, and enough noise
+      to bury a real error. Checked before inserting now, because the throw is
+      the expensive part.

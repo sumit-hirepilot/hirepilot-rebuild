@@ -175,6 +175,31 @@ const storeJob = async (jobData) => {
     return { id: existing.rows[0].id, isNew: false, isDuplicateMerge: false };
   }
 
+  /*
+   * GOAL 1d — the duplicate-key flood.
+   *
+   * The INSERT below carries ON CONFLICT (source, external_id), which does not
+   * cover jobs_job_url_key. A posting that arrives under a new external_id but
+   * the same URL - which hackernews does constantly - therefore threw
+   * "duplicate key value violates unique constraint jobs_job_url_key", once
+   * per row, every single ingest cycle. Hundreds of thrown-and-caught errors
+   * per run: wasted work, wasted allocation, and enough noise to bury a real
+   * error in the logs.
+   *
+   * Checked before inserting rather than caught after, because the throw is
+   * the expensive part.
+   */
+  const byUrl = jobData.job_url
+    ? await query('SELECT id FROM jobs WHERE job_url = $1 LIMIT 1', [jobData.job_url])
+    : { rows: [] };
+  if (byUrl.rows.length > 0) {
+    await query(
+      `UPDATE jobs SET ${UPDATE_FIELDS_SQL} WHERE id = $${UPDATE_FIELDS_PARAM_COUNT + 1}`,
+      [...updateFieldsParams(jobData), byUrl.rows[0].id]
+    );
+    return { id: byUrl.rows[0].id, isNew: false, isDuplicateMerge: false };
+  }
+
   const duplicateId = await findCrossSourceDuplicate(jobData.title, jobData.company_name, jobData.posted_at);
   if (duplicateId) {
     await query(
@@ -339,7 +364,24 @@ const aggregateJobs = async () => {
 
   // Sources run independently and in parallel - one failing (even after its
   // retry) never blocks or delays the others.
-  await Promise.all(SOURCES.map((source) => runSource(source, results)));
+  /*
+   * GOAL 1d — ONE SOURCE AT A TIME. This was Promise.all over all twelve.
+   *
+   * Every source's fetch resolves to an array of its rows WITH descriptions,
+   * and Promise.all held all twelve of those arrays alive simultaneously -
+   * himalayas alone pulls 200 postings across 10 pages. The container ceiling
+   * is 1 GB (Railway trial plan limit, confirmed in the dashboard), the
+   * service idles near 700 MB, and the deploy logs at every death show
+   * remoteok, himalayas and jobicy fetching at the same moment. Concurrency
+   * here bought nothing - ingest runs on a timer, nobody waits for it - and
+   * cost the peak that kills the process.
+   *
+   * Sequential means at most ONE source's rows are resident at a time, and the
+   * previous array is unreachable before the next fetch begins.
+   */
+  for (const source of SOURCES) {
+    await runSource(source, results);
+  }
 
   // Mark jobs as inactive if not updated in last 7 days
   try {
