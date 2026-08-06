@@ -92,14 +92,20 @@ describe('A7.1 — a signed-in caller gets the scored feed by default', () => {
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
 
     /*
-     * A7.17 collapsed the branches, so this asserts the PROPERTY rather than
-     * the SQL literal: a per-source rank is computed and capped, and score is
-     * a sort key. The cap is now scoped to the UNFILTERED feed - applied to a
-     * filtered result it would drop rows the user explicitly asked for.
+     * A7.9 moved the cap OUT of SQL. It was
+     * `source_rank <= GREATEST(3, CEIL(page*limit/4))`, which made page and
+     * limit decide how many rows a source could contribute, so each page was
+     * an OFFSET into a differently-capped list and six jobs became unreachable
+     * by paging on production.
+     *
+     * So the SQL no longer carries a cap, and asserting on `source_rank <=`
+     * here would now be asserting the defect. What the SQL still owes is the
+     * ORDER - score first, unscored last - and diversity is asserted where it
+     * now lives, on the served page, in feedPaginationCoherence.
      */
     const pageSql = query.mock.calls[1][0];
     expect(pageSql).toMatch(/ROW_NUMBER\(\) OVER \(\s*PARTITION BY jobs\.source/);
-    expect(pageSql).toMatch(/source_rank\s*<=/);
+    expect(pageSql).not.toMatch(/source_rank\s*<=/);
     expect(pageSql).toMatch(/overall_score DESC NULLS LAST/);
     expect(pageSql).not.toMatch(/ORDER BY source_rank/);
   });
@@ -271,9 +277,12 @@ describe('A7.17 — the reported total is a property of the filter, not of the p
      * cap scales with the page and the COUNT ran inside it. A pagination
      * control reads that as "3 pages", then as "6 pages" one click later.
      *
-     * The cap is a per-page presentation device - every capped row is still
-     * reachable by paging, since the cap relaxes as you go. So the honest
-     * total is the count over the FILTER, and only the page query caps.
+     * "Every capped row is still reachable by paging, since the cap relaxes as
+     * you go" was the reasoning at the time, and A7.9 later measured it as
+     * false: the relaxing cap is exactly why six jobs were unreachable. The
+     * conclusion survives its broken premise - the honest total is the count
+     * over the FILTER - and now neither query carries a cap at all, because
+     * diversity happens after the fetch, over a window, in application code.
      */
     mockRows();
     await request(app()).get('/api/jobs?limit=20').set('Authorization', `Bearer ${token}`);
@@ -281,8 +290,8 @@ describe('A7.17 — the reported total is a property of the filter, not of the p
     const countSql = query.mock.calls[0][0];
     const pageSql = query.mock.calls[1][0];
     expect(countSql).toMatch(/SELECT COUNT\(\*\)/);
-    expect(countSql).not.toMatch(/source_rank <=/);   // the count is uncapped
-    expect(pageSql).toMatch(/source_rank <=/);        // the page still is
+    expect(countSql).not.toMatch(/source_rank <=/);
+    expect(pageSql).not.toMatch(/source_rank <=/);
   });
 
   it('does not let the page number reach the count query at all', async () => {

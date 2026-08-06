@@ -5,6 +5,19 @@ const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
 const { orderBySql, orderFor } = require('../services/jobOrder');
+const {
+  pageOf, BLOCK: DIVERSITY_BLOCK, QUOTA: DIVERSITY_QUOTA,
+} = require('../services/feedDiversity');
+
+/*
+ * A7.9 — how many ranked rows the diversity pass reorders.
+ *
+ * Fixed on purpose. A window that grew with the page would give each page a
+ * different canonical order, which is the defect this replaced. 200 rows is 20
+ * pages at the default size; past it the feed continues in plain ranked order
+ * so nothing becomes unreachable, and the response says which regime applied.
+ */
+const DIVERSITY_WINDOW = 200;
 const { scoreJobsForUser } = require('../services/matchingEngine');
 const { extractSkills } = require('../services/resumeParser');
 const { checkAts, buildAtsGuide } = require('../services/atsChecker');
@@ -985,6 +998,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     let jobs = [];
     let total = 0;
+    /*
+     * A7.9 — stated, not inferred. The ordering guarantee (pages tile one list)
+     * holds inside the diversity window; past it the feed is plain ranked
+     * order. A client that has to guess which regime it is in will guess wrong.
+     */
+    let diversityApplied = false;
     let relatedJobs = [];
     let relatedTotal = 0;
     let noExactMatches = false;
@@ -1062,11 +1081,23 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const rankedCte = mainQuery.cte;
     const floorSql = mainQuery.floor;
 
-    // Diversity cap only on the unfiltered feed - see hasIndexFilter above.
-    const capSql = (!hasIndexFilter && rankByScore)
-      ? ` AND source_rank <= GREATEST(3, CEIL((${Number(page) || 1}::numeric * ${Number(limit)}) / 4))`
-      : '';
-    const where = `WHERE ${tierFilter}${capSql}`;
+    /*
+     * A7.9 — the diversity cap is GONE from SQL.
+     *
+     * It was `source_rank <= GREATEST(3, CEIL(page*limit/4))`, which made page
+     * and limit decide how many rows each source could contribute. Every page
+     * was OFFSET into a differently-capped list, and those lists are not nested
+     * at the front, so a row entering as the cap widened was inserted above
+     * rows already shown and the offset stepped past it. On production, 40 rows
+     * read as one page of 40 and as four pages of 10 differed by six jobs that
+     * paging could not reach at all.
+     *
+     * Diversity now happens once, in application code, over a window that is
+     * the same for every page - see feedDiversity. It has to be page- and
+     * limit-independent or the bug returns in a quieter form: each page would
+     * be internally coherent and still disagree with the others.
+     */
+    const where = `WHERE ${tierFilter}`;
     /*
      * The COUNT deliberately omits the cap. The cap scales with the page, so
      * counting inside it made `total` grow as the user paged - 60 on page 1,
@@ -1084,13 +1115,38 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
     total = parseInt(countResult.rows[0]?.count ?? 0, 10);
 
+    /*
+     * Diversity applies to the unfiltered, score-ranked feed only - the same
+     * condition the SQL cap used. A filtered or recency-sorted list is already
+     * the user's own choice of what to see, and reordering it would be us
+     * overriding that.
+     *
+     * The window is a fixed number of ranked rows, deliberately NOT page*limit.
+     * If the window grew with the page, page 3 would diversify a longer list
+     * than page 1 did, the canonical order would differ between them, and pages
+     * would stop tiling one sequence - which is the original defect wearing a
+     * different hat. Same window for every page, so every page is a slice of
+     * the same list.
+     *
+     * Past the window, paging continues in plain ranked order. That keeps every
+     * row reachable - the honest total already counts them - and confines the
+     * ordering guarantee to a stated range rather than pretending it holds
+     * everywhere. Stated on the response so the client need not infer it.
+     */
+    const diversified = !hasIndexFilter && rankByScore;
+    const inWindow = diversified && page * limit <= DIVERSITY_WINDOW;
+
+    const fetchLimit = inWindow ? DIVERSITY_WINDOW : limit;
+    const fetchOffset = inWindow ? 0 : offset;
+
     const result = await query(
       `${rankedCte} SELECT * FROM ranked ${where}
         ORDER BY ${orderBy}
         LIMIT $${scoreParams.length + 1} OFFSET $${scoreParams.length + 2}`,
-      [...scoreParams, limit, offset]
+      [...scoreParams, fetchLimit, fetchOffset]
     );
     jobs = result.rows;
+    diversityApplied = inWindow;
 
     /*
      * A7.11 — the same COUNT answers two different questions, so it runs for
@@ -1149,12 +1205,37 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       jobs.sort(orderFor(sort));
     }
 
+    /*
+     * A7.9 — diversify and slice HERE, after on-demand scoring and the sort,
+     * not at fetch time.
+     *
+     * Scoring can change a row's rank: an unscored row comes back from
+     * scoreJobsForUser with a score and moves. Diversifying before that meant
+     * the page was a slice of an order that was then rearranged underneath it,
+     * so pages of 10 and a page of 40 disagreed again - each internally sorted,
+     * jointly incoherent. The canonical order has to be FINAL before it is
+     * divided into pages.
+     *
+     * withheldUnscored is counted over the whole window for the same reason:
+     * it is the number this ranking dropped, and reporting a per-page share of
+     * it would be a different quantity wearing the same name.
+     */
+    if (diversityApplied) jobs = pageOf(jobs, page, limit);
+
     const unscored = jobs.filter((j) => j.overall_score === null || j.overall_score === undefined).length;
     ranking = {
       mode: rankByScore ? 'ranked' : 'all',
       sort,
       minScore: rankByScore && minScore > 0 ? minScore : null,
-      sourceDiversified: Boolean(capSql),
+      /*
+       * A7.9 — the diversity rule, stated rather than implied. It used to be
+       * Boolean(capSql), which said only "something was capped" and could not
+       * say what the rule was or whether this page fell under it.
+       */
+      sourceDiversified: diversityApplied,
+      sourceDiversityRule: diversityApplied
+        ? { perSourceMax: DIVERSITY_QUOTA, perRows: DIVERSITY_BLOCK, window: DIVERSITY_WINDOW }
+        : null,
       // Stated, never implied: a floor cannot judge a row that has no score.
       unscoredInPage: unscored,
       // A7.11 — stated for the same reason, one column over.
@@ -1229,7 +1310,13 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     if (hasKeywords && !wantRelated && total === 0) {
       const relatedResult = await query(
-        `${rankedCte} SELECT * FROM ranked WHERE match_tier = 3${capSql}
+        /*
+         * The old `${capSql}` interpolation is gone from here, and it had never
+         * done anything: this branch needs hasKeywords, hasKeywords forces
+         * hasIndexFilter, and hasIndexFilter made capSql the empty string. A
+         * dead expression that read like a policy.
+         */
+        `${rankedCte} SELECT * FROM ranked WHERE match_tier = 3
           ORDER BY ${orderBy} LIMIT $${scoreParams.length + 1}`,
         [...scoreParams, limit]
       );
