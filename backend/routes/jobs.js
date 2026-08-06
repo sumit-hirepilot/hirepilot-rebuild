@@ -8,7 +8,7 @@ const { orderBySql, orderFor } = require('../services/jobOrder');
 const {
   pageOf, BLOCK: DIVERSITY_BLOCK, QUOTA: DIVERSITY_QUOTA,
 } = require('../services/feedDiversity');
-const { readBack: readSchemaClaims } = require('../services/schemaClaims');
+const { readBack: readSchemaClaims, readStorage } = require('../services/schemaClaims');
 
 /*
  * A7.9 — how many ranked rows the diversity pass reorders.
@@ -671,6 +671,8 @@ router.get('/db-health', verifyToken, async (req, res) => {
     );
     const byName = new Map(cons.rows.map((r) => [r.conname, r.def]));
     const schemaClaims = await readSchemaClaims(query);
+    let storage = null;
+    try { storage = await readStorage(query); } catch (err) { storage = { error: err.message }; }
     let recentCrashes = [];
     try {
       const c = await query(
@@ -701,6 +703,9 @@ router.get('/db-health', verifyToken, async (req, res) => {
        * gone, which is the condition every outage here has ended in.
        */
       recentCrashes,
+      // GOAL 1g — a full volume stops writes, silently. Read from the running
+      // database rather than inferred from the Railway canvas warning.
+      storage,
       schemaClaims,
       allSchemaClaimsPresent: schemaClaims.every((c) => c.present),
       constraints: cons.rows,

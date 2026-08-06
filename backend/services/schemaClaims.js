@@ -115,4 +115,51 @@ async function readBack(query) {
   });
 }
 
-module.exports = { CLAIMS, readBack };
+/**
+ * What the database actually occupies, read from the running database.
+ *
+ * A full volume stops WRITES - no ingest, no application records, no crash
+ * reports - and it does so silently. It already caused five outages here in a
+ * quieter form: the feed's temp-file spill failed with 53100 because the volume
+ * had no room left for it.
+ *
+ * Sizes come from pg_total_relation_size (table + indexes + TOAST), because the
+ * table alone understates a row set whose bulk is long text held out of line -
+ * which is exactly what jobs.description and jobs.requirements are.
+ */
+async function readStorage(query) {
+  const [db, tables, settings] = await Promise.all([
+    query('SELECT pg_database_size(current_database())::bigint AS bytes'),
+    query(`SELECT relname AS table,
+                  pg_total_relation_size(c.oid)::bigint AS total_bytes,
+                  pg_relation_size(c.oid)::bigint       AS table_bytes,
+                  pg_indexes_size(c.oid)::bigint        AS index_bytes,
+                  COALESCE(s.n_live_tup, 0)             AS live_rows,
+                  COALESCE(s.n_dead_tup, 0)             AS dead_rows
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+            WHERE n.nspname = 'public' AND c.relkind = 'r'
+            ORDER BY pg_total_relation_size(c.oid) DESC
+            LIMIT 15`),
+    query(`SELECT name, setting FROM pg_settings WHERE name IN ('work_mem','maintenance_work_mem','data_directory')`),
+  ]);
+
+  const mb = (b) => Math.round(Number(b) / 1048576);
+  return {
+    databaseMb: mb(db.rows[0].bytes),
+    settings: Object.fromEntries(settings.rows.map((r) => [r.name, r.setting])),
+    tables: tables.rows.map((r) => ({
+      table: r.table,
+      totalMb: mb(r.total_bytes),
+      tableMb: mb(r.table_bytes),
+      indexMb: mb(r.index_bytes),
+      liveRows: Number(r.live_rows),
+      // Dead rows are the bloat left by the duplicate-key insert flood and by
+      // every UPDATE the ingest ran; they hold disk until a VACUUM reclaims it.
+      deadRows: Number(r.dead_rows),
+    })),
+  };
+}
+
+module.exports = { CLAIMS, readBack, readStorage };
