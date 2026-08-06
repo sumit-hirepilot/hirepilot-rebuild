@@ -464,6 +464,53 @@ Then: A7.13, A7.19, Wave C, B1-B5.
 STILL BLOCKED, operator: submissions HALTED, and healthcheckPath on the API
 service (both in BLOCKED.md). Item A's remaining steps gated on the halt.
 
+## GOAL 1c — HYPOTHESIS TESTED, ONE CAUSE REMOVED, OUTAGES CONTINUE.
+
+FOUND AND FIXED (a7d06b8): calculateMatchesForUser ran
+`SELECT id, title, description, requirements, salary_min, salary_max, location
+FROM jobs WHERE is_active = true` with NO LIMIT. node-postgres buffers a result
+set completely before returning it, so every call materialised all ~25,400
+active rows in one array - including description and requirements, the two
+largest columns - and built a second array from them. Reachable from an
+ordinary feed read: scoreIfNeverScored calls it on a user's first
+/api/matches. Now chunked 2,000 at a time by id, survivors trimmed to the cap
+as the scan runs. Proved red.
+
+IT DID NOT STOP THE OUTAGES. The API went down again after that deploy and did
+not self-recover in four minutes. So the unbounded scan was A memory problem,
+and it is not established to be THE cause. Do not close this.
+
+WHAT THE EVIDENCE ACTUALLY SUPPORTS:
+ - One crash record exists, from the deploy window: signal:SIGTERM, rss_mb 551,
+   uptime_seconds 10. 551 MB at ten seconds is the only hard number anyone has.
+ - No uncaughtException or unhandledRejection has EVER been recorded, across
+   five outages. Either the process is killed from outside (OOM kill leaves no
+   record - it never runs another instruction) or it dies before the handlers
+   are installed.
+ - The watchdog has never fired either. It exits a WEDGED process; it cannot
+   survive being killed, and it cannot help if the crash is at boot.
+ - Recovery has only ever come from a redeploy - a fresh container.
+ All three of those are consistent with an external kill, most likely memory.
+
+INSTRUMENT WARNING, learned the hard way twice this session: Railway's 502 body
+is JSON. Parsing it as an API response yields nulls that read like "the field is
+missing" or "there are no records". Check the HTTP status BEFORE interpreting
+any body. I misread "0 crash records" from a 502 body and had to correct it.
+
+NEXT, in order:
+ 1. OPERATOR: read the Railway memory graph and container exit codes for the
+    outage windows. 137/OOMKilled confirms or kills the hypothesis in one look.
+    Temporarily raise the backend memory limit so RSS can be watched climbing
+    instead of the container being killed. I cannot reach any of this - the
+    Railway project is not under the logged-in account. BLOCKED.md.
+ 2. Look for the OTHER unbounded loads. The match scan was found by reading for
+    `FROM jobs` with no LIMIT; sweep every service the same way, including the
+    aggregator's ingest path, which handles far more rows than a feed read.
+ 3. Only then continue GOAL 2 (6 of 7 routes remain, jobs last).
+
+## GOAL 2 — 1 of 7. Unchanged this session. See the previous entry for the
+route order, parameters, and `git show bc5140d` as the reference.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
