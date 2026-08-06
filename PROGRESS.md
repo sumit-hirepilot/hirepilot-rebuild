@@ -88,6 +88,97 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.5 SWEEP + A7.2 second half — CLOSED. Verified on production.
+
+### The sweep map (all 14 nav destinations, signed in)
+
+Walked via the client router in one pass. Every destination resolves, the
+heading matches the nav label, and no route logged a console error.
+
+  /dashboard      Good morning, <user>      loads
+  /jobs           Jobs                       loads
+  /auto-apply     Auto Apply                 loads, "No adapter yet" (honest)
+  /apply-queue    Apply Queue                loads
+  /inbox          Inbox                      loads, empty
+  /tracker        Tracker                    loads, empty
+  /applications   Application pipeline       loads, Failed 2 (the A1-corrected rows)
+  /agents         Search Agents              "No search agents yet" (honest)
+  /resume-editor  (no h1 - see below)        loads
+  /analytics      Analytics                  "No applications yet" (honest)
+  /network        Network                    "No connections tracked yet"
+  /profile        Profile                    loads
+  /settings       Settings                   loads
+  /settings?tab=Plans                        loads
+
+Nothing dead or mislabelled among the nav items themselves. Two dead CONTROLS
+were found inside /jobs and are closed above. Remaining, filed not fixed:
+/resume-editor renders no h1 (nav says "Resume", page has no heading element).
+
+### A7.2 second half — 181 fabricated employers, live and applyable
+
+The sweep found it: the resume editor's "Tailor to a job" list read
+"UI/UX Engineer — name". 181 himalayas rows carried the literal string `name`
+as company_name. field-integrity had been counting them (bad_company: 181) the
+whole time with nothing acting on the count.
+
+The parser is correct and NOT_PARSED already rejects the token - these predate
+the guard. The A7.2 comment had predicted exactly how they would surface: "the
+render guard protects surfaces that route through it, and there is no guarantee
+every future surface will."
+
+THREE ATTEMPTS, each of which taught something:
+
+1. Wrote a correction with its own CREATE TABLE data_corrections. A7.12 had
+   already created that table with different columns, so CREATE TABLE IF NOT
+   EXISTS is a silent no-op and every INSERT then fails into runMigrations'
+   swallowed error path. Caught by a guard, not production.
+
+2. Shipped it. field-integrity still said 181. The metric could not see its own
+   correction: bad_company used COALESCE(company_name,'') against a token list
+   that contains the empty string, so a nulled row counts exactly like a
+   fabricated one. Split into bad_company (a lie is stored) and absent_company
+   (nothing is stored).
+
+3. Shipped that. The audit row said 399 rows corrected at 00:04:55, while
+   bad_company was 181 and absent_company 0 - both cannot be true. company_name
+   was VARCHAR(255) NOT NULL, so SET company_name = NULL raised a constraint
+   violation that runMigrations logged and swallowed. RECORDED BUT NEVER
+   APPLIED - precisely what the audit row exists to expose.
+
+   Without the audit the obvious reading was "the aggregator re-writes them
+   every cycle", which is the wrong cause - the live feed has zero bad company
+   names across 200 rows - and would have sent the fix into the aggregator.
+   That is the whole value of a corrector that keeps a record.
+
+   NOT NULL was also WHY the fabricated value existed: "we do not know this
+   employer" had no representation. Dropped. It opens nothing - notAJobReason
+   refuses an unparsed company at ingest, stricter than the column ever was.
+
+PRODUCTION, after: bad_company 181 -> 0, absent_company 181, badCompanyBySource
+empty, correctionApplied recorded. The resume editor now reads "UI/UX Engineer
+— Company not stated".
+
+RENDER, fixed as a class: a sweep of every page found 14 raw
+{x.company_name} interpolations across applications, apply-queue, dashboard,
+network, resume, tracker and resume-editor. All routed through parsedOr, and
+the guard is now the rule over the whole pages directory.
+
+One process note worth keeping: the first read of the fixed page showed the
+company missing rather than "Company not stated", because the tab predated the
+deploy and client-side routing never fetched the new chunk. Same trap as the
+retained console buffer. A hard navigation is part of the check.
+
+116 backend / 94 frontend, 72/72 guards proven red.
+
+### Next goal — A7.4, activity feed reads as English (executable cold)
+
+Raw event keys like `application_submitted` are rendered to users. Map every
+event type to a sentence. Every line names the company. Vocabulary already
+exists in backend/routes (activity_log writes) - enumerate the distinct
+event types from the DB first, then map, so no type is missed.
+Then A7.8 (orderFor helper), A7.10 (interaction coverage - now unblocked,
+user-event is installed), A7.18 (select-all), Wave C, then B1-B5.
+
 ## A7.11 / A7.9 / A7.5(partial) — CLOSED. Verified on production.
 
 Each one was found by verifying the previous one, which is why they land
