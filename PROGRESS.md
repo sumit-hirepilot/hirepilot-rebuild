@@ -45,6 +45,14 @@ function, click it; a visual change needs a visual check on the property that
 carries the value; exit 0 is not evidence of work; containment is not
 existence; fix the class not the instance, the guard is the deliverable;
 nothing is done until verified locally AND on production.
+ - Prove the instrument on a known positive before trusting a negative. A
+   checker reporting "dead", "unchanged" or "failed" must first be shown to
+   report the opposite on a case known to work. D24.
+ - A status code never retires a source or a posting. 403/429 mean "cannot
+   tell". D25.
+ - Sweeps use an ALLOWLIST of known-safe controls; a denylist fails open, and
+   the failure mode is an unrecoverable submission. Auto-Pilot off, or a seeded
+   account, before any sweep. D26.
 
 CONTEXT HANDOFF: context will run out before the queue does. That is the only
 thing that may stop you and it is not a reason to ask anything. After every

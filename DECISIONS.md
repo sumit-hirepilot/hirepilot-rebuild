@@ -343,3 +343,63 @@ this cannot be quietly "fixed" later by adding a dead link.
 
 WEAKENED: mobile surfaced as a capability statement rather than an app link.
 Reversible the day an app exists, and the guard is what makes that day visible.
+
+
+## D24 — prove the instrument on a known positive before trusting a negative
+
+Standing rule, promoted from three separate incidents in one session:
+
+  - A7.20's p95 "regression" (40s timeouts on the default feed) was the service
+    restarting mid-deploy. Re-measured warm, p50 was unchanged.
+  - A7.5's button sweep reported 84 dead controls. 83 were a detector that
+    compared innerText length and the URL, which cannot see a drawer open or a
+    page of twenty similar-length rows change.
+  - The posting-link checker failed 8 of 20 URLs, all of them live - including
+    a "404" that renders a real careers page in a browser.
+
+In each case the tool reported absence and the absence was its own. So: a
+checker that reports "dead", "unchanged", "failed" or "missing" must first be
+shown to report the OPPOSITE on a case already known to work. Until it has
+passed that, its negative result is not evidence of anything.
+
+This is the mirror of "prove red before trusting green". Green needs a failing
+case to prove the test can fail; a negative needs a passing case to prove the
+instrument can see.
+
+## D25 — a status code never retires a source or a posting
+
+Hard constraint, not a caution.
+
+himalayas, jobicy and remotive all answer a scripted client with 403 - a
+bot-verification interstitial with the URL intact. doubling.io answers a
+generic user agent with 404 and a browser with a real careers page. A naive
+HTTP health check would read those as dead and deactivate over 5,200 live jobs
+across three sources.
+
+Therefore, for any source-health or link-health feature:
+
+  - 403, 429 and any challenge response mean "cannot tell". Never "dead".
+  - Only 404 or 410, confirmed from a real browser context, and seen on two
+    separate days, may retire a posting.
+  - Retiring sets is_active = false with a data_corrections record. Never a
+    delete.
+  - No source is ever auto-disabled on status code alone. Disabling a source is
+    an operator decision, and D19's standard applies to re-enabling one.
+
+## D26 — sweeps use an allowlist, because a denylist fails open
+
+The A7.5 sweep excluded dangerous controls by pattern. Patterns are a denylist,
+and a denylist fails open: the first pass did not yet exclude "save", so "Save
+and continue this application" was clicked on the operator's live account.
+Nothing was submitted - the product's own rule that an unanswered question
+parks an application is what held - but the failure mode of a miss here is an
+unrecoverable submission to a real employer.
+
+So the rule inverts. On any account holding real data, a control is clicked
+only if it is explicitly on a known-safe list. Anything unrecognised is
+recorded as not-exercised, which is an honest gap rather than a silent risk.
+
+Additionally, before any sweep: Auto-Pilot off server-side, or run against a
+seeded account. The operator's account holds 6 approved applications queued
+with Auto-Pilot on, which is exactly the state where a stray click costs
+something that cannot be taken back.
