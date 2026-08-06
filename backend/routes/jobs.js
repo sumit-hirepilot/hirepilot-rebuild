@@ -1200,8 +1200,19 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * is 4,685 rows in production.
      */
     if (datePosted || sort === 'recent') {
+      /*
+       * Counted with the DATE FILTER REMOVED, which is the whole point.
+       *
+       * The ranked CTE already applies the window, so once a real one is
+       * active it has filtered every NULL-dated row out before this COUNT can
+       * see them - the metric could not observe the thing it exists to report,
+       * and returned 0 for "how many did this window exclude". A7.2's lesson,
+       * one table over: a measurement taken downstream of the filter it is
+       * measuring reports the filter working perfectly, every time.
+       */
+      const unknownCte = buildQuery({ ...base, dateSql: '' }).cte;
       const unknownDateResult = await query(
-        `${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere} AND posted_at IS NULL`,
+        `${unknownCte} SELECT COUNT(*) as count FROM ranked ${countWhere} AND posted_at IS NULL`,
         scoreParams
       );
       const undated = parseInt(unknownDateResult.rows[0]?.count ?? 0, 10);

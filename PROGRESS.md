@@ -249,6 +249,45 @@ diversity window already bounds the fetch INSIDE the window; past it the code
 falls back to plain LIMIT/OFFSET with no ceiling, which is exactly the path
 that was hit.
 
+## A7.11 — CLOSED. Verified on production. Next goal: A7.13.
+
+MEASURED FRESH FIRST (the note said 4,663): 5,014 of 25,407 rows, 19.7%, carry
+no posted_at - every one himalayas, 100% of that source.
+
+BACKFILL IS CLOSED ON EVIDENCE, not on effort. The adapter already records it:
+himalayas' pubDate is a last-synced/bumped timestamp, not an original publish
+date, confirmed live against postings whose own page showed a date up to two
+months earlier. Using it would fabricate a date. posted_at stays null - D25's
+shape one level down, and Constraint 1.
+
+THE ROWS ARE NOT DROPPED, and both surfaces were verified rendering the real
+figure on production:
+  - recency sort, no window: they order last (NULLS LAST) and the feed says
+    "5,014 jobs have no publication date and sort last - show them", one click
+    to datePosted=unknown. Clicked on production, not read.
+  - a date window: they are excluded and the count is stated.
+
+TWO DEFECTS FOUND BY CLICKING IT (D40):
+  1. datePosted=unknown reported all 5,014 as EXCLUDED from the filter that had
+     just selected them - the page printed "+5,014 more ... (excluded from this
+     filter)" under a list of exactly those jobs. Now 0.
+  2. The count was taken through the ranked CTE, which already applies the
+     window - so under a real window it could not see the rows it exists to
+     report and returned 0. Measured outside the date filter now, asserted on
+     the SQL sent, proved red.
+
+## NEXT GOAL — A7.13, then A7.19, then Wave C, then B1-B5.
+
+A7.19 needs the assessment table BEFORE any integration: live, not a duplicate,
+machine-readable permission signal (a 200 is not permission), not paywalled,
+posted_at present per row, employer board not a bidding marketplace. India
+sources rank ahead of any Western remote board.
+
+STILL BLOCKED, operator: production submissions are HALTED; neither lever
+available to me can lift it (ADMIN_HALT_SECRET unset; admin is user id 1, the
+earliest-registered account). Item A's remaining steps are gated on it.
+Re-checked at every goal boundary.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).

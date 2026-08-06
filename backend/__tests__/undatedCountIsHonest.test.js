@@ -81,6 +81,27 @@ describe('A7.11 — the undated count says what actually happened', () => {
     expect(res.body.excludedUnknownDateCount).toBe(0);
   });
 
+  it('counts the undated rows OUTSIDE the date filter, or it counts nothing', async () => {
+    /*
+     * The ranked CTE applies the window. Once a real one is active it has
+     * already removed every NULL-dated row, so a COUNT taken through that same
+     * CTE cannot see the rows it exists to report and returns 0 - a
+     * measurement downstream of the filter it is measuring reports that filter
+     * working perfectly, every time.
+     *
+     * Asserted on the SQL actually sent, because the response looked plausible
+     * either way.
+     */
+    await get('sort=recent&datePosted=7d');
+
+    const undatedCount = query.mock.calls
+      .map((c) => c[0])
+      .find((sql) => /COUNT\(\*\) as count FROM ranked[\s\S]*posted_at IS NULL/.test(sql));
+
+    expect(undatedCount).toBeDefined();
+    expect(undatedCount).not.toMatch(/CURRENT_TIMESTAMP - INTERVAL/);
+  });
+
   it('says nothing about dates when the sort is not about dates', async () => {
     const res = await get('sort=score');
     expect(res.body.ranking.undatedTotal).toBeNull();
