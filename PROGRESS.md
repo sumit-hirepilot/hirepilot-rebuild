@@ -681,6 +681,45 @@ function).
  2   bounds sweep, 6 of 7 routes, jobs last, one commit each.
  Then A7.13, A7.19, Wave C, B1-B5.
 
+## UI — "two Locations" fixed. Verified on production. Two things still owed.
+
+REPRODUCED FIRST, on production, before any diagnosis: the jobs filter row
+carried a free-text Location input AND a facet panel labelled Location. One
+matched the raw location string, the other bucketed it into continents. A user
+cannot choose between two controls with the same name, and setting both narrows
+twice for reasons nothing on screen explains.
+
+The panel is a REGION filter - the query field is `region`, the code comment
+above it says region, and its hint has always read "Grouped by region". Only
+the label disagreed. Renamed. VERIFIED ON PRODUCTION: the page now reads
+Region x1 with one Location placeholder, no duplicate.
+
+ALSO CHECKED, and NOT broken - do not re-chase:
+ - /api/notifications CORS errors in the console are HISTORICAL, from the API
+   downtime during deploys. Railway's 502 page carries no CORS headers, so a
+   browser reports downtime as a CORS failure. Preflight returns 204 with
+   access-control-allow-origin, the GET returns 200 from inside the page, and
+   the console tool replays its buffer across reloads. Check the network, not
+   the console buffer.
+ - Layout at 375 and at desktop: no overflow, filters stack, page usable.
+
+OWED, and deliberately not faked:
+ 1. A render-level guard that no two filter controls share an accessible name.
+    The test I wrote rendered an EMPTY BODY - the jobs page needs more of its
+    environment mocked than I built - and a test that does not render the page
+    asserts nothing while looking like protection. It was deleted rather than
+    shipped.
+ 2. THE FRONTEND FLAKE IS NOT FIXED. Raising testTimeout to 20s and
+    asyncUtilTimeout to 10s REDUCED it, and did not eliminate it. Observed in
+    one sitting: 7 failed, then 3 failed, then 0 (the ship gate passed at
+    207/207 between two red local runs). Every failing test passes 3/3 in
+    isolation - filterControlsApply, undatedReachable, selectAllPendingReview.
+    So it is CPU contention between parallel workers rendering whole pages,
+    not a timeout budget, and my previous entry claiming it fixed was wrong.
+    Next step: run the frontend suite with --runInBand in CI, or -w 2, and
+    measure whether the flake disappears. That is a one-line experiment and it
+    has not been done.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
