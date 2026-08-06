@@ -608,3 +608,31 @@ D34 — A caller whose target is gone is the same defect as a rule nothing can
       editor: the editor prints the user's resume document and this is a
       tailored variant of it, so that would download something other than what
       the button says.
+
+D35 — Pagination is a partition of ONE list, so nothing that varies per request
+      may decide what is in that list.
+      The diversity cap was `source_rank <= GREATEST(3, CEIL(page*limit/4))`,
+      which gave page and limit a second job: deciding how many rows each
+      source could contribute. Every page was an OFFSET into a differently
+      capped list, and those lists are not nested at the front - a row entering
+      as the cap widened was inserted ABOVE rows already shown, so the offset
+      stepped past it. Six jobs on production were in a single page of 40 and
+      in none of the four pages of 10.
+      Diversity now runs once over a FIXED window and a page is a slice of it.
+      The obvious quota - CEIL(limit/4) - was rejected on purpose: it would
+      have made the canonical order depend on the caller's page size, so four
+      pages of 10 and one page of 40 would again be different lists, each
+      internally coherent and jointly wrong. The property only holds if the
+      sequence does not know what the limit is.
+      Past the window the feed is plain ranked order, so no row becomes
+      unreachable, and ranking.sourceDiversified states which regime produced
+      the page rather than leaving the client to infer it.
+      Guarded on the property - pages 1..N at limit L equal page 1 at limit
+      N*L, set and order - on the pure function AND through GET /api/jobs,
+      because a property proved on a function says nothing about whether the
+      route calls it. The slice happens AFTER on-demand scoring and the sort:
+      diversifying before them meant the page was a slice of an order that was
+      then rearranged underneath it.
+      VERIFIED ON PRODUCTION with the check that found it: 40 ids each way,
+      identical order, same set, 0 unreachable, 0 duplicates, and still no more
+      than 3 of any source in a page of 10.

@@ -134,6 +134,32 @@ requires red - 5/5 confirmed. Both run in ship.sh and CI. Backend floor 218.
 NOTE: production submissions are HALTED and I cannot lift it. See BLOCKED.md,
 first section. This blocks every tester.
 
+## A7.9 — CLOSED. Pages are slices of one list. Verified on production.
+
+Was: `source_rank <= GREATEST(3, CEIL(page*limit/4))` in SQL, so page and limit
+also set the per-source cap. Each page was an OFFSET into a differently capped
+list; those lists are not nested at the front, so a row entering as the cap
+widened was inserted above rows already shown and the offset stepped past it.
+
+Now: diversity runs once over a fixed 200-row window (services/feedDiversity.js,
+no more than 3 of any source per 10 consecutive rows), and a page is a slice.
+The window is fixed on purpose - CEIL(limit/4) would have made the canonical
+order depend on page size, so 4x10 and 1x40 would again be different lists.
+Past the window the feed is plain ranked order, nothing is unreachable, and
+ranking.sourceDiversified + sourceDiversityRule state which regime applied.
+
+The slice happens AFTER on-demand scoring and the sort. Diversifying at fetch
+time meant the page was a slice of an order that was then rearranged.
+
+PROVED ON PRODUCTION, the same check that found it:
+    4 pages of 10 -> 40 ids     1 page of 40 -> 40 ids
+    identical order: YES   same set: YES
+    unreachable: 0   duplicates: 0   max per source per page: 3
+
+GUARD: feedPaginationCoherence.test.js, on the property not the SQL, on the
+pure function AND through GET /api/jobs. Proved red - the old cap approach
+fails the same assertion and reproduces the unreachable rows.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
