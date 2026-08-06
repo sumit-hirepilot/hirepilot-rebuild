@@ -1440,7 +1440,40 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       emptyReason,
     });
   } catch (err) {
-    console.error('Get jobs error:', err);
+    /*
+     * GOAL 1f — say WHAT failed.
+     *
+     * This logged `err` and returned one flat message, so a load test could
+     * establish that 20 of 30 concurrent requests 500 and could not establish
+     * why. Postgres errors carry the part that identifies them - `code`
+     * (53300 is too_many_connections, 57014 a cancelled statement), `routine`,
+     * and the failing SQL - and none of it survived.
+     *
+     * Persisted as well as logged: Railway retains logs poorly on a busy
+     * service, and this is exactly the moment the evidence is needed. The
+     * write is best-effort and must never turn a 500 into a hang.
+     */
+    const detail = {
+      message: err && err.message,
+      code: err && err.code,
+      routine: err && err.routine,
+      severity: err && err.severity,
+      stack: err && err.stack,
+    };
+    console.error('Get jobs error:', JSON.stringify(detail));
+
+    query(
+      `INSERT INTO crash_reports (event, message, stack, rss_mb, uptime_seconds)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        `api_error:${(err && err.code) || 'none'}`,
+        `GET /api/jobs — ${detail.message || 'unknown'}`,
+        detail.stack || null,
+        Math.round(process.memoryUsage().rss / 1048576),
+        Math.round(process.uptime()),
+      ]
+    ).catch(() => {});
+
     res.status(500).json({ error: 'Failed to fetch jobs' });
   }
 });
