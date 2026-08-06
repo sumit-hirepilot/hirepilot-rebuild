@@ -128,7 +128,7 @@ async function readBack(query) {
  * which is exactly what jobs.description and jobs.requirements are.
  */
 async function readStorage(query) {
-  const [db, tables, settings] = await Promise.all([
+  const [db, tables, settings, temp] = await Promise.all([
     query('SELECT pg_database_size(current_database())::bigint AS bytes'),
     query(`SELECT c.relname AS table,
                   pg_total_relation_size(c.oid)::bigint AS total_bytes,
@@ -142,13 +142,31 @@ async function readStorage(query) {
             WHERE n.nspname = 'public' AND c.relkind = 'r'
             ORDER BY pg_total_relation_size(c.oid) DESC
             LIMIT 15`),
-    query(`SELECT name, setting FROM pg_settings WHERE name IN ('work_mem','maintenance_work_mem','data_directory')`),
+    query(`SELECT name, setting, unit FROM pg_settings
+            WHERE name IN ('work_mem','maintenance_work_mem','shared_buffers','effective_cache_size','data_directory')`),
+    /*
+     * How much has actually spilled to disk. temp_files/temp_bytes are the
+     * only honest answer to "is work_mem too small" - a plan that fits today
+     * spills tomorrow when the table grows, and this counts every time it
+     * happened rather than guessing from EXPLAIN on one query.
+     *
+     * These are what the 53100 outage looked like from the database's side.
+     */
+    query(`SELECT temp_files, temp_bytes, blks_read, blks_hit, xact_commit, xact_rollback
+             FROM pg_stat_database WHERE datname = current_database()`),
   ]);
 
   const mb = (b) => Math.round(Number(b) / 1048576);
+  const t = temp.rows[0] || {};
   return {
     databaseMb: mb(db.rows[0].bytes),
-    settings: Object.fromEntries(settings.rows.map((r) => [r.name, r.setting])),
+    settings: Object.fromEntries(settings.rows.map((r) => [r.name, r.unit ? `${r.setting}${r.unit}` : r.setting])),
+    // Spill: every one of these is a query that did not fit in work_mem.
+    tempFiles: Number(t.temp_files || 0),
+    tempMb: mb(t.temp_bytes || 0),
+    cacheHitPct: Number(t.blks_hit) + Number(t.blks_read)
+      ? Math.round((Number(t.blks_hit) / (Number(t.blks_hit) + Number(t.blks_read))) * 100)
+      : null,
     tables: tables.rows.map((r) => ({
       table: r.table,
       totalMb: mb(r.total_bytes),
