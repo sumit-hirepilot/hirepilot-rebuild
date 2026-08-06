@@ -437,3 +437,42 @@ path stays for when the login system is what has failed.
 Granting is_admin to the lowest user id is a deliberate privilege decision:
 the operator's own account, predating every tester, and no other account gains
 anything.
+
+
+## D28 — the plain-word set
+
+Target user: one to fifteen years in, in India, self-taught through senior. The
+product's internal vocabulary was on every screen and none of it is parseable
+on first read. Destinations are unchanged; only the words are.
+
+  Nav
+    Auto Apply     -> Apply for me        says who does the work
+    Apply Queue    -> Ready to send       says what state these are in
+    Tracker        -> My applications     says whose they are
+    Applications   -> Progress            the pipeline view, not the list
+    Search Agents  -> Saved searches      a search that keeps running
+    Analytics      -> How it is going     a question, not a discipline
+    Network        -> People
+  Unchanged, already plain: Dashboard, Jobs, Inbox, Resume, Profile, Settings.
+
+  Score  A word before the number, never instead of it. "78%" is a
+         measurement; "Strong match · 78%" is a judgement with its evidence
+         attached. Bands: Strong 75+, Good 60+, Worth a try 45+, Long shot
+         below. An UNSCORED job returns null, not "Long shot" - calling it a
+         long shot would invent a judgement, the same defect as rendering a
+         missing count as 0.
+
+  Status Every line answers "what is happening, and is it on me?", because
+         that is the only question a person has about an application.
+         submitted/applied  -> "Waiting for the company"  (the user knows they
+                               applied; what they want to know is whether
+                               anyone has looked)
+         approved           -> "Ready to send"
+         needs_user         -> "Needs an answer from you"
+         pending_review     -> "Waiting for you to check"
+         failed             -> "Did not send" + "Nothing reached the employer"
+         rejected           -> "No this time"
+
+One definition each, in lib/scoreBands.js and lib/statusWords.js. Writing the
+pipeline columns out a second time is exactly how the board and the status
+dropdown came to disagree, which the guard caught.

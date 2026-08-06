@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import { scoreLabel, bandFor } from '../lib/scoreBands';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -845,7 +846,15 @@ export default function Jobs() {
             so a second child becomes a sibling flex item and spills out of the
             ring across the actions beside it. */}
         {score !== null && (
-          <div className={page.scoreRing} title="Profile match score: skills, experience and location">{score}%</div>
+          /* Wave C — the word goes in front of the number, never instead of
+             it. "78%" is a measurement; "Strong match · 78%" is a judgement
+             with its evidence attached. */
+          <div
+            className={page.scoreRing}
+            title={`${scoreLabel(rawScore)} — skills, experience and location`}
+          >
+            {score}%
+          </div>
         )}
         <div className={page.jobActions}>
           <button className={page.viewButton} onClick={() => setSelectedJob(job)}>View Details</button>

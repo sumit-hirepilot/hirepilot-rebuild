@@ -6,6 +6,24 @@ import NotificationBell from './NotificationBell';
 import ExtensionInstallModal, { useExtensionDetected, extensionPrompt, DISMISS_KEY } from './ExtensionInstallModal';
 import { API_BASE } from '../lib/apiBase';
 
+/*
+ * Wave C — plain words.
+ *
+ * "Apply Queue", "Search Agents", "Auto-Pilot", "Tracker" and "Analytics" are
+ * this product's internal vocabulary, and a first-time user cannot parse any
+ * of them. Every destination is unchanged; only the word the user reads is.
+ *
+ *   Auto Apply     -> Apply for me        (says who does the work)
+ *   Apply Queue    -> Ready to send       (says what state these are in)
+ *   Tracker        -> My applications     (says whose they are)
+ *   Applications   -> Progress            (the pipeline view, not the list)
+ *   Search Agents  -> Saved searches      (a search that keeps running)
+ *   Analytics      -> How it is going     (a question, not a discipline)
+ *   Network        -> People
+ *
+ * Kept as-is: Jobs, Inbox, Resume, Profile, Settings - already plain.
+ * Recorded in DECISIONS.md so the set is a decision, not an accident.
+ */
 const NAV_ITEMS = [
   {
     href: '/dashboard',
@@ -31,7 +49,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/auto-apply',
-    label: 'Auto Apply',
+    label: 'Apply for me',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" />
@@ -40,7 +58,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/apply-queue',
-    label: 'Apply Queue',
+    label: 'Ready to send',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 2 11 13" />
@@ -60,7 +78,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/tracker',
-    label: 'Tracker',
+    label: 'My applications',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="5" height="16" rx="1.4" />
@@ -71,7 +89,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/applications',
-    label: 'Applications',
+    label: 'Progress',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3.5" y="4" width="6" height="16" rx="1.5" />
@@ -82,7 +100,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/agents',
-    label: 'Search Agents',
+    label: 'Saved searches',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="8.25" />
@@ -104,7 +122,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/analytics',
-    label: 'Analytics',
+    label: 'How it is going',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 20V10M12 20V4M20 20v-7" />
@@ -113,7 +131,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/network',
-    label: 'Network',
+    label: 'People',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="6" cy="7" r="2.25" />

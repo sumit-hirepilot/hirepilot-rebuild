@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import { bandFor } from '../lib/scoreBands';
 // A7.2 - a company that did not parse must never render as if it did.
 import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
@@ -202,8 +203,12 @@ export default function Dashboard() {
                   {/* A7.1/A7.20 — a bare 75 is a number, not a score. The %
                       carries the meaning, and jobs.js already decided that;
                       the dashboard was contradicting it. */}
-                  <div className={styles.matchScore} title="Profile match score: skills, experience and location">
-                    {Math.round(m.overall_score * 100)}%
+                  {/* Wave C — a first-time user should not have to learn what
+                      a good score looks like by scrolling until the numbers
+                      change. The band says it; the number still proves it. */}
+                  <div className={styles.matchScore} title="Skills, experience and location">
+                    <span className={styles.matchBand}>{bandFor(m.overall_score)?.label}</span>
+                    <span>{Math.round(m.overall_score * 100)}%</span>
                   </div>
                   <div>
                     <p className={styles.matchTitle}>{m.title}</p>

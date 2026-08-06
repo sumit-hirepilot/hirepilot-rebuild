@@ -1,4 +1,7 @@
 import Head from 'next/head';
+// Wave C - one reading of a status, shared, so the board and the queue cannot
+// describe the same row differently.
+import { statusWord } from '../lib/statusWords';
 import SubmissionReceipt from '../components/SubmissionReceipt';
 // A7.2 - a company that did not parse must never render as if it did.
 import { parsedOr } from '../lib/renderState';
@@ -11,15 +14,23 @@ import page from '../styles/Applications.module.css';
 import { API_BASE } from '../lib/apiBase';
 import { formatDate, formatDateShort } from '../lib/format';
 
+/*
+ * Wave C — the columns read as stages of a conversation with an employer,
+ * because that is what they are. Labels come from the shared status words so
+ * this board and the queue cannot describe the same row differently.
+ *
+ * "Applied" became "Waiting for the company": the user knows they applied,
+ * what they want to know is whether anyone has looked.
+ */
 const COLUMNS = [
-  { key: 'applied', label: 'Applied' },
-  { key: 'phone_screen', label: 'Phone Screen' },
-  { key: 'technical_interview', label: 'Technical Interview' },
-  { key: 'onsite', label: 'Onsite' },
-  { key: 'offer', label: 'Offer' },
-  { key: 'hired', label: 'Hired' },
-  { key: 'failed', label: 'Failed' },
-  { key: 'rejected', label: 'Rejected' },
+  { key: 'applied', label: statusWord('applied') },
+  { key: 'phone_screen', label: statusWord('phone_screen') },
+  { key: 'technical_interview', label: statusWord('technical_interview') },
+  { key: 'onsite', label: statusWord('onsite') },
+  { key: 'offer', label: statusWord('offer') },
+  { key: 'hired', label: statusWord('hired') },
+  { key: 'failed', label: statusWord('failed') },
+  { key: 'rejected', label: statusWord('rejected') },
 ];
 
 export default function Applications() {
@@ -193,15 +204,14 @@ export default function Applications() {
    * The shell now always renders. `user` only decorates the chrome, so it is
    * passed through as-is and the page is readable while it is still null.
    */
-  const allStatuses = [
-    { key: 'applied', label: 'Applied' },
-    { key: 'phone_screen', label: 'Phone Screen' },
-    { key: 'technical_interview', label: 'Technical Interview' },
-    { key: 'onsite', label: 'Onsite' },
-    { key: 'offer', label: 'Offer' },
-    { key: 'hired', label: 'Hired' },
-    { key: 'rejected', label: 'Rejected' },
-  ];
+  /*
+   * Wave C — derived from COLUMNS, not written out again. This was a second
+   * copy of the same list with its own hand-written labels, so the board and
+   * the status dropdown could describe the same stage differently. `failed` is
+   * excluded because a user cannot move an application INTO "did not send" -
+   * that is something that happened, not a stage they choose.
+   */
+  const allStatuses = COLUMNS.filter((c) => c.key !== 'failed');
   const columnsData = { ...(kanban || {}), rejected, failed };
   const allApps = kanban
     ? [...Object.values(kanban).flat(), ...rejected, ...failed].sort((a, b) => new Date(b.applied_at) - new Date(a.applied_at))

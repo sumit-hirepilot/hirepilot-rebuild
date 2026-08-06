@@ -1,4 +1,7 @@
 import Head from 'next/head';
+// Wave C - one reading of a status, shared, so two screens cannot describe
+// the same row differently.
+import { statusWord } from '../lib/statusWords';
 // A7.4 - a key must never reach a user as a key.
 import { labelFor } from '../lib/labels';
 // A7.2 - a company that did not parse must never render as if it did.
@@ -207,7 +210,7 @@ export default function ApplyQueue() {
                 </span>
               </div>
               <span className={`${page.status} ${page[`s_${item.status}`] || ''}`}>
-                {labelFor(item.status, STATUS_LABEL)}
+                {statusWord(item.status)}
               </span>
             </button>
           ))}
