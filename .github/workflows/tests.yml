@@ -47,7 +47,7 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        run: node tools/run-suite.js frontend 108
+        run: node tools/run-suite.js frontend 109
 
       # Mutates a file, runs one guard, requires it to go RED, reverts. Fails
       # the build if any guard cannot detect its own violation.

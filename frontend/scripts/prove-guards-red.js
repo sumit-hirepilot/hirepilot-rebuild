@@ -117,6 +117,11 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  { suite: 'renderState',
+    test: 'never prints a bare match score without its unit',
+    file: 'pages/dashboard.js',
+    mutate: (s) => s.replace('{Math.round(m.overall_score * 100)}%', '{Math.round(m.overall_score * 100)}') },
+
   /* ---- A7.20: every job a user sees carries a score ---- */
   { suite: 'scoreOnDemand', dir: 'backend', base: true,
     test: 'date filter reports unscoredInPage 0',

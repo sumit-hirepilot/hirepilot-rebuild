@@ -199,7 +199,12 @@ export default function Dashboard() {
             ) : (
               matches.map((m) => (
                 <div key={m.id} className={styles.matchRow}>
-                  <div className={styles.matchScore}>{Math.round(m.overall_score * 100)}</div>
+                  {/* A7.1/A7.20 — a bare 75 is a number, not a score. The %
+                      carries the meaning, and jobs.js already decided that;
+                      the dashboard was contradicting it. */}
+                  <div className={styles.matchScore} title="Profile match score: skills, experience and location">
+                    {Math.round(m.overall_score * 100)}%
+                  </div>
                   <div>
                     <p className={styles.matchTitle}>{m.title}</p>
                     <p className={styles.matchSubtitle}>

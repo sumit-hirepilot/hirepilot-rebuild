@@ -179,3 +179,28 @@ describe('A7.2 — every surface that shows a company routes through parsedOr', 
     expect(offenders).toEqual([]);
   });
 });
+
+describe('A7.1/A7.20 — a score is rendered as a percentage everywhere', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const dir = path.join(__dirname, '..', 'pages');
+
+  it('never prints a bare match score without its unit', () => {
+    /*
+     * jobs.js decided this explicitly - "a bare 75 is not a score, it is a
+     * number; the % carries the meaning" - and the dashboard rendered
+     * {Math.round(m.overall_score * 100)} with no unit, contradicting it on
+     * the first screen a user sees.
+     *
+     * Guarded as the rule across pages rather than the one line, so the next
+     * surface to show a score cannot reintroduce it.
+     */
+    const offenders = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      const hits = src.match(/\{Math\.round\([^)]*overall_score[^)]*\)\}(?!\s*%)/g) || [];
+      if (hits.length) offenders.push(`${f}: ${hits.join(', ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
