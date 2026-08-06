@@ -117,6 +117,16 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- A7.21: external links are opener-safe ---- */
+  { suite: 'externalLinks',
+    test: 'has no target="_blank" without rel noopener or noreferrer',
+    file: 'pages/network.js',
+    mutate: (s) => s.replace('target="_blank" rel="noreferrer"', 'target="_blank"') },
+  { suite: 'externalLinks',
+    test: 'finds the new-tab links it is meant to be checking',
+    file: 'pages/network.js',
+    mutate: (s) => s.replace(/target="_blank"/g, 'data-x="1"') },
+
   /* ---- D26/D24: the sweep tool itself ---- */
   { suite: 'sweepSafety',
     test: 'decides by allowlist, never by a list of things to avoid',

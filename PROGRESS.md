@@ -96,51 +96,39 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
-## A7.21 — IN PROGRESS. "Original posting" links sampled; no dead link found.
+## A7.21 — CLOSED. Link and anchor audit, signed in and out, three widths.
 
-Sampled 20 destinations across all 12 fetched sources and resolved each one.
+29 route/width combinations audited on production. Instrument proved on a known
+positive before any negative was believed, per D24.
 
-  curl 200 .............. 12  ashby x3, greenhouse x3, workingnomads, remoteok,
-                              lever, nofluffjobs, jobindex, landingjobs
-  curl 403 ............... 7  himalayas x3, jobicy x3, remotive
-  curl 404 ............... 1  hackernews -> doubling.io/careers/
+  INSTRUMENT PROOFS
+    - Collector: confirmed it sees a link known to be present (/signup).
+    - rel detector: planted an <a target="_blank"> with no rel; the detector
+      reported exactly one missing. Without that, "all links are safe" would
+      have been indistinguishable from a scan that reads no links at all.
+    - Status checker: /definitely-not-a-page returns 404, so a 200 elsewhere
+      means something.
 
-NONE OF THE 8 FAILURES IS A DEAD LINK.
+  RESULT — nothing to fix.
+    - Internal routes: 23 of 23 return 200, including /login and /signup
+      signed out and /settings?tab=Plans.
+    - Dead anchors: none. The only in-page anchor is /#pipeline, and it
+      resolves. (The one dead anchor this goal was filed for, /#features, was
+      fixed under A7.25.)
+    - External links: every one carries rel="noreferrer". 20 on /jobs alone.
+    - Breakpoint parity: identical href sets at 375 / 768 / 1440 on every
+      shared route. Nothing is reachable at one width only.
+    - Signed-out hamburger at 375: reveals /#pipeline and /login, which is
+      exactly what the 1440 nav shows. Nothing is trapped inside it.
+    - "Original posting" links: 20 sampled across all 12 sources, none dead.
+      8 of 20 non-200 to a scripted client, all of them live in a browser -
+      that finding is D25 and it is why no link-health feature may retire a row
+      on a status code.
 
-  - jobicy, opened in a browser: "Performing security verification" - a
-    Cloudflare interstitial, with the URL intact. A bot challenge, not a 404.
-  - himalayas returns 403 to any plain server request; that is already recorded
-    in D22 as the reason its posted_at cannot be backfilled.
-  - doubling.io/careers/ - the one "404" - loads a real careers page in a
-    browser: "Join Our Team", open positions listed. The edge answers a
-    generic user agent differently.
-
-So the sample is clean and the checker is not: 8 false failures out of 20, a
-40% false-positive rate. That matters more than the sample, because the obvious
-next step is a link-health job that deactivates rows whose destination is gone.
-Built on naive status codes it would deactivate himalayas, jobicy and remotive
-outright - over 5,200 live jobs - on the strength of a bot challenge.
-
-RULE FOR WHOEVER BUILDS IT: a non-200 is not evidence a posting is gone. Treat
-403/429 as "cannot tell" and never as "dead". Only a 404 or 410 confirmed with
-a browser-like request, seen twice on separate days, should retire a row - and
-it should set is_active = false with a data_corrections record, never delete.
-
-This is the third time this session the instrument produced the finding rather
-than the product: the A7.20 p95 timeouts were a restarting service, 83 of
-A7.5's 84 dead controls were a detector that could not see a drawer open, and
-now this.
-
-### What remains in A7.21
-
-- Every <a> and navigating button, signed IN and signed OUT, at 375/768/1440,
-  recording label, target, status and destination-match.
-- The hamburger under 768: check what is INSIDE it, not just that it opens. A
-  link reachable at only one breakpoint is the specific defect named.
-- rel="noopener"/"noreferrer" on every external link. /network's LinkedIn
-  links are already verified good on production.
-- Known good already: footer (/pricing /privacy /terms /refund-policy /contact
-  all 200), the single in-page anchor /#pipeline.
+  GUARD ADDED. The audit is a snapshot; the guard is the deliverable. No
+  target="_blank" anywhere in pages/ or components/ without rel noopener or
+  noreferrer, plus a sentinel proving the scan can still see the links it
+  checks - a repo-wide floor alone cannot fail when one file loses its links.
 
 ## A7.5 — CLOSED. Nav map plus every button, driven on production.
 
