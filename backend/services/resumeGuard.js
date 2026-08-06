@@ -147,19 +147,20 @@ function verify(currentText, candidateText, corpus) {
 
   const violations = [];
 
-  // Rule 1: nothing may be removed.
-  for (const part of diff) {
-    if (!part.removed) continue;
-    const shown = part.value.replace(/\s+/g, ' ').trim();
-    if (!shown) continue; // pure whitespace reflow is not a deletion
-    violations.push({
-      rule: 'no_deletion',
-      text: shown.slice(0, 160),
-      why: 'This edit removes existing content. Tailoring may only add.',
-    });
-  }
-
-  // Rule 2: every content word in an addition must trace to the user's material.
+  /*
+   * There was a no_deletion rule here and nothing could ever reach it.
+   *
+   * verifyAdditions is the only caller and it passes an empty currentText, so
+   * the diff never contains a removal - the rule had a green test and zero
+   * live executions, which is the same class of defect as an unwired guard:
+   * coverage that reads like protection and protects nothing. "Tailoring may
+   * only add" is still enforced, in the place it can actually be observed -
+   * tailorNeverInvents asserts the engine's output still contains every line
+   * of the input. Deleting from one's OWN resume in the editor is the user's
+   * business and was never this rule's job.
+   *
+   * Every content word in an addition must trace to the user's material.
+   */
   const additions = [];
   for (const part of diff) {
     if (!part.added) continue;
@@ -230,6 +231,12 @@ function verifyAdditions(items, corpus) {
   });
 }
 
+/*
+ * `verify` is deliberately NOT exported. It was, and nothing called it: a guard
+ * that exists and is not invoked is indistinguishable from no guard, and an
+ * exported one invites a caller to believe the path is covered. It remains the
+ * engine inside verifyAdditions, which IS wired, at every resume write.
+ */
 module.exports = {
-  buildCorpus, verify, verifyAdditions, normalise, trimToken, stem, STOPWORDS, SAFE_CONNECTIVES,
+  buildCorpus, verifyAdditions, normalise, trimToken, stem, STOPWORDS, SAFE_CONNECTIVES,
 };

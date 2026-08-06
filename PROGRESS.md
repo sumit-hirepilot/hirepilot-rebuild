@@ -53,6 +53,13 @@ nothing is done until verified locally AND on production.
  - Sweeps use an ALLOWLIST of known-safe controls; a denylist fails open, and
    the failure mode is an unrecoverable submission. Auto-Pilot off, or a seeded
    account, before any sweep. D26.
+ - A guard is not shipped until an ENDPOINT test proves it fires on real input
+   through the real path. A unit test on the function proves the guard works
+   and says nothing about whether anything runs it - three shipped that way.
+   Asserting the route source contains the call is presence, not function.
+   Every guard also gets a case in tools/prove-endpoint-guards-red.js: a test
+   that stays green when the call is deleted cannot tell you the guard ran.
+   A guard with no live caller is wired or deleted, never left. D32.
 
 CONTEXT HANDOFF: context will run out before the queue does. That is the only
 thing that may stop you and it is not a reason to ask anything. After every

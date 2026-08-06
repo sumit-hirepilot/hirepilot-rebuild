@@ -1,7 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
-const { calculateJobMatch, calculateMatchesForUser } = require('../services/matchingEngine');
+const { calculateMatchesForUser } = require('../services/matchingEngine');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();

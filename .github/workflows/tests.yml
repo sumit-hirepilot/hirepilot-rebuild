@@ -31,7 +31,19 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 205
+        run: node tools/run-suite.js backend 218
+
+      # A guard that exists and is not invoked is indistinguishable from no
+      # guard, and the suite passes either way because it tests the function
+      # and not the path. Three shipped that way before this check existed.
+      - name: Every guard has a live caller
+        run: node tools/guard-wiring.js --strict
+
+      # And the endpoint tests must be able to TELL. Each one is re-run with
+      # its guard's call removed; a test that stays green proves only that the
+      # endpoint responds.
+      - name: Endpoint guard tests go red when the guard is unwired
+        run: node tools/prove-endpoint-guards-red.js
 
   frontend:
     runs-on: ubuntu-latest

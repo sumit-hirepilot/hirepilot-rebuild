@@ -13,7 +13,7 @@
  * untraceable claims.
  */
 
-const { buildCorpus, verify, trimToken } = require('../services/resumeGuard');
+const { buildCorpus, verifyAdditions, trimToken } = require('../services/resumeGuard');
 
 const RESUME = [
   'Senior Product Designer at Valtech.',
@@ -29,16 +29,25 @@ const corpus = () => buildCorpus({
 });
 
 const rulesFor = (candidate) => {
-  const r = verify(RESUME, candidate, corpus());
+  /*
+   * Through verifyAdditions, which is the function the endpoints actually
+   * call. This used to reach past it to verify() - a function nothing in the
+   * product invoked - so a green run here said nothing about the live path.
+   */
+  const [r] = verifyAdditions([{ text: candidate, kind: 'line' }], corpus());
   return { ok: r.ok, rules: [...new Set(r.violations.map((v) => v.rule))] };
 };
 
 describe('Item 0 — the guards fire on what they exist to stop', () => {
-  it('blocks a deletion', () => {
-    const r = rulesFor(RESUME.replace('Led design system work for 3 teams. ', ''));
-    expect(r.ok).toBe(false);
-    expect(r.rules).toContain('no_deletion');
-  });
+  /*
+   * The deletion case that stood here is gone with the rule it tested.
+   *
+   * no_deletion lived in verify(), whose only caller passes an empty current
+   * text - so the diff could never contain a removal and the rule could never
+   * fire. It was a green test over code with zero live executions. "Tailoring
+   * may only add" is asserted where it is observable, in tailorNeverInvents:
+   * the engine's output still contains every line of its input.
+   */
 
   it('blocks an invented number', () => {
     const r = rulesFor(`${RESUME} Increased retention by 47%.`);

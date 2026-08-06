@@ -11,7 +11,7 @@ const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../services/resumeTailorEngine');
 const docModel = require('../services/resumeDocument');
 const { renderHtml, templateList, FONTS, DEFAULT_STYLE } = require('../services/resumeTemplate');
-const { buildCorpus, verify, verifyAdditions } = require('../services/resumeGuard');
+const { buildCorpus, verifyAdditions } = require('../services/resumeGuard');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -630,6 +630,17 @@ async function loadDoc(userId, resumeId) {
   return row;
 }
 
+/*
+ * The text a node actually asserts. Bullets and skills carry `text`; an entry
+ * asserts a role at an organisation, which is the most damaging thing on a
+ * resume to get wrong, so it is checked as a claim like any other.
+ */
+function nodeText(n) {
+  if (!n || !n.node) return '';
+  if (n.kind === 'entry') return [n.node.role, n.node.org].filter(Boolean).join(' ').trim();
+  return String(n.node.text || '').trim();
+}
+
 async function saveDoc(userId, resumeId, doc) {
   // Flat text is regenerated here and nowhere else, so it cannot fall out of
   // step with the structure. Pending nodes are excluded: a suggestion nobody
@@ -692,6 +703,65 @@ router.put('/:id/document', async (req, res) => {
     const next = req.body.doc;
     if (!next || !Array.isArray(next.sections)) return res.status(400).json({ error: 'A document with sections is required' });
 
+    /*
+     * The widest bypass of all: this endpoint took req.body.doc and saved it
+     * whole, with no guard anywhere on the path. Every honesty rule the
+     * tailoring routes enforce could be walked straight round by writing the
+     * document directly - which is what the editor does on every keystroke.
+     *
+     * Checked per node rather than per document, and only where the text
+     * actually CHANGED, so re-saving an untouched resume can never re-litigate
+     * content the user already has.
+     *
+     * Untraceable content is marked pending, not refused. saveDoc regenerates
+     * the flat text with pending nodes excluded, so anything unverified cannot
+     * reach an employer - while the user's own editor never blocks their
+     * typing. Refusing the write outright would make the editor unusable; the
+     * criterion is that nothing unverified is SENT, not that nothing is typed.
+     */
+    const corpus = await corpusFor(req.user.id, docModel.toText(row.doc, { includePending: true }));
+    const before = new Map(docModel.walk(row.doc).map((n) => [n.node.id, nodeText(n)]));
+    const flagged = [];
+    for (const n of docModel.walk(next)) {
+      const t = nodeText(n);
+      if (!t) continue;
+      if (before.get(n.node.id) === t) continue;      // unchanged: already the user's
+      if (n.node.status === 'pending') continue;      // already held back
+      const [checked] = verifyAdditions([{ text: t, kind: n.kind }], corpus);
+      if (checked.ok) continue;
+      n.node.status = 'pending';
+      flagged.push({
+        id: n.node.id,
+        text: t.slice(0, 160),
+        why: (checked.violations[0] || {}).why || 'This is not in your resume, skills or work history yet.',
+      });
+    }
+
+    /*
+     * The header is a claim too, and it is not a node.
+     *
+     * docModel.walk only reaches bullets, skills and entries, so the loop above
+     * never sees doc.meta - which is where the job title sits. "Director of
+     * Engineering" typed into meta.title would have been written out unchecked
+     * and appeared at the top of every export. There is no pending flag on
+     * meta, so an untraceable header is reverted to what it was rather than
+     * held: the alternative is publishing it.
+     */
+    const prevMeta = (row.doc && row.doc.meta) || {};
+    next.meta = next.meta || {};
+    for (const field of ['name', 'title', 'location']) {
+      const value = String(next.meta[field] || '').trim();
+      if (!value || value === String(prevMeta[field] || '').trim()) continue;
+      const [checked] = verifyAdditions([{ text: value, kind: 'meta' }], corpus);
+      if (checked.ok) continue;
+      next.meta[field] = prevMeta[field] || '';
+      flagged.push({
+        id: `meta.${field}`,
+        text: value.slice(0, 160),
+        why: (checked.violations[0] || {}).why || 'This is not in your resume, skills or work history yet.',
+      });
+    }
+
     const style = req.body.style ? { ...(row.style || {}), ...req.body.style } : row.style;
     if (req.body.style) {
       await query('UPDATE resumes SET style = $1::jsonb WHERE id = $2 AND user_id = $3',
@@ -703,6 +773,7 @@ router.put('/:id/document', async (req, res) => {
       ok: true,
       html: renderHtml(next, { ...DEFAULT_STYLE, ...(style || {}) }),
       pendingCount: docModel.countPending(next),
+      heldForConfirmation: flagged,
     });
   } catch (err) {
     console.error('PUT /resume/:id/document failed:', err.message);

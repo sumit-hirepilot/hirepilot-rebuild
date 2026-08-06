@@ -14,8 +14,6 @@
  * operation, one of them guarded, which is A7.17's lesson exactly.
  */
 
-const fs = require('fs');
-const path = require('path');
 const { buildCorpus, verifyAdditions } = require('../services/resumeGuard');
 const { buildTailoredText } = require('../services/resumeTailorEngine');
 
@@ -47,30 +45,22 @@ describe('Item A — a skill from the job description is not a skill the person 
   });
 });
 
-describe('Item A — the tailor route runs the guard', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'resume.js'), 'utf8');
-  const route = src.slice(src.indexOf("router.post('/tailor'"), src.indexOf("router.delete('/tailored/:id'"));
-
-  it('verifies every proposed skill before it can reach the text', () => {
-    expect(route).toMatch(/verifyAdditions\(/);
-    expect(route).toMatch(/corpusFor\(req\.user\.id/);
-  });
-
-  it('builds the tailored text from the ALLOWED set, not the proposed set', () => {
-    /*
-     * Filtering the finished text instead would leave the sentence that
-     * introduces the skills in place - a heading promising skills that are not
-     * there is its own small lie.
-     */
-    expect(route).toMatch(/allowedSkills/);
-    expect(route).not.toMatch(/const \{ tailoredText, addedSkills, matchedSkills \} = buildTailoredText/);
-  });
-
-  it('states what it withheld rather than dropping it silently', () => {
-    // A skill the user genuinely has but never listed is theirs to confirm.
-    expect(route).toMatch(/needsConfirmation/);
-  });
-});
+/*
+ * The three source-scanning tests that stood here are gone deliberately.
+ *
+ * They asserted that routes/resume.js CONTAINS `verifyAdditions(` and
+ * `needsConfirmation`. That is presence, not function: it stays green if the
+ * call moves after the write, if its result is ignored, or if the route is
+ * never reached at all - which is precisely the defect this file was written
+ * for. Reading a guard's name in a file is not evidence the guard runs.
+ *
+ * The behaviour they were reaching for is now asserted where it can actually
+ * be observed, in guardsFireOnTheEndpoint.test.js: the endpoint is sent a job
+ * description naming a skill the resume does not have, and the response is
+ * checked for the refusal. Those tests are re-run with the guard's call
+ * removed by tools/prove-endpoint-guards-red.js, so they are known to fail
+ * when it is unwired.
+ */
 
 describe('Item A — the engine itself only ever adds', () => {
   it('never removes existing content', () => {

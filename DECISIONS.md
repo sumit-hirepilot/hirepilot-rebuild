@@ -476,3 +476,79 @@ on first read. Destinations are unchanged; only the words are.
 One definition each, in lib/scoreBands.js and lib/statusWords.js. Writing the
 pipeline columns out a second time is exactly how the board and the status
 dropdown came to disagree, which the guard caught.
+
+D29 — The tailoring guard runs on every path that writes to a resume, not
+      just the one it was built for.
+      /api/resume/tailor called buildTailoredText and wrote the result out
+      without ever calling verifyAdditions, while the document editor beside it
+      did. That gap put "Additional relevant skills for this role: Marketing"
+      into a real resume with no marketing in it. The rule is not "the guard
+      exists" but "no writer bypasses it", so the check belongs at every write.
+      A refused skill becomes needsConfirmation with a reason, never a silent
+      addition and never a silent drop - consent is the missing step, not
+      strictness. Rebuilt from the allowed set rather than filtered out of the
+      finished text, so the sentence introducing the skills cannot outlive them.
+
+D30 — A guard script that can corrupt what it guards is worse than no guard,
+      so the audit is guarded in three places, not one.
+      1. The audit records every case file before mutating and exits non-zero if
+         any file does not come back, or if its journal survives. Catches the
+         normal failure.
+      2. tools/check-no-mutation-artifacts.js runs in CI, where a hard kill on
+         the developer's machine cannot skip it. Catches what 1 misses.
+      3. tools/ship.sh puts the gate and the push in ONE invocation. Two
+         separate commands is how a red suite reached main twice; a gate that
+         passed five minutes ago is not a gate.
+      The marker list is not the mechanism, only the cheap part of it - it is
+      necessarily incomplete, which is why layers 1 and 3 do not depend on it.
+      Proved: the marker list gained a case only after a ternary pinned to a
+      literal condition got past every other layer and silently disabled the
+      dashboard's plan check.
+
+D31 — A capability the plan refuses is never described as running.
+      Enforcing the autoApply tier gate in the engine without teaching the
+      preference path left the dashboard reading "Auto-Pilot Active" on a plan
+      that would refuse every submission. The preference now 403s an enable the
+      plan cannot honour, and the plan's answer travels with the profile as
+      autoApplyIncluded so no surface has to infer it. Enforcement and the words
+      describing it ship together or the product lies.
+
+D32 — A guard that exists and is not invoked is indistinguishable from no
+      guard, and the suite passes either way because it tests the function
+      rather than the path.
+      Three shipped like that: plans.can() with no caller at all, the
+      untraceable_claim rule bypassed because POST /api/resume/tailor never
+      called verifyAdditions, and resumeGuard.verify exported and invoked by
+      nothing. Every one had green tests.
+      Four things now hold the class shut:
+      1. tools/guard-wiring.js enumerates every exported function that can
+         refuse and reports who calls it, parsed rather than grepped. Two
+         regex cuts of it reported the very defect it exists to find as WIRED -
+         one counted jwt.verify as a call to resumeGuard.verify, the other
+         counted an import statement as a use. --strict fails CI on any guard
+         with no live caller.
+      2. Every guard has a test that exercises the ENDPOINT with input it must
+         refuse, plus the honest counterpart, because a guard that refuses
+         everything passes every negative test.
+      3. tools/prove-endpoint-guards-red.js re-runs that suite with each
+         guard's CALL removed and requires it to go red. A test that survives
+         the deletion proves only that the route replies.
+      4. Both run in ship.sh and in CI.
+      Found on the way, all three fixed: PUT /api/resume/:id/document saved
+      req.body.doc verbatim with no guard on the path - the widest bypass in
+      the product, since the editor writes through it on every save; that
+      route's node walk never covered doc.meta, so a job title could be
+      rewritten unchecked; and routes/matches.js imported calculateJobMatch
+      and never called it.
+      Untraceable content on the document path is marked pending, not refused.
+      saveDoc regenerates the flat text with pending excluded, so nothing
+      unverified can reach an employer while the user's own typing is never
+      blocked. The criterion is that nothing unverified is SENT. meta has no
+      pending flag, so an untraceable header reverts instead - the only other
+      option there is publishing it.
+      Two rules were retired rather than left: resumeGuard.verify is no longer
+      exported (it is verifyAdditions' engine, not a guard of its own), and its
+      no_deletion rule is gone - verifyAdditions passes an empty current text,
+      so no diff could ever contain a removal and the rule had a green test
+      over zero live executions. "Tailoring may only add" is asserted where it
+      is observable, on the engine's output.
