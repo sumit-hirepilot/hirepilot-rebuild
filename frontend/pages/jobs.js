@@ -789,7 +789,7 @@ export default function Jobs() {
         ? ` ${data.skipped.length} already in your queue or tracker.`
         : '';
       setMessage(
-        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve in your Apply Queue.${skipped}`
+        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve under Ready to send.${skipped}`
       );
     } catch (err) {
       setMessage('Could not prepare the application. Please try again.');

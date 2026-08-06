@@ -71,3 +71,26 @@ describe('Wave C — the surfaces use the shared words, not their own', () => {
     }
   });
 });
+
+describe('Wave C — the page a nav item opens is titled the same thing', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { stripComments } = require('../test-utils/source');
+  const dir = path.join(__dirname, '..', 'pages');
+
+  it('no page heading still carries the old internal name', () => {
+    /*
+     * The rename covered the nav and stopped there, so a tester clicking
+     * "Ready to send" landed on a page titled "Apply Queue" and "Saved
+     * searches" opened "Search Agents". A destination whose title contradicts
+     * the label it was reached by is the A7.5 defect, one layer in.
+     */
+    const banned = ['Apply Queue', 'Search Agents'];
+    const offenders = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+      const src = stripComments(fs.readFileSync(path.join(dir, f), 'utf8'));
+      for (const b of banned) if (src.includes(b)) offenders.push(`${f}: ${b}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

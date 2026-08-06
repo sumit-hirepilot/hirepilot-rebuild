@@ -137,7 +137,7 @@ export default function Tracker() {
 
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>Tracker</h1>
+          <h1 className={styles.pageTitle}>My applications</h1>
           <p className={styles.pageSubtitle}>
             Applications that reached an employer. Anything still being filled
             stays on the Dashboard until it is actually sent.

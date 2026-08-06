@@ -140,11 +140,11 @@ export default function ApplyQueue() {
 
   return (
     <DashboardLayout user={user}>
-      <Head><title>Apply Queue - HirePilot</title></Head>
+      <Head><title>Ready to send - HirePilot</title></Head>
 
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>Apply Queue</h1>
+          <h1 className={styles.pageTitle}>Ready to send</h1>
           <p className={styles.pageSubtitle}>
             Everything queued here is submitted automatically by the browser
             extension, on the employer&apos;s own site, and recorded against their

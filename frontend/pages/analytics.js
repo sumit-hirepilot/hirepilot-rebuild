@@ -70,7 +70,7 @@ export default function Analytics() {
       </Head>
 
       <DashboardLayout title="Analytics" user={user}>
-        <h1 className={styles.greeting} style={{ marginTop: 0 }}>Analytics</h1>
+        <h1 className={styles.greeting} style={{ marginTop: 0 }}>How it is going</h1>
 
         {loading ? (
           <p className={styles.emptyState}>Loading&hellip;</p>

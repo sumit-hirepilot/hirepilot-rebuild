@@ -205,14 +205,14 @@ export default function Agents() {
   return (
     <>
       <Head>
-        <title>Search Agents - HirePilot</title>
+        <title>Saved searches - HirePilot</title>
       </Head>
 
-      <DashboardLayout title="Search Agents" user={user}>
+      <DashboardLayout title="Saved searches" user={user}>
         <div className={page.headerRow}>
           <div>
             <p className={styles.dateLabel}>{agents.length} standing searches</p>
-            <h1 className={styles.greeting}>Search Agents</h1>
+            <h1 className={styles.greeting}>Saved searches</h1>
           </div>
           <button className={page.newButton} onClick={() => setShowForm(true)}>+ Create agent</button>
         </div>

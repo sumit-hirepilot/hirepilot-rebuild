@@ -117,6 +117,12 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  { suite: 'statusWords',
+    test: 'no page heading still carries the old internal name',
+    file: 'pages/apply-queue.js',
+    mutate: (s) => s.replace('<h1 className={styles.pageTitle}>Ready to send</h1>',
+      '<h1 className={styles.pageTitle}>Apply Queue</h1>') },
+
   { suite: 'adminGrant', dir: 'backend', base: true,
     test: 'refuses a normal signed-in user',
     file: 'backend/routes/plans.js',
