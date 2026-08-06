@@ -741,28 +741,3 @@ D41 — A7.11's remedy was already built; the measurement was what was missing.
       LAST) and the feed says so with a live count and a one-click way to see
       them, and under a date window they are excluded with the count stated.
       Both verified rendering on production with the real figure.
-
-D42 — Any value read from a request is unbounded until proven otherwise, and
-      that is a security property rather than a paging detail.
-      An unauthenticated URL took production down for eight minutes. Fixing
-      page and limit in routes/jobs.js would have left the class untouched: the
-      sweep found thirteen more unbounded parameters across five files -
-      minScore, keywords, exclude, region, workArrangement, salary, ranked,
-      source, scope, jobType, apply's exclude and runId, inbox's token - plus
-      unbounded limits on activity, notifications, inbox and matches.
-      services/requestBounds is the single declaration: clamp rather than
-      refuse, because a 400 breaks a working client and teaches nothing, and
-      STATE the clamp, because a response silently returning 100 of 1,000
-      requested rows is indistinguishable from a database holding only 100.
-      Repeated parameters are bounded on COUNT as well as length: ?region=a a
-      thousand times builds a thousand-branch predicate from one URL.
-      tools/check-query-bounds.js fails CI on any parameter that does not pass
-      through it. Its own limits are written into its header rather than
-      implied - it is file-scoped, not handler-scoped, and its known-positive
-      proof is PARTIAL: mutating jobs.js to restore the historical unbounded
-      paging made it report `limit` and not `page`. It is demonstrated to catch
-      an unbounded parameter and NOT demonstrated to catch every one, so a green
-      run means "no obvious hole", not proof.
-      Writing the tests found a defect in the bounds themselves: `?limit=`
-      served one row per page, because Number('') is 0 and 0 is finite. An
-      absent parameter is not the number zero.

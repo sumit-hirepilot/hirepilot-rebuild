@@ -9,9 +9,6 @@ const {
   pageOf, BLOCK: DIVERSITY_BLOCK, QUOTA: DIVERSITY_QUOTA,
 } = require('../services/feedDiversity');
 const { readBack: readSchemaClaims } = require('../services/schemaClaims');
-const {
-  boundPaging, boundText, boundFloat, boundList, clampReport,
-} = require('../services/requestBounds');
 
 /*
  * A7.9 — how many ranked rows the diversity pass reorders.
@@ -782,8 +779,8 @@ const JOB_COLUMNS = `id, source, title, company_name, company_url, job_url, appl
 router.get('/', attachUserIfPresent, async (req, res) => {
   try {
     const {
-      page: rawPage = 1, limit: rawLimit = 20, search: rawSearch, source: rawSource, location: rawLocation, experience, includeRelated,
-      scope: rawScope, datePosted, jobType: rawJobType, company: rawCompany,
+      page: rawPage = 1, limit: rawLimit = 20, search, source, location, experience, includeRelated,
+      scope, datePosted, jobType, company,
     } = req.query;
 
     /*
@@ -800,32 +797,26 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * A7.9 defect again. Rows past the bound are still reachable by filtering
      * or sorting, and `total` still counts them honestly.
      */
-    const paging = boundPaging(rawPage, rawLimit);
-    const { page, limit, offset } = paging;
+    const MAX_LIMIT = 100;
+    const MAX_OFFSET = 5000;
 
-    /*
-     * Free text is bounded too. `search` and `company` reach a LIKE pattern and
-     * the keyword-tiering expression; an unbounded string there is the same
-     * class of defect as an unbounded OFFSET, just slower to notice.
-     * Truncated rather than refused - throwing away a search for being long is
-     * its own defect.
-     */
-    const searchBound = boundText(rawSearch);
-    const companyBound = boundText(rawCompany);
-    const locationBound = boundText(rawLocation);
-    const source = boundText(rawSource, { max: 40 }).value || undefined;
-    const scope = boundText(rawScope, { max: 40 }).value || undefined;
-    const jobType = boundText(rawJobType, { max: 40 }).value || undefined;
-    const search = searchBound.value || undefined;
-    const company = companyBound.value || undefined;
-    const location = locationBound.value || undefined;
-    const queryClamps = clampReport({
-      page: { clamped: paging.clamped, requested: paging.requestedPage, value: paging.page },
-      limit: { clamped: paging.limitClamped, requested: Number(rawLimit), value: paging.limit },
-      search: searchBound,
-      company: companyBound,
-      location: locationBound,
-    });
+    const requestedLimit = Math.floor(Number(rawLimit));
+    const limit = Math.min(Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 20), MAX_LIMIT);
+
+    const requestedPage = Math.floor(Number(rawPage));
+    const maxPage = Math.max(1, Math.floor(MAX_OFFSET / limit));
+    const page = Math.min(Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1), maxPage);
+
+    const paging = {
+      page,
+      limit,
+      maxPage,
+      requestedPage: Number.isFinite(requestedPage) ? requestedPage : 1,
+      clamped: Number.isFinite(requestedPage) ? requestedPage > maxPage : false,
+      limitClamped: Number.isFinite(requestedLimit) ? requestedLimit > MAX_LIMIT : false,
+    };
+
+    const offset = (page - 1) * limit;
 
     /*
      * A7.1 — score ranking is the DEFAULT for a signed-in user.
@@ -847,10 +838,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const sort = req.query.sort === 'recent' || req.query.sort === 'score'
       ? req.query.sort
       : sortDefault;
-    // Bounded - a score is a ratio, so anything outside 0..1 is a typo or an
-    // attempt, never a request worth honouring.
-    const minScoreBound = boundFloat(req.query.minScore, { def: 0.4, min: 0, max: 1 });
-    const minScore = minScoreBound.value;
+    const minScore = Number(req.query.minScore ?? 0.4);
 
     /*
      * `sort` and `ranked` are different questions, and conflating them lost the
@@ -880,15 +868,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // Multiple keyword "chips" - accepts repeated ?keywords=X&keywords=Y, or
     // falls back to the single ?search= param for backward compatibility
     // (search agents and other internal callers still use `search`).
-    // Bounded - keywords reach the tiering expression and a LIKE pattern.
-    const keywordsBound = boundText(req.query.keywords, { max: 300 });
-    const rawKeywords = keywordsBound.value || undefined;
+    const rawKeywords = req.query.keywords;
     const keywords = rawKeywords
       ? (Array.isArray(rawKeywords) ? rawKeywords : [rawKeywords])
       : (search ? [search] : []);
 
-    const excludeBound = boundText(req.query.exclude, { max: 300 });
-    const rawExclude = excludeBound.value || undefined;
+    const rawExclude = req.query.exclude;
     const excludeTerms = rawExclude ? (Array.isArray(rawExclude) ? rawExclude : [rawExclude]) : [];
 
     /*
@@ -940,12 +925,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     // Region: matched against the derived expression rather than a column,
     // because location is free text and jobs.country is mostly empty.
-    /*
-     * Array filters are bounded on COUNT as well as length: ?region=a&region=b
-     * repeated a thousand times builds a thousand-branch predicate from one
-     * URL, which is the page/limit lesson in a different shape.
-     */
-    const regions = boundList(req.query.region).value;
+    const regions = asArray(req.query.region);
     if (regions.length) {
       addFilter('region', `Location: ${regions.join(', ')}`, (p) => {
         const ph = regions.map((r) => { p.push(r); return `$${p.length}`; });
@@ -953,7 +933,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       });
     }
 
-    const workArrangements = boundList(req.query.workArrangement).value;
+    const workArrangements = asArray(req.query.workArrangement);
     if (workArrangements.length) {
       addFilter('workArrangement', `Workplace: ${workArrangements.join(', ')}`, (p) => {
         const ph = workArrangements.map((w) => { p.push(w); return `$${p.length}`; });
@@ -963,7 +943,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     // Salary bands are USD-equivalent (mixed source currencies converted with
     // static reference rates). Multiple bands OR together.
-    const salaryBands = boundList(req.query.salary).value;
+    const salaryBands = asArray(req.query.salary);
     const salaryConds = salaryBands
       .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
       .filter(Boolean);
@@ -1428,9 +1408,6 @@ router.get('/', attachUserIfPresent, async (req, res) => {
        * one and a client pages forever into rows it will never be given.
        */
       paging,
-      // Stated, never silent: what the server did with parameters it would not
-      // accept as given. Null when it accepted everything.
-      clamped: queryClamps,
       jobs: decorate(jobs),
       noExactMatches,
       relatedJobs: decorate(relatedJobs),

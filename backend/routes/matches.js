@@ -2,7 +2,6 @@ const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const { calculateMatchesForUser } = require('../services/matchingEngine');
-const { boundPaging, boundFloat, clampReport } = require('../services/requestBounds');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 
 const router = express.Router();
@@ -78,18 +77,8 @@ async function scoreIfNeverScored(userId) {
 
 router.get('/', verifyToken, async (req, res) => {
   try {
-    /*
-     * Bounded. page/limit/minScore were read off the query string and used
-     * directly - the same shape that let ?limit=100&page=250 take the API
-     * down through /api/jobs. One declaration for every endpoint, in
-     * services/requestBounds, so this cannot drift per route.
-     */
-    const paging = boundPaging(req.query.page, req.query.limit);
-    const { page, limit, offset } = paging;
-    const minScoreBound = boundFloat(req.query.minScore, { def: 0.3, min: 0, max: 1 });
-    const minScore = minScoreBound.value;
-    const clamps = clampReport({ page: { ...paging, requested: paging.requestedPage, value: paging.page },
-      minScore: minScoreBound });
+    const { page = 1, limit = 20, minScore = 0.3 } = req.query;
+    const offset = (page - 1) * limit;
 
     let scoredOnRead = false;
     try {

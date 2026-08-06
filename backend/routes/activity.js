@@ -1,6 +1,5 @@
 const express = require('express');
 const { query } = require('../db');
-const { boundInt, clampReport } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 
@@ -94,10 +93,7 @@ function formatActivity(row) {
 
 router.get('/', async (req, res) => {
   try {
-    // Bounded - see services/requestBounds. An unbounded LIMIT off the query
-    // string is the same class that took the API down through /api/jobs.
-    const limitBound = boundInt(req.query.limit, { def: 8, min: 1, max: 100 });
-    const limit = limitBound.value;
+    const { limit = 8 } = req.query;
     const result = await query(
       `SELECT al.event_type, al.metadata, al.created_at, j.title as job_title, j.company_name
        FROM activity_log al
