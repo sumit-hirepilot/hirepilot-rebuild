@@ -96,6 +96,66 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## TESTER RUN — items 0-4 closed. Item 5 (demo pass) is the remainder.
+
+### Item 1 — interaction coverage. No dead control; the tool was the finding.
+Two sweeps, instrument proved first each time. The field-name scan was
+validated on nine keys known to be sent before any absence was believed; all
+four candidates were false positives (sourceBreakdown and activity confirmed
+live). The dynamic allowlist sweep flagged controls on six screens and every
+one was alive when checked by hand - its signature sliced innerText at 6,000
+characters, which is how A7.5 produced 83 false findings. Now hashes the whole
+page and counts open dialogs.
+
+### Item 2 — plain language. D28.
+Score bands ("Strong match · 78%", unscored stays null rather than "Long
+shot"), nav renamed with destinations unchanged, status words that answer "is
+it on me?" - submitted became "Waiting for the company". The pipeline columns
+existed TWICE with hand-typed labels; the second list is now derived and the
+guard is what found the drift.
+PRODUCTION: nav plain, bands rendering, no jargon left.
+
+### Item 3 — empty states name a cause AND give one action.
+The contradiction was already fixed under A7.13. What was missing was the fix:
+one button that removes exactly the filter named ("Show jobs from any date
+(11)"), through the shared applyFilter. It offers nothing when the cause is the
+search term (D21), when relaxing would still return nothing, or when no single
+filter is responsible.
+
+### Item 4 — credits and tiers were counted, not enforced.
+spend() is called once and correctly, behind the evidence check, so a failed or
+stalled application costs nothing. But it is a LEDGER: it never blocks, because
+by then the application has reached the employer. Nothing checked the allowance
+BEFORE the work, so a user at 0 remaining could submit indefinitely. Now
+checked in the submission gate, fail-closed.
+plans.can(userId,'autoApply') was written and called from NOWHERE - the
+operator's own account is "starter" with autoApplyIncluded false while
+Auto-Pilot runs. Now checked where the capability runs.
+Granting shipped with enforcing, because enforcing alone would have switched
+auto-apply off for the whole cohort.
+PRODUCTION: unknown tier refused with 400; operator granted power, 4500
+credits, autoApplyIncluded true.
+
+### Two process failures, recorded
+1. I pushed a commit with the frontend suite RED - unchained commands, the
+   98e72c8 lesson repeating. What shipped was `const MATCH_EXAMPLE = { score: 1
+   }` in the landing page, left by an audit run the 10-minute timeout killed
+   mid-case. Inert, but a fabricated example figure in the file whose guard
+   bans exactly that. Removed in the next commit.
+2. That same killed run left `if (false) {` in routes/plans.js, disabling the
+   tier check. The audit now journals the original to disk BEFORE mutating and
+   replays any journal at startup - proved by simulating an interrupted run.
+   A guard script that can corrupt what it guards is worse than no guard.
+
+### Item 5 — DEMO PASS, remaining. Executable cold.
+- Production, READ-ONLY, cloud browser. Do NOT submit any application.
+- Every screen at 375 / 768 / 1440, on a fresh account AND a granted-credits
+  account. Screenshot each.
+- Include a forced API failure and an exhausted limit.
+- Report anything a first-time user would call broken, ranked.
+- The sweep allowlist in tools/ui-sweep.js is what may be clicked; anything
+  else is looked at, not touched. Auto-Pilot is ON and the daily cap is 5.
+
 ## ITEM 0 — CLOSED. Auto-Pilot on, constrained. Verified on production.
 
 Real applications go to real employers under testers' names, so every claim
