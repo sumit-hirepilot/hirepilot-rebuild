@@ -4,6 +4,8 @@ const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
+const { orderBySql, orderFor } = require('../services/jobOrder');
+const { scoreJobsForUser } = require('../services/matchingEngine');
 const { extractSkills } = require('../services/resumeParser');
 const { checkAts, buildAtsGuide } = require('../services/atsChecker');
 
@@ -1043,9 +1045,9 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      */
     const countWhere = `WHERE ${tierFilter}`;
 
-    const orderBySql = sort === 'recent'
-      ? 'match_tier ASC, posted_at DESC NULLS LAST, overall_score DESC NULLS LAST, id DESC'
-      : 'match_tier ASC, overall_score DESC NULLS LAST, posted_at DESC NULLS LAST, id DESC';
+    // A7.20/A7.8 — one declaration of the order, rendered as SQL here and as a
+    // comparator below. Written out twice, they drift.
+    const orderBy = orderBySql(sort);
 
     const scoreParams = mainQuery.sp;
     const countResult = await query(`${rankedCte} SELECT COUNT(*) as count FROM ranked ${countWhere}`, scoreParams);
@@ -1053,7 +1055,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     const result = await query(
       `${rankedCte} SELECT * FROM ranked ${where}
-        ORDER BY ${orderBySql}
+        ORDER BY ${orderBy}
         LIMIT $${scoreParams.length + 1} OFFSET $${scoreParams.length + 2}`,
       [...scoreParams, limit, offset]
     );
@@ -1076,6 +1078,46 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       if (sort === 'recent') undatedTotal = undated;
     }
 
+    /*
+     * A7.20 — score the page before the order is decided.
+     *
+     * A7.17 made the index the universe, correctly. The scoring sweep runs
+     * periodically, so a job ingested since the last run has no score for this
+     * user - and "past 24 hours" selects precisely those rows, which is why it
+     * showed 20 unscored of 20 while the default feed showed none.
+     *
+     * The page only. Twenty rows, not the 24,800 behind them. The rows arrived
+     * ordered by a score they did not yet have, so the order is redone here
+     * from the same declaration the SQL used - otherwise the newest job, by
+     * definition the least likely to have been scored, ranks below every stale
+     * one under "Newest first".
+     */
+    let withheldUnscored = 0;
+    const isUnscored = (j) => j.overall_score === null || j.overall_score === undefined;
+
+    if (rankByScore && userId) {
+      const needScore = jobs.filter(isUnscored).map((j) => j.id);
+      if (needScore.length) {
+        const fresh = await scoreJobsForUser(userId, needScore);
+        jobs = jobs.map((j) => {
+          const s = fresh.get(j.id);
+          return s ? { ...j, ...s } : j;
+        });
+      }
+
+      /*
+       * Anything still unscored could not be scored at all. Withheld rather
+       * than shown: a user who reached this list by matching must not be
+       * handed a row nothing matched. Constraint 1 - the absence is stated,
+       * in ranking.withheldUnscored, not implied by a blank.
+       */
+      const before = jobs.length;
+      jobs = jobs.filter((j) => !isUnscored(j));
+      withheldUnscored = before - jobs.length;
+
+      jobs.sort(orderFor(sort));
+    }
+
     const unscored = jobs.filter((j) => j.overall_score === null || j.overall_score === undefined).length;
     ranking = {
       mode: rankByScore ? 'ranked' : 'all',
@@ -1086,6 +1128,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       unscoredInPage: unscored,
       // A7.11 — stated for the same reason, one column over.
       undatedTotal,
+      // A7.20 — rows dropped from this page because they could not be scored.
+      withheldUnscored,
     };
 
 
@@ -1155,7 +1199,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     if (hasKeywords && !wantRelated && total === 0) {
       const relatedResult = await query(
         `${rankedCte} SELECT * FROM ranked WHERE match_tier = 3${capSql}
-          ORDER BY ${orderBySql} LIMIT $${scoreParams.length + 1}`,
+          ORDER BY ${orderBy} LIMIT $${scoreParams.length + 1}`,
         [...scoreParams, limit]
       );
       relatedJobs = relatedResult.rows;

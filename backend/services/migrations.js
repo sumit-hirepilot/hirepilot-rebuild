@@ -680,6 +680,14 @@ const STATEMENTS = [
      ON jobs (is_active, posted_at DESC NULLS LAST)`,
 
   /*
+   * A7.20 — marks a score computed because a user was looking at the job,
+   * rather than by the periodic sweep. The sweep deletes everything outside
+   * its top-N; without this flag it would evict on-demand scores within the
+   * hour and the same rows would be re-scored on every visit.
+   */
+  `ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS on_demand BOOLEAN NOT NULL DEFAULT FALSE`,
+
+  /*
    * A7.2 (second half) — correct the rows that predate the ingest guard.
    *
    * 181 himalayas rows carry the literal string `name` as company_name. The
