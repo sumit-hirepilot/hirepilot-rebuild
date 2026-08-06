@@ -69,4 +69,33 @@ function orderFor(sort) {
   };
 }
 
-module.exports = { ORDER_FIELDS, orderBySql, orderFor };
+
+/*
+ * A7.8 — the order that decides WHAT GETS APPLIED TO.
+ *
+ * Separate from the feed's order because it answers a different question. The
+ * feed asks "in what order should these be read"; this asks "which of these
+ * make the cut", and both callers apply a LIMIT to a ranked list.
+ *
+ * With many rows sharing a score - and the score is a weighted sum of four
+ * coarse components, so ties are common - which jobs fall inside that LIMIT
+ * was whatever the plan produced. Two identical requests could queue two
+ * different sets of employers, and no one could explain the choice. A unique
+ * final key makes the cut-off reproducible.
+ *
+ * NULLS LAST is here even though both callers filter on `>= minScore`, which
+ * a NULL cannot pass. The ordering must not depend on a WHERE clause in
+ * another file staying the way it is.
+ */
+const CANDIDATE_ORDER = ['overall_score DESC NULLS LAST', 'job_id DESC'];
+
+/** The candidate ORDER BY, optionally qualified with a table alias. */
+function candidateOrderBySql(alias = '') {
+  const prefix = alias ? `${alias}.` : '';
+  return CANDIDATE_ORDER.map((f) => `${prefix}${f}`).join(', ');
+}
+
+module.exports = {
+  ORDER_FIELDS, orderBySql, orderFor,
+  CANDIDATE_ORDER, candidateOrderBySql,
+};

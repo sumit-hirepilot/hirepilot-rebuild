@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { candidateOrderBySql } = require('./jobOrder');
 const { calculateMatchesForUser } = require('./matchingEngine');
 const { generateCoverLetterContent } = require('./coverLetterGenerator');
 const { buildTailoredText, diffTailoring } = require('./resumeTailorEngine');
@@ -46,17 +47,19 @@ const runAutoApplyForUser = async (user) => {
      JOIN jobs j ON jm.job_id = j.id
      WHERE jm.user_id = $1 AND jm.overall_score >= $2 AND j.is_active = true
        AND NOT EXISTS (SELECT 1 FROM applications a WHERE a.user_id = jm.user_id AND a.job_id = jm.job_id)
-     ORDER BY jm.overall_score DESC
+     -- A7.8: Auto-Pilot cuts this list at 50. Without a unique final key,
+     -- which 50 employers it considers is not reproducible between runs.
+     ORDER BY ${candidateOrderBySql('jm')}
      LIMIT 50`,
     [user.id, minScore]
   );
 
   const [userResult, skillsResult, resumeResult] = await Promise.all([
     query('SELECT full_name, title FROM users WHERE id = $1', [user.id]),
-    query('SELECT skill FROM user_skills WHERE user_id = $1 ORDER BY skill LIMIT 5', [user.id]),
+    query('SELECT skill FROM user_skills WHERE user_id = $1 ORDER BY skill, id LIMIT 5', [user.id]),
     query(
       `SELECT id, original_file_text FROM resumes WHERE user_id = $1
-       ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
+       ORDER BY is_default DESC, updated_at DESC, id DESC LIMIT 1`,
       [user.id]
     ),
   ]);

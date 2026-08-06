@@ -32,6 +32,7 @@
  */
 
 const crypto = require('crypto');
+const { candidateOrderBySql } = require('../services/jobOrder');
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
@@ -288,7 +289,9 @@ router.post('/queue', verifyToken, async (req, res) => {
       const m = await query(
         `SELECT job_id FROM job_matches
          WHERE user_id = $1 AND overall_score >= $2
-         ORDER BY overall_score DESC LIMIT $3`,
+         -- A7.8: a unique final key, so which jobs make the cut is
+         -- reproducible rather than whatever the plan produced.
+         ORDER BY ${candidateOrderBySql()} LIMIT $3`,
         [userId, minScore, MAX_BULK]
       );
       jobIds = m.rows.map((r) => r.job_id);
@@ -321,7 +324,7 @@ router.post('/queue', verifyToken, async (req, res) => {
       query('SELECT * FROM application_profiles WHERE user_id = $1', [userId]),
       query(
         `SELECT id, original_file_text FROM resumes
-         WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1`,
+         WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC, id DESC LIMIT 1`,
         [userId]
       ),
       query('SELECT full_name, title FROM users WHERE id = $1', [userId]),
@@ -1343,7 +1346,7 @@ router.get('/knowledge', verifyToken, async (req, res) => {
     const top = await query(
       `SELECT concept_id, COUNT(*)::int AS variations, SUM(times_seen)::int AS seen
        FROM question_variations WHERE concept_id IS NOT NULL
-       GROUP BY concept_id ORDER BY variations DESC LIMIT 15`
+       GROUP BY concept_id ORDER BY variations DESC, concept_id LIMIT 15`
     );
     res.json({ ...s, byConcept: top.rows });
   } catch (err) {
@@ -1424,7 +1427,7 @@ router.get('/runs/latest', verifyToken, async (req, res) => {
   try {
     const r = await query(
       `SELECT id, started_at, ended_at FROM apply_runs
-        WHERE user_id = $1 ORDER BY started_at DESC LIMIT 1`,
+        WHERE user_id = $1 ORDER BY started_at DESC, id DESC LIMIT 1`,
       [req.user.id]
     );
     if (!r.rows.length) return res.json({ run: null });

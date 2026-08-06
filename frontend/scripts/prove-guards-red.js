@@ -117,6 +117,27 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- A7.8: the order that decides what gets applied to ---- */
+  { suite: 'candidateOrder', dir: 'backend', base: true,
+    test: 'ends on a unique key, so the cut-off is reproducible',
+    file: 'backend/services/jobOrder.js',
+    mutate: (s) => s.replace("const CANDIDATE_ORDER = ['overall_score DESC NULLS LAST', 'job_id DESC'];",
+      "const CANDIDATE_ORDER = ['overall_score DESC NULLS LAST'];") },
+  { suite: 'candidateOrder', dir: 'backend', base: true,
+    test: 'never lets an unscored row lead a selection',
+    file: 'backend/services/jobOrder.js',
+    mutate: (s) => s.replace("'overall_score DESC NULLS LAST', 'job_id DESC'",
+      "'overall_score DESC', 'job_id DESC'") },
+  { suite: 'candidateOrder', dir: 'backend', base: true,
+    test: 'services/autoApplyEngine.js takes the order from the shared declaration',
+    file: 'backend/services/autoApplyEngine.js',
+    mutate: (s) => s.replace("${candidateOrderBySql('jm')}", 'jm.overall_score DESC') },
+  { suite: 'candidateOrder', dir: 'backend', base: true,
+    test: 'applies a table alias without changing the order',
+    file: 'backend/services/jobOrder.js',
+    mutate: (s) => s.replace('return CANDIDATE_ORDER.map((f) => `${prefix}${f}`).join(\', \');',
+      'return CANDIDATE_ORDER.map((f, i) => (i === 0 ? `${prefix}${f}` : f)).join(\', \');') },
+
   /* ---- A7.21: external links are opener-safe ---- */
   { suite: 'externalLinks',
     test: 'has no target="_blank" without rel noopener or noreferrer',
