@@ -112,3 +112,39 @@ describe('Item 0 — Greenhouse only', () => {
     expect(block).not.toMatch(/^\s*'ashby'/m);
   });
 });
+
+describe('Item 0 — the switch can actually be flipped', () => {
+  it('refuses when no secret is configured', async () => {
+    delete process.env.ADMIN_HALT_SECRET;
+    const res = await request(app()).post('/api/apply/admin/halt').send({ halted: true });
+    expect(res.status).toBe(503);
+  });
+
+  it('refuses a wrong secret', async () => {
+    process.env.ADMIN_HALT_SECRET = 'right';
+    const res = await request(app())
+      .post('/api/apply/admin/halt').set('x-admin-secret', 'wrong').send({ halted: true });
+    expect(res.status).toBe(403);
+  });
+
+  it('sets the flag with the right secret', async () => {
+    process.env.ADMIN_HALT_SECRET = 'right';
+    query.mockResolvedValue({ rows: [] });
+    const res = await request(app())
+      .post('/api/apply/admin/halt').set('x-admin-secret', 'right').send({ halted: true });
+    expect(res.status).toBe(200);
+    expect(res.body.halted).toBe(true);
+    const wrote = query.mock.calls.find((c) => /INSERT INTO system_flags/.test(c[0]));
+    expect(wrote[1]).toEqual(['submissions_halted', 'true']);
+  });
+
+  it('halts only on an explicit true, never on a stray body', async () => {
+    // `halted: "false"` or a missing field must not read as "halt everything",
+    // and equally must not silently resume it.
+    process.env.ADMIN_HALT_SECRET = 'right';
+    query.mockResolvedValue({ rows: [] });
+    const res = await request(app())
+      .post('/api/apply/admin/halt').set('x-admin-secret', 'right').send({ halted: 'true' });
+    expect(res.body.halted).toBe(false);
+  });
+});

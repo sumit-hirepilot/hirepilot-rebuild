@@ -33,7 +33,9 @@
 
 const crypto = require('crypto');
 const { candidateOrderBySql } = require('../services/jobOrder');
-const { checkSubmissionAllowed, MAX_DAILY_SUBMISSIONS } = require('../services/submissionGate');
+const {
+  checkSubmissionAllowed, MAX_DAILY_SUBMISSIONS, HALT_FLAG, submissionsHalted,
+} = require('../services/submissionGate');
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
@@ -1045,6 +1047,35 @@ router.post('/queue/:id/skip', verifyToken, async (req, res) => {
 });
 
 // Extension signals it has started driving the form.
+/*
+ * Item 0 — the operator's lever for the kill switch.
+ *
+ * A switch with no way to flip it is not a switch. Guarded by a shared secret
+ * in the environment rather than a user role, so it works even when the
+ * account system is the thing that is wrong, and it refuses outright if the
+ * secret is unset - an unprotected halt endpoint would itself be the incident.
+ */
+router.post('/admin/halt', async (req, res) => {
+  const secret = process.env.ADMIN_HALT_SECRET;
+  if (!secret) return res.status(503).json({ error: 'Halt control is not configured' });
+  if (req.get('x-admin-secret') !== secret) return res.status(403).json({ error: 'Forbidden' });
+
+  const halted = req.body && req.body.halted === true;
+  await query(
+    `INSERT INTO system_flags (key, value, updated_at)
+     VALUES ($1, $2, CURRENT_TIMESTAMP)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+    [HALT_FLAG, String(halted)]
+  );
+  console.warn(`SUBMISSIONS ${halted ? 'HALTED' : 'RESUMED'} by operator at ${new Date().toISOString()}`);
+  res.json({ halted, flag: HALT_FLAG });
+});
+
+/** Readable without the secret: anyone operating this needs to see the state. */
+router.get('/admin/halt', async (_req, res) => {
+  res.json({ halted: await submissionsHalted(), flag: HALT_FLAG });
+});
+
 router.post('/queue/:id/start', verifyToken, async (req, res) => {
   try {
     /*
