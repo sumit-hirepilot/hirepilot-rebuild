@@ -59,7 +59,12 @@ export default function Network() {
         body: JSON.stringify({ company }),
       });
       const data = await res.json();
-      if (res.ok) setSuggestions(data.suggestions || []);
+      /*
+       * A7.5 — this read data.suggestions. The endpoint sends `searches`, so
+       * the button fired, the request succeeded, and the page rendered the
+       * empty branch with no error. Present, functional, and blank.
+       */
+      if (res.ok) setSuggestions(data.searches || []);
     } finally {
       setSearching(false);
     }

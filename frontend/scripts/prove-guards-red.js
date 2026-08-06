@@ -117,6 +117,16 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- A7.5: Find contacts rendered nothing ---- */
+  { suite: 'networkSuggest',
+    test: 'reads the field the suggest endpoint sends',
+    file: 'pages/network.js',
+    mutate: (s) => s.replace('setSuggestions(data.searches || [])', 'setSuggestions(data.suggestions || [])') },
+  { suite: 'networkSuggest',
+    test: 'opens external searches without handing over the opener',
+    file: 'pages/network.js',
+    mutate: (s) => s.replace('target="_blank" rel="noreferrer"', 'target="_blank"') },
+
   /* ---- A7.25: landing truth and completeness ---- */
   { suite: 'landingTruth',
     test: 'has no nav link pointing at an id the target page does not define',
