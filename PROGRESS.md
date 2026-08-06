@@ -288,6 +288,59 @@ available to me can lift it (ADMIN_HALT_SECRET unset; admin is user id 1, the
 earliest-registered account). Item A's remaining steps are gated on it.
 Re-checked at every goal boundary.
 
+## SECOND OUTAGE — self-inflicted, REVERTED. Read this before re-landing bounds.
+
+WHAT SHIPPED: bc5140d, the request-bounds sweep (services/requestBounds.js,
+tools/check-query-bounds.js, bounds applied across jobs/matches/activity/
+notifications/inbox/tracker/apply). Full suite green locally, 285 tests, all ten
+ship.sh stages passed.
+
+WHAT HAPPENED ON PRODUCTION: intermittent 502s. /api/health returned 200 while
+/api/jobs?limit=20&page=1 returned 502 and a 3000-char search returned 200 - the
+same endpoint alternating, which is the signature of a process crash-looping and
+Railway restarting it, not of a bad response. A 502 means the PROCESS died; an
+exception inside the handler would have been a 500.
+
+WHAT I DID: reverted bc5140d (2f3fae1) and confirmed recovery within 20 seconds.
+Production is healthy on the pre-bounds code.
+
+WHAT IS UNKNOWN, and must be established before re-landing:
+  - The crash was never reproduced locally. 285 tests passed and every route
+    module loaded under `node -e require(...)`, so whatever kills the process
+    is not on a path any test or a bare require exercises.
+  - Prime suspects, in order: (1) something in the jobs.js edit that throws
+    OUTSIDE the try/catch - the destructure rename touched the top of the
+    handler; (2) boundList/asArray interaction on a shape only production sends;
+    (3) an unhandled rejection, which Node exits on by default.
+  - The verification loop that first "confirmed" the deploy was a broken
+    instrument: it polled for a field present in every build. The real marker
+    (empty limit -> 20) only appeared later. Do not reuse it.
+
+HOW TO RE-LAND SAFELY:
+  1. Reproduce first: boot the API locally against a copy of production shapes
+     and hit /api/jobs?limit=20&page=1. Do not deploy to reproduce.
+  2. Add process-level handlers (uncaughtException/unhandledRejection) that LOG
+     before exit, so the next crash names itself instead of being inferred.
+  3. Re-land in one route at a time, each verified on production before the
+     next, rather than seven files in one commit.
+
+The bounds work itself is sound and the sweep findings stand - thirteen
+unbounded parameters across five files, and a real defect in the bounds (an
+absent parameter is not the number zero). It is the LANDING that failed, not
+the design. The reverted code is in bc5140d.
+
+## CARRY-FORWARD 2 — NOT DONE. Self-healing health check.
+
+Still outstanding, and this outage is the second argument for it: the API does
+not restart itself on unresponsiveness. Both outages needed a human. Needs a
+container healthcheck (Railway healthcheckPath, or HEALTHCHECK in the
+Dockerfile) plus the process-level crash logging above, verified by making the
+service unresponsive deliberately with submissions halted.
+
+STILL BLOCKED, operator: production submissions are HALTED; neither lever
+available to me can lift it. Item A's remaining steps are gated on it.
+Re-checked at every goal boundary.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
