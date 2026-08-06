@@ -1,5 +1,6 @@
 const express = require('express');
 const { query } = require('../db');
+const { boundInt, clampReport } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 const { formatActivity } = require('./activity');
 
@@ -15,7 +16,9 @@ const NOTIFIABLE_EVENTS = [
 
 router.get('/', async (req, res) => {
   try {
-    const { limit = 20 } = req.query;
+    // Bounded - see services/requestBounds.
+    const limitBound = boundInt(req.query.limit, { def: 20, min: 1, max: 100 });
+    const limit = limitBound.value;
     const result = await query(
       `SELECT al.id, al.event_type, al.metadata, al.created_at, al.is_read,
               j.title as job_title, j.company_name

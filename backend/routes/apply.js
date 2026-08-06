@@ -38,6 +38,7 @@ const {
 } = require('../services/submissionGate');
 const express = require('express');
 const { query } = require('../db');
+const { boundInt, boundText } = require('../services/requestBounds');
 const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 const { buildTailoredText } = require('../services/resumeTailorEngine');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
@@ -542,7 +543,8 @@ router.get('/queue/next', verifyToken, async (req, res) => {
      * `exclude` lets the caller skip ids it has already tried this run, so a
      * server-side state it disagrees with cannot spin the loop either.
      */
-    const exclude = String(req.query.exclude || '')
+    // Bounded before it is split and used - see services/requestBounds.
+    const exclude = boundText(req.query.exclude, { max: 300 }).value
       .split(',').map((n) => Number(n)).filter(Number.isInteger);
 
     const r = await query(
@@ -563,7 +565,7 @@ router.get('/queue/next', verifyToken, async (req, res) => {
     if (req.query.runId) {
       await query(
         'UPDATE applications SET run_id = $1 WHERE id = $2 AND user_id = $3',
-        [Number(req.query.runId), r.rows[0].id, req.user.id]
+        [boundInt(req.query.runId, { def: 0, min: 0, max: 2147483647 }).value, r.rows[0].id, req.user.id]
       ).catch(() => {});
     }
     return res.json({ item: await buildReviewPayload(req.user.id, r.rows[0].id) });

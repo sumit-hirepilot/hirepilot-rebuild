@@ -17,6 +17,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { query } = require('../db');
+const { boundInt, boundText, clampReport } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -80,7 +81,16 @@ async function ensureProxyEmail(userId) {
 
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { category, search, limit = 50 } = req.query;
+    /*
+     * Bounded. `search` becomes a LIKE pattern, so its length is the caller's
+     * to choose unless something says otherwise - truncated rather than
+     * refused, because throwing away a search for being long is its own defect.
+     */
+    const { category } = req.query;
+    const searchBound = boundText(req.query.search);
+    const search = searchBound.value;
+    const limitBound = boundInt(req.query.limit, { def: 50, min: 1, max: 100 });
+    const limit = limitBound.value;
     const params = [req.user.id];
     let where = 'WHERE m.user_id = $1';
 
@@ -156,7 +166,12 @@ router.post('/inbound', async (req, res) => {
   try {
     const secret = process.env.INBOUND_MAIL_SECRET;
     if (!secret) return res.status(503).json({ error: 'Inbound mail is not configured' });
-    const supplied = req.get('x-hirepilot-signature') || req.query.token;
+    /*
+     * Bounded before comparison. It is compared against a stored secret, so an
+     * oversized value cannot be a valid one - truncating costs nothing and
+     * keeps an arbitrarily long string out of the comparison path.
+     */
+    const supplied = req.get('x-hirepilot-signature') || boundText(req.query.token, { max: 512 }).value;
     if (supplied !== secret) return res.status(401).json({ error: 'Bad signature' });
 
     const b = req.body || {};

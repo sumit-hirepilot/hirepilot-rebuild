@@ -16,6 +16,7 @@
 
 const express = require('express');
 const { query } = require('../db');
+const { boundText, clampReport } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -30,7 +31,9 @@ const ON_BOARD_UNQUALIFIED = `(status = 'submitted' OR is_manual = TRUE)`;
 
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { search } = req.query;
+    // Bounded - an unbounded search string becomes an unbounded LIKE pattern.
+    const searchBound = boundText(req.query.search);
+    const search = searchBound.value;
     const params = [req.user.id];
     let extra = '';
     if (search) {
