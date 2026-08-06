@@ -117,6 +117,11 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  { suite: 'sweepSafety',
+    test: 'hashes the whole page, not a slice of the top of it',
+    file: '../tools/ui-sweep.js',
+    mutate: (s) => s.replace('hash(document.body.innerText),', 'document.body.innerText.slice(0, 6000),') },
+
   /* ---- A4/Item 0: the receipt on screen ---- */
   { suite: 'submissionReceiptView',
     test: 'renders fields, answers, the file hash and the platform response',

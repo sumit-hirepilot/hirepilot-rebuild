@@ -40,9 +40,30 @@ const isSafe = (label) => SAFE_CONTROLS.some((re) => re.test(label));
 const labelOf = (el) =>
   (el.textContent || '').trim().slice(0, 48) || el.getAttribute('aria-label') || '(no label)';
 
-/* A signature that can actually see a drawer open or a list re-render. */
-const signature = () =>
-  `${document.body.innerHTML.length}|${document.body.innerText.slice(0, 6000)}|${location.pathname}${location.search}`;
+/*
+ * A signature that can actually see the change.
+ *
+ * The first version sliced innerText to 6,000 characters, and on a long page
+ * every change below that line was invisible: it reported "NO EFFECT" for the
+ * receipt panel opening, the notification bell opening, and a job drawer
+ * swapping content. Every one of those was alive, verified by hand.
+ *
+ * Length alone is also not enough - a swap that replaces equal-length content
+ * changes nothing measurable - so this hashes the WHOLE text cheaply rather
+ * than sampling the top of it.
+ */
+const hash = (s) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h;
+};
+
+const signature = () => [
+  document.body.innerHTML.length,
+  hash(document.body.innerText),
+  document.querySelectorAll('[role="dialog"], dialog, [aria-expanded="true"]').length,
+  location.pathname + location.search,
+].join('|');
 
 let reqs = 0;
 if (!window.__sweepFetchHooked) {

@@ -64,4 +64,14 @@ describe('D24 — the detector proves itself before any negative is believed', (
     expect(src).toMatch(/document\.body\.innerHTML\.length/);
     expect(src).toMatch(/window\.fetch = function/);
   });
+
+  it('hashes the whole page, not a slice of the top of it', () => {
+    /*
+     * The slice was 6,000 characters, so on a long page every change below
+     * that line read as "NO EFFECT" - the receipt panel, the notification
+     * bell, a drawer swapping content. All three were alive.
+     */
+    expect(src).not.toMatch(/innerText\.slice\(/);
+    expect(src).toMatch(/hash\(document\.body\.innerText\)/);
+  });
 });
