@@ -31,7 +31,7 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 176
+        run: node tools/run-suite.js backend 185
 
   frontend:
     runs-on: ubuntu-latest

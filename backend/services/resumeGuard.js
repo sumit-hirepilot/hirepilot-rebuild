@@ -65,6 +65,24 @@ const normalise = (s) => String(s || '')
   .replace(/\s+/g, ' ')
   .trim();
 
+/*
+ * Punctuation is not part of a word.
+ *
+ * normalise keeps `.`, `%`, `+`, `#` and `-` because they carry meaning inside
+ * a token - "12%", "c++", "c#", "node.js", "front-end". It also left them
+ * hanging off the END of ordinary words, so the corpus held "teams.",
+ * "valtech." and "12%." while an addition offered "redesign." or "12%". Those
+ * never matched, and the guard rejected the user's own figures as invented and
+ * their own words as untraceable.
+ *
+ * Trailing/leading punctuation is stripped, and a trailing "." is dropped
+ * unless the token still needs it ("node.js" keeps its dot because the dot is
+ * interior). "12%." becomes "12%", which is what the resume actually says.
+ */
+const trimToken = (t) => String(t || '')
+  .replace(/^[.+#-]+/, '')
+  .replace(/[.,;:!?]+$/, '');
+
 // Singular/plural and simple tense, so "designs" matches "design".
 function stem(word) {
   return word
@@ -98,9 +116,10 @@ function buildCorpus({ resumeText = '', skills = [], experience = [], profile = 
   const text = normalise(parts.join(' \n '));
   const words = new Set();
   const numbers = new Set();
-  for (const tok of text.split(/\s+/)) {
+  for (const raw of text.split(/\s+/)) {
+    const tok = trimToken(raw);
     if (!tok) continue;
-    if (/\d/.test(tok)) numbers.add(tok.replace(/[^\d%.+-]/g, ''));
+    if (/\d/.test(tok)) numbers.add(trimToken(tok.replace(/[^\d%.+-]/g, '')));
     words.add(stem(tok));
   }
   return { text, words, numbers };
@@ -148,13 +167,14 @@ function verify(currentText, candidateText, corpus) {
     if (!shown) continue;
     additions.push({ index: part.index, text: shown });
 
-    for (const tok of normalise(shown).split(/\s+/)) {
+    for (const raw of normalise(shown).split(/\s+/)) {
+      const tok = trimToken(raw);
       if (!tok) continue;
 
       // Numbers are the strictest case - an invented metric is the most
       // damaging and most likely fabrication.
       if (/\d/.test(tok)) {
-        const num = tok.replace(/[^\d%.+-]/g, '');
+        const num = trimToken(tok.replace(/[^\d%.+-]/g, ''));
         if (num && !corpus.numbers.has(num)) {
           violations.push({
             rule: 'invented_number',
@@ -210,4 +230,6 @@ function verifyAdditions(items, corpus) {
   });
 }
 
-module.exports = { buildCorpus, verify, verifyAdditions, normalise, stem, STOPWORDS, SAFE_CONNECTIVES };
+module.exports = {
+  buildCorpus, verify, verifyAdditions, normalise, trimToken, stem, STOPWORDS, SAFE_CONNECTIVES,
+};

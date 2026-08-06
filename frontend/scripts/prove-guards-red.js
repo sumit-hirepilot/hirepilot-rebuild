@@ -117,6 +117,21 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- Item 0: the tailoring guards, both directions ---- */
+  { suite: 'resumeGuardLive', dir: 'backend', base: true,
+    test: 'blocks an invented number',
+    file: 'backend/services/resumeGuard.js',
+    mutate: (s) => s.replace("rule: 'invented_number',", "rule: 'ignored_number',") },
+  { suite: 'resumeGuardLive', dir: 'backend', base: true,
+    test: 'stores the number as the resume writes it',
+    file: 'backend/services/resumeGuard.js',
+    mutate: (s) => s.replace(/const trimToken = \(t\) => String\(t \|\| ''\)[\s\S]*?\.replace\(\/\[\.,;:!\?\]\+\$\/, ''\);/,
+      "const trimToken = (t) => String(t || '');") },
+  { suite: 'resumeGuardLive', dir: 'backend', base: true,
+    test: 'blocks a deletion',
+    file: 'backend/services/resumeGuard.js',
+    mutate: (s) => s.replace("rule: 'no_deletion',", "rule: 'noted_deletion',") },
+
   /* ---- A7.8: the order that decides what gets applied to ---- */
   { suite: 'candidateOrder', dir: 'backend', base: true,
     test: 'ends on a unique key, so the cut-off is reproducible',
