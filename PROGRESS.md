@@ -587,6 +587,56 @@ a 50-concurrent smoke load test in CI; a disk free-space threshold alert.
  2   bounds sweep, 6 of 7 routes, jobs last, one commit each.
  Then A7.13, A7.19, Wave C, B1-B5.
 
+## work_mem — RAISED 4 MB -> 32 MB. Verified on production.
+
+MEASURED FIRST, from pg_stat_database: **3,120 temp files, 13,326 MB spilled**
+to disk over this database's life, with work_mem at 4096 kB. That spill is what
+failed with 53100 when the volume ran out of room.
+
+Raised via ALTER DATABASE (no reload, no superuser, idempotent, reversible with
+RESET; degrades to a NOTICE if the role lacks privilege). Read back from the
+running database: work_mem = 32768kB.
+
+32 MB chosen against measured headroom, not by feel: the Postgres service
+reports effective_cache_size 5,242,888 kB and shared_buffers 163,848 kB - it is
+a different container from the 1 GB app, with gigabytes free.
+
+## GOAL 1h — LATENCY. Measured. One candidate disproved, one identified,
+## NOT shipped.
+
+MEASURED, and it corrected my own hypothesis: a feed request runs exactly
+**2 queries** - the COUNT and the page. The EXPLAINs I suspected are in
+db-health, NOT the hot path. That candidate is dead; do not chase it again.
+
+Latency after the window-function removal and the work_mem raise:
+  50 users   p95 1,432 ms
+  200 users  p95 3,626 ms   (was 3,844 - work_mem barely moved it, because
+                             the spill was already gone with the window fn)
+  500 users  p95 8,114 ms
+Zero failures at every step. Target is p95 < 2s at 200: NOT met.
+
+THE REAL CANDIDATE, identified and deliberately NOT shipped: both queries build
+the same CTE over all 25,418 rows, so the COUNT is close to half the database
+work of every feed request - and it answers a question whose answer only changes
+when ingest writes, every six hours.
+
+I built a 60-second TTL cache for it, keyed by exact SQL + params, bounded at
+500 entries. It broke four tests that index into query.mock.calls by position,
+because a cached COUNT shifts the page query's index - a real test-isolation
+problem, not a cosmetic one, and it also needs proof that no filter or user's
+score floor can ever read another's total. I reverted it rather than ship a
+stale-total risk on a live surface at the end of a context window.
+
+TO FINISH IT: reinstate the cache (it is in this session's history), add a
+reset hook the tests can call between cases, change those four tests to find
+their query by CONTENT rather than by index, and prove on production that a
+filtered request and an unfiltered one never share a cache entry. Then measure
+p95 at 200 again.
+
+Other lever if that is not enough: the COUNT LEFT JOINs job_matches, and a LEFT
+JOIN cannot change a row count unless the score floor is active. Counting
+without the join when there is no floor should be checked with EXPLAIN first.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
