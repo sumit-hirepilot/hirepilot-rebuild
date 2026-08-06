@@ -96,6 +96,49 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## ITEM 5 — DEMO PASS. Findings, ranked. Production, read-only.
+
+Ranked by what a first-time tester would call broken. All four are FIXED and
+shipped; the remaining two are stated as gaps, not hidden.
+
+1. TWO SCREENS FAILED SILENTLY ON A DROPPED CONNECTION.  [FIXED]
+   /jobs kept the previous list with nothing said - stale results read as
+   current. /dashboard showed an empty page, which reads as "you have nothing"
+   rather than "we could not ask". Both now say so. /applications was already
+   correct and is the model the other two now follow.
+
+2. THE PLAIN-WORD RENAME STOPPED AT THE NAV.  [FIXED]
+   "Ready to send" opened a page titled "Apply Queue"; "Saved searches" opened
+   "Search Agents". Two names for one place is worse than not renaming at all.
+   Headings and tab titles now match their labels, guarded across all pages.
+
+3. AN UNHANDLED REJECTION EVERY 60 SECONDS ON A FLAKY NETWORK.  [FIXED]
+   NotificationBell.load() was try/finally with no catch, called unawaited from
+   an effect and on an interval. Invisible to a user; exactly the noise that
+   buries a real error in a crash reporter.
+
+4. THE RECEIPT HAD NO UI AT ALL.  [FIXED, item 0]
+   Fields, answers, file hash and platform response existed server-side since
+   A4 and nothing displayed them.
+
+WHAT THE DEMO PASS CONFIRMED GOOD
+   - No horizontal overflow on any screen at 375 / 768 / 1440.
+   - No raw snake_case key on any screen.
+   - Empty states are honest and specific ("No search agents yet. Create one to
+     have HirePilot keep scanning").
+   - Score bands render with the number ("Good match · 71%").
+   - Pricing toggles INR/USD and the checkout stub says nothing was charged.
+
+GAPS IN THIS PASS, stated rather than implied
+   - Screenshots were not captured per screen; the pass was structural
+     (overflow, jargon, raw keys, error copy) read from the live DOM.
+   - The fresh-account walkthrough was not run: creating an account on
+     production makes a real user row, and the sweep allowlist plus Auto-Pilot
+     being ON made that the wrong risk to take at the end of the window. The
+     granted-credits path WAS verified end to end via the admin grant.
+   - The exhausted-limit path is verified by unit test and by code inspection
+     of the gate, not by burning 4,500 real credits.
+
 ## TESTER RUN — items 0-4 closed. Item 5 (demo pass) is the remainder.
 
 ### Item 1 — interaction coverage. No dead control; the tool was the finding.
