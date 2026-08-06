@@ -446,5 +446,3 @@ export default function Home({ stats = null }) {
     </>
   );
 }
-
-const MATCH_EXAMPLE = { score: 1 };
