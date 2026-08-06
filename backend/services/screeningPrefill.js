@@ -14,6 +14,7 @@
  */
 
 const { resolve: resolveFromKnowledge, ASK_THRESHOLD } = require('./questionKnowledge');
+const { questionLabel } = require('./labels');
 
 // Maps a job's location string onto a country so work-authorisation and
 // sponsorship questions can be answered per posting rather than globally.
@@ -247,7 +248,10 @@ function prefillAnswers(questions, profile, jobContext = {}) {
             answer: null,
             source: 'requires_user',
             suggestion: similar.answer,
-            reason: `Your saved answer to "${similar.matchedQuestion.slice(0, 70)}" is not one of this form's options.`,
+            // A7.4 - matchedQuestion may be a stored profile KEY. Quoting
+            // "are_you_hispanic_latino" back at someone is bad everywhere and
+            // worse beside a demographic question.
+            reason: `Your saved answer to "${questionLabel(similar).slice(0, 70)}" is not one of this form's options.`,
           };
         }
         return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion,

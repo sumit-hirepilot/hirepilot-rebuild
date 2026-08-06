@@ -103,6 +103,15 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  { suite: 'labelsParity', dir: 'backend', base: true,
+    test: 'humanises a bare key rather than printing it',
+    file: 'backend/services/labels.js',
+    mutate: (s) => s.replace('return /\\s/.test(q) ? q : humanise(q);', 'return q;') },
+  { suite: 'labelsParity', dir: 'backend', base: true,
+    test: 'shares the transformation, character for character',
+    file: 'backend/services/labels.js',
+    mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
+
   /* ---- A7.4: no key reaches a user as a key ---- */
   { suite: 'labels',
     test: 'has no LABELS[key] || key fallback anywhere',
