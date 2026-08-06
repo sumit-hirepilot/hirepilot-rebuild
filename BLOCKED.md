@@ -44,6 +44,44 @@ WHAT THE OPERATOR NEEDS TO DO, in this order:
  5. Do NOT delete deploy history, logs or metrics. They are the only record of
     the five outages.
 
+## C1 (Naukri) and C2 (Instahyre / Wellfound / Cutshort) — A7.19 assessment,
+## measured today. C1 FAILS on permission.
+
+A7.19 requires, before any source is integrated: live, not a duplicate, a
+MACHINE-READABLE PERMISSION SIGNAL (a 200 is not permission), not paywalled,
+posted_at present per row and genuinely a publication date rather than a
+re-sync timestamp, and an employer job board rather than a freelance bidding
+marketplace.
+
+| source | robots.txt | permission signal | verdict |
+|---|---|---|---|
+| Naukri | **403 Access Denied** (Akamai edge) | cannot even READ the permission file | **FAIL — do not integrate** |
+| Instahyre | 200, `User-agent: *`, no Disallow | permissive; but sitemap.xml 403 | conditional |
+| Wellfound | 200 | Disallows `/_jobs/` and every `?jobId=` / `?jobSlug=` / `?role=` pattern | **FAIL for job pages** |
+| Cutshort | 200 | Disallows `/view/j/`, `/vj/`, `/*?job_listing` — the job views themselves | **FAIL for job pages** |
+
+NAUKRI IS THE WEDGE AND IT IS BLOCKED. The site returns 403 to a plain
+robots.txt fetch, which is an active edge block on non-browser clients.
+Integrating it would mean evading that block. That is the Greenhouse-ToS
+discipline exactly: a status code is not permission, and a block is a refusal.
+Naukri has no public jobs API. The only compliant routes are a commercial data
+agreement with Naukri (Info Edge) or an official partner/API programme —
+both operator decisions, neither a code change.
+
+WELLFOUND and CUTSHORT both disallow the job-detail paths specifically. Their
+listing pages are not disallowed, but a source that cannot legally fetch the
+job page cannot supply a JD, and a JD is what scoring and tailoring need.
+
+INSTAHYRE is the only one of the four with a permissive robots.txt. Its
+sitemap 403s, so the next step is to establish whether job pages are reachable
+with a declared bot UA and whether posted_at is a real publication date - not
+to start writing an adapter.
+
+WHAT THIS MEANS FOR THE FEATURE QUEUE: feature 1 is C1 + C1a + C1b. C1 is
+blocked on an operator decision. C1a and C1b (the guided onboarding
+interaction layer and momentum/recovery) are NOT blocked and do not depend on
+Naukri - they are built against the existing index. Proceed with those.
+
 ## Railway healthcheckPath — operator action
 
 The API has gone down three times and never restarted itself. c1cc33a adds a
