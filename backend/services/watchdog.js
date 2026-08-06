@@ -53,25 +53,61 @@ function log(level, event, detail = {}) {
  * evidence was a 502 from the edge. exitCode is preserved so a crash still
  * reads as a crash to the platform.
  */
-function installCrashLogging({ exit = (code) => process.exit(code) } = {}) {
-  process.on('uncaughtException', (err) => {
-    log('error', 'uncaughtException', { message: err && err.message, stack: err && err.stack });
-    exit(1);
+/*
+ * Write the reason where it outlives the container.
+ *
+ * Best effort and time-boxed: a crash handler that hangs trying to report a
+ * crash turns a restart into a wedge, which is the failure it exists to
+ * describe. If the database is the thing that died, the log line is still on
+ * stderr - this is a second copy, never the only one.
+ */
+async function persistCrash(record, { sink, timeoutMs = 2000 } = {}) {
+  if (!sink) return false;
+  try {
+    await Promise.race([
+      sink(record),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('crash sink timed out')), timeoutMs)),
+    ]);
+    return true;
+  } catch (err) {
+    log('error', 'crashSinkFailed', { why: err && err.message });
+    return false;
+  }
+}
+
+function installCrashLogging({ exit = (code) => process.exit(code), sink } = {}) {
+  const record = (event, err) => ({
+    event,
+    message: err && err.message,
+    stack: err && err.stack,
+    rssMb: Math.round(process.memoryUsage().rss / 1048576),
+    uptimeSeconds: Math.round(process.uptime()),
   });
 
-  process.on('unhandledRejection', (reason) => {
-    const err = reason instanceof Error ? reason : new Error(String(reason));
-    log('error', 'unhandledRejection', { message: err.message, stack: err.stack });
-    exit(1);
-  });
+  const die = async (event, err, code) => {
+    const r = record(event, err);
+    log('error', event, r);
+    // Awaited BEFORE exiting, or the process is gone before the row lands.
+    await persistCrash(r, { sink });
+    exit(code);
+  };
+
+  // Returns the promise: without it nothing can await the write, including
+  // the test that proves the reason is stored before the process goes.
+  process.on('uncaughtException', (err) => die('uncaughtException', err, 1));
+
+  process.on('unhandledRejection', (reason) => (
+    die('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)), 1)
+  ));
 
   // Not crashes - but "why did it stop" is unanswerable without them, and an
   // OOM kill arrives as SIGTERM with nothing else to go on.
   for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.on(signal, () => {
-      log('warn', 'signal', { signal, rssMb: Math.round(process.memoryUsage().rss / 1048576) });
-      exit(0);
-    });
+    /*
+     * An OOM kill arrives as SIGTERM with nothing else to go on, so this is
+     * recorded too - it is the shape a memory-driven outage takes.
+     */
+    process.on(signal, () => die(`signal:${signal}`, new Error(`received ${signal}`), 0));
   }
 
   process.on('exit', (code) => {
@@ -156,4 +192,4 @@ function startWatchdog(probe, opts = {}) {
   return { tick, stop: () => { clearInterval(timer); clearInterval(mem); } };
 }
 
-module.exports = { installCrashLogging, startWatchdog, log, DEFAULTS };
+module.exports = { installCrashLogging, startWatchdog, persistCrash, log, DEFAULTS };

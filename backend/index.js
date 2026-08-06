@@ -121,7 +121,21 @@ function startServer() {
    * the change I had blamed, so the cause is still unknown and the next one
    * has to describe itself.
    */
-  installCrashLogging();
+  /*
+   * The sink writes the reason to the database, so it survives the container.
+   * Railway's log retention on a crash-looping service is exactly the case
+   * where stderr is least likely to still be readable, and that is the case
+   * this instrumentation exists for. Deliberately best-effort: if the database
+   * is the thing that died, the stderr line is still there and the process
+   * still exits on time - see persistCrash's timeout.
+   */
+  installCrashLogging({
+    sink: (r) => pool.query(
+      `INSERT INTO crash_reports (event, message, stack, rss_mb, uptime_seconds)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [r.event, r.message || null, r.stack || null, r.rssMb ?? null, r.uptimeSeconds ?? null]
+    ),
+  });
 
   app.listen(PORT, () => {
     console.log(`HirePilot API Server running on port ${PORT}`);

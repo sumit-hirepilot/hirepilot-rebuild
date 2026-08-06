@@ -773,3 +773,24 @@ D43 — The process names its own death, and ends itself when it stops serving.
 D44 — A green local suite and a green ship gate do not prove a process
       survives production. Changes touching many route modules land one module
       at a time, verified live between each.
+
+D45 — A crash reason that does not outlive the container has not been
+      recorded.
+      c1cc33a made the process log a stack before dying. That is necessary and
+      not sufficient: Railway's log retention on a crash-looping service is
+      precisely the condition the instrumentation exists for, and precisely
+      where stderr is least likely to still be readable. Three outages, cause
+      still unknown, and the logs from the first two are already gone.
+      Crash reasons are now written to crash_reports - event, message, stack,
+      RSS and uptime - and read back through /api/jobs/db-health, which is the
+      only place the cause can be read after the container is gone.
+      Best-effort and time-boxed on purpose: a handler that hangs trying to
+      report a crash converts a restart into a wedge, which is the failure it
+      was written to describe. If the database is what died, stderr still has
+      the line - this is a second copy, never the only one.
+      Writing the test found a real defect: the signal handlers did not RETURN
+      the promise from the write, so nothing could await it - including the
+      process itself. The reason would have been raced against the exit.
+      VERIFIED by crashing a real process and reading the reason back after it
+      was gone: exit code 1, event, message, first stack frame, RSS and uptime
+      all present.

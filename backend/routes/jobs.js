@@ -654,6 +654,18 @@ router.get('/db-health', verifyToken, async (req, res) => {
     );
     const byName = new Map(cons.rows.map((r) => [r.conname, r.def]));
     const schemaClaims = await readSchemaClaims(query);
+    let recentCrashes = [];
+    try {
+      const c = await query(
+        `SELECT event, message, rss_mb, uptime_seconds, occurred_at
+           FROM crash_reports ORDER BY occurred_at DESC LIMIT 10`
+      );
+      recentCrashes = c.rows;
+    } catch (err) {
+      // The table may predate this deploy. Saying so beats a 500 on a
+      // diagnostics endpoint whose whole job is being readable in a bad moment.
+      recentCrashes = [{ event: 'unavailable', message: err.message }];
+    }
 
     res.json({
       indexes: result.rows,
@@ -666,6 +678,12 @@ router.get('/db-health', verifyToken, async (req, res) => {
        * column default whose ABSENCE is the claim. Asserting these from
        * migrations.js proves the statement is written, never that it ran.
        */
+      /*
+       * Crash reasons that outlived the processes that wrote them. This is the
+       * only place the cause of an outage can be read after the container is
+       * gone, which is the condition every outage here has ended in.
+       */
+      recentCrashes,
       schemaClaims,
       allSchemaClaimsPresent: schemaClaims.every((c) => c.present),
       constraints: cons.rows,

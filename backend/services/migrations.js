@@ -455,6 +455,26 @@ const STATEMENTS = [
 
   `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
 
+  /*
+   * Crash reasons that survive the process that wrote them.
+   *
+   * Three outages, cause still unknown. The instrumentation added in c1cc33a
+   * logs a stack before dying, but Railway's log retention on a crash-looping
+   * service is exactly the condition where those logs are least likely to
+   * still be readable - and a diagnosis you cannot read after the fact is not
+   * a diagnosis. So the reason is written where it outlives the container.
+   */
+  `CREATE TABLE IF NOT EXISTS crash_reports (
+     id SERIAL PRIMARY KEY,
+     event VARCHAR(40) NOT NULL,
+     message TEXT,
+     stack TEXT,
+     rss_mb INTEGER,
+     uptime_seconds INTEGER,
+     occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_crash_reports_time ON crash_reports(occurred_at DESC)`,
+
   /* ---------------------------------------------------------------- *
    * PRD build-out: Inbox, Tracker, Profile defaults, plans & credits
    * ---------------------------------------------------------------- */

@@ -98,11 +98,12 @@ describe('the process names its own death', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('logs a stack for an uncaught exception before exiting non-zero', () => {
+  it('logs a stack for an uncaught exception before exiting non-zero', async () => {
     const exits = [];
     installCrashLogging({ exit: (c) => exits.push(c) });
 
-    handlers.uncaughtException(new Error('boom'));
+    // Awaited: the reason is persisted before the exit, so the handler is async.
+    await handlers.uncaughtException(new Error('boom'));
 
     const line = JSON.parse(captured.find((l) => l.includes('uncaughtException')));
     expect(line.event).toBe('uncaughtException');
@@ -111,11 +112,11 @@ describe('the process names its own death', () => {
     expect(exits).toEqual([1]);
   });
 
-  it('logs an unhandled rejection, which kills Node just as silently', () => {
+  it('logs an unhandled rejection, which kills Node just as silently', async () => {
     const exits = [];
     installCrashLogging({ exit: (c) => exits.push(c) });
 
-    handlers.unhandledRejection('plain string reason');
+    await handlers.unhandledRejection('plain string reason');
 
     const line = JSON.parse(captured.find((l) => l.includes('unhandledRejection')));
     expect(line.message).toBe('plain string reason');
@@ -123,15 +124,70 @@ describe('the process names its own death', () => {
     expect(exits).toEqual([1]);
   });
 
-  it('records a SIGTERM with memory, because an OOM kill arrives as one', () => {
+  it('records a SIGTERM with memory, because an OOM kill arrives as one', async () => {
     const exits = [];
     installCrashLogging({ exit: (c) => exits.push(c) });
 
-    handlers.SIGTERM();
+    await handlers.SIGTERM();
 
-    const line = JSON.parse(captured.find((l) => l.includes('"signal"')));
-    expect(line.signal).toBe('SIGTERM');
+    const line = JSON.parse(captured.find((l) => l.includes('signal:SIGTERM')));
+    expect(line.event).toBe('signal:SIGTERM');
     expect(typeof line.rssMb).toBe('number');
     expect(exits).toEqual([0]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * GOAL 1b — the reason has to outlive the process that wrote it.
+ *
+ * Railway's log retention on a crash-looping service is exactly the condition
+ * this instrumentation exists for, and exactly where stderr is least likely to
+ * still be readable. So the reason is also written to the database. The risky
+ * parts are the ORDER (write before exit, or the process is gone first) and
+ * the TIMEOUT (a handler that hangs reporting a crash turns a restart into a
+ * wedge, which is the failure it is supposed to describe).
+ * ------------------------------------------------------------------ */
+
+const { persistCrash } = require('../services/watchdog');
+
+describe('a crash reason is written before the process goes', () => {
+  it('waits for the sink before exiting', async () => {
+    const order = [];
+    const handlers = {};
+    jest.spyOn(process, 'on').mockImplementation((e, fn) => { handlers[e] = fn; return process; });
+    jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    installCrashLogging({
+      exit: () => order.push('exit'),
+      sink: () => new Promise((r) => setTimeout(() => { order.push('sink'); r(); }, 20)),
+    });
+
+    await handlers.uncaughtException(new Error('boom'));
+    expect(order).toEqual(['sink', 'exit']);
+    jest.restoreAllMocks();
+  });
+
+  it('carries the stack, the memory and the uptime, not just a message', async () => {
+    const written = [];
+    await persistCrash(
+      { event: 'uncaughtException', message: 'x', stack: 'Error: x\n at y', rssMb: 51, uptimeSeconds: 900 },
+      { sink: (r) => { written.push(r); return Promise.resolve(); } }
+    );
+    expect(written[0]).toMatchObject({ stack: expect.stringContaining('Error: x'), rssMb: 51, uptimeSeconds: 900 });
+  });
+
+  it('gives up on a sink that hangs rather than wedging the exit', async () => {
+    const ok = await persistCrash({ event: 'x' }, { sink: () => new Promise(() => {}), timeoutMs: 10 });
+    expect(ok).toBe(false);
+  });
+
+  it('survives a sink that throws - the database may be what died', async () => {
+    const ok = await persistCrash({ event: 'x' }, { sink: () => Promise.reject(new Error('db gone')) });
+    expect(ok).toBe(false);
+  });
+
+  it('does nothing, quietly, when no sink is configured', async () => {
+    expect(await persistCrash({ event: 'x' }, {})).toBe(false);
   });
 });
