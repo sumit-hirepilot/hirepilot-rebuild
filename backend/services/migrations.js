@@ -707,6 +707,18 @@ const STATEMENTS = [
    * error path - a correction that logs nothing while appearing to work.
    * Caught by the guard below rather than in production.
    */
+  /*
+   * Must precede the UPDATE. company_name was VARCHAR(255) NOT NULL, so the
+   * first attempt at this correction raised a constraint violation that
+   * runMigrations logged and swallowed - it recorded 399 rows and changed
+   * none, while the boot log still said "Migrations complete".
+   *
+   * The constraint is also what made the fabricated value the only storable
+   * one: "we do not know this employer" had no representation, so `name` went
+   * in instead. Relaxing it destroys nothing - notAJobReason refuses an
+   * unparsed company at ingest, which is stricter than the column ever was.
+   */
+  `ALTER TABLE jobs ALTER COLUMN company_name DROP NOT NULL`,
   `INSERT INTO data_corrections (correction, table_name, row_count, detail)
      SELECT 'a7.2-null-unparsed-company', 'jobs', COUNT(*),
             jsonb_build_object(

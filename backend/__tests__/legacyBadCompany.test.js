@@ -130,3 +130,36 @@ describe('A7.2 — the instrument can tell a fabricated value from an absent one
     expect(routes).toMatch(/a7\.2-null-unparsed-company/);
   });
 });
+
+describe('A7.2 — the column has to allow the honest value', () => {
+  it('drops NOT NULL before trying to write NULL into it', () => {
+    /*
+     * The correction recorded 399 rows and changed none of them. company_name
+     * is `VARCHAR(255) NOT NULL`, so `SET company_name = NULL` raised a
+     * constraint violation, runMigrations logged it and continued, and
+     * "Migrations complete" printed as usual. bad_company stayed at 181 and
+     * absent_company was 0 - a correction that was recorded but never applied.
+     *
+     * The audit row is what made that visible. Without it the obvious reading
+     * was "the aggregator re-wrote them", which is the wrong cause and would
+     * have sent the fix somewhere else entirely.
+     *
+     * NOT NULL is also what made the fabricated value the only storable one:
+     * "we do not know this employer" had no representation. Relaxing it
+     * destroys nothing - the ingest guard is stricter than the constraint and
+     * refuses an unparsed company outright, so no new row arrives without one.
+     */
+    const alter = src.search(/ALTER TABLE jobs\s+ALTER COLUMN company_name DROP NOT NULL/);
+    const update = src.search(/UPDATE jobs\s+SET company_name = NULL/);
+    expect(alter).toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(-1);
+    expect(alter).toBeLessThan(update);
+  });
+
+  it('relaxes the constraint without rewriting the column', () => {
+    // DROP NOT NULL only. A type change or a default would rewrite the table.
+    const from = src.search(/ALTER TABLE jobs\s+ALTER COLUMN company_name/);
+    const block = src.slice(from, from + 260);
+    expect(block).not.toMatch(/SET DEFAULT|TYPE |USING /);
+  });
+});

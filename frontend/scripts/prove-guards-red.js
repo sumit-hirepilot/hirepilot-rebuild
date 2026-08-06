@@ -131,6 +131,11 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace("FROM data_corrections", 'FROM jobs') },
 
+  { suite: 'legacyBadCompany', dir: 'backend', base: true,
+    test: 'drops NOT NULL before trying to write NULL into it',
+    file: 'backend/services/migrations.js',
+    mutate: (s) => s.replace('`ALTER TABLE jobs ALTER COLUMN company_name DROP NOT NULL`,\n', '') },
+
   /* ---- A7.5: a filter control that changes nothing ---- */
   { suite: 'filterControlsApply',
     test: 'applies the date window when it is chosen',
