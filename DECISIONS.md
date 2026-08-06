@@ -636,3 +636,26 @@ D35 — Pagination is a partition of ONE list, so nothing that varies per reques
       VERIFIED ON PRODUCTION with the check that found it: 40 ids each way,
       identical order, same set, 0 unreachable, 0 duplicates, and still no more
       than 3 of any source in a page of 10.
+
+D36 — A claim about the database is unproven unless it is read back from the
+      running database.
+      runMigrations logs a failed statement and continues, so a migration that
+      threw and one that succeeded produce identical output. Regexing
+      migrations.js proves a statement is WRITTEN and can never prove it RAN;
+      the test is green either way. That is not a weak test, it is a test of
+      the wrong thing.
+      The indexes already had the read-back half through db-health. Nobody
+      noticed that the CHECK constraints did not - nor that submission_receipts,
+      its immutability TRIGGER and its unique index did not either, and those
+      three are what stands behind "applied status requires a submission
+      record". A trigger that silently never got created leaves receipts
+      editable and the source-matching test still passes.
+      services/schemaClaims.js now declares every claim - tables, indexes and
+      their uniqueness, constraints, triggers, and one column default whose
+      ABSENCE is the claim (applied_at carried DEFAULT CURRENT_TIMESTAMP, so
+      every row looked applied the moment it existed) - and db-health reports
+      each one read from the system catalogues.
+      The reporter is proved on known negatives for every kind, which is how a
+      real flaw in it surfaced: the uniqueness check matched the word "unique"
+      anywhere in the definition, and the index is NAMED ..._app_unique, so it
+      read a plain index as unique. Matched on CREATE UNIQUE INDEX now.

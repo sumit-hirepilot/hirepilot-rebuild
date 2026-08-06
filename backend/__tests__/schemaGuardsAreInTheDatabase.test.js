@@ -104,3 +104,108 @@ describe('db-health reads the constraints from the running database', () => {
     expect(applied.def).toMatch(/is_manual/);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Every remaining database claim, read back rather than regexed.
+ *
+ * submissionReceipt.test.js asserts a table, an immutability TRIGGER and a
+ * unique index by matching migrations.js. Those three are what stand behind
+ * "applied status requires a submission record" - a trigger that never got
+ * created leaves receipts editable, and the source-matching test passes just
+ * the same. These prove the reporter can tell the difference.
+ * ------------------------------------------------------------------ */
+
+const { readBack, CLAIMS } = require('../services/schemaClaims');
+
+const FULL = {
+  tables: ['submission_receipts', 'data_corrections', 'applications', 'jobs'],
+  indexes: [
+    { indexname: 'idx_submission_receipts_app_unique', indexdef: 'CREATE UNIQUE INDEX idx_submission_receipts_app_unique ON public.submission_receipts USING btree (application_id)' },
+    { indexname: 'idx_jobs_active_posted', indexdef: 'CREATE INDEX idx_jobs_active_posted ON public.jobs USING btree (is_active, posted_at)' },
+  ],
+  constraints: [
+    { conname: 'applications_applied_at_requires_submitted', tbl: 'applications' },
+    { conname: 'applications_applied_requires_submission', tbl: 'applications' },
+  ],
+  triggers: [{ tgname: 'trg_submission_receipts_immutable', tbl: 'submission_receipts' }],
+  columns: [{ table_name: 'applications', column_name: 'applied_at', column_default: null }],
+};
+
+const fakeDb = (world) => (sql) => {
+  if (/information_schema\.tables/.test(sql)) return Promise.resolve({ rows: world.tables.map((t) => ({ table_name: t })) });
+  if (/pg_indexes/.test(sql)) return Promise.resolve({ rows: world.indexes });
+  if (/pg_constraint/.test(sql)) return Promise.resolve({ rows: world.constraints });
+  if (/pg_trigger/.test(sql)) return Promise.resolve({ rows: world.triggers });
+  if (/information_schema\.columns/.test(sql)) return Promise.resolve({ rows: world.columns });
+  return Promise.resolve({ rows: [] });
+};
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+describe('schema claims are read back, not asserted from the migration source', () => {
+  it('reports every claim present against a database that has them all', async () => {
+    const out = await readBack(fakeDb(FULL));
+    expect(out).toHaveLength(CLAIMS.length);
+    expect(out.filter((c) => !c.present)).toEqual([]);
+  });
+
+  it('catches the immutability trigger silently not existing', async () => {
+    const w = clone(FULL); w.triggers = [];
+    const out = await readBack(fakeDb(w));
+    const trig = out.find((c) => c.kind === 'trigger');
+    expect(trig.present).toBe(false);
+    expect(trig.why).toMatch(/editable/);
+  });
+
+  it('catches the trigger existing on the WRONG table', async () => {
+    const w = clone(FULL);
+    w.triggers = [{ tgname: 'trg_submission_receipts_immutable', tbl: 'jobs' }];
+    expect((await readBack(fakeDb(w))).find((c) => c.kind === 'trigger').present).toBe(false);
+  });
+
+  it('catches a unique index that came back NOT unique', async () => {
+    // The name alone would pass. A non-unique index enforces nothing, so the
+    // definition has to be read, not just the existence.
+    const w = clone(FULL);
+    w.indexes[0].indexdef = 'CREATE INDEX idx_submission_receipts_app_unique ON public.submission_receipts USING btree (application_id)';
+    const idx = (await readBack(fakeDb(w))).find((c) => c.name === 'idx_submission_receipts_app_unique');
+    expect(idx.present).toBe(false);
+  });
+
+  it('catches the receipts table missing entirely', async () => {
+    const w = clone(FULL); w.tables = w.tables.filter((t) => t !== 'submission_receipts');
+    expect((await readBack(fakeDb(w))).find((c) => c.name === 'submission_receipts').present).toBe(false);
+  });
+
+  it('catches applied_at getting its DEFAULT back', async () => {
+    /*
+     * The absence is the claim. applied_at carried DEFAULT CURRENT_TIMESTAMP,
+     * so every row looked applied the moment it existed. If that ALTER
+     * silently failed, every queued row mints a false applied timestamp.
+     */
+    const w = clone(FULL);
+    w.columns = [{ table_name: 'applications', column_name: 'applied_at', column_default: 'CURRENT_TIMESTAMP' }];
+    const claim = (await readBack(fakeDb(w))).find((c) => c.kind === 'no_column_default');
+    expect(claim.present).toBe(false);
+    expect(claim.detail).toBe('CURRENT_TIMESTAMP');
+  });
+
+  it('does not read a MISSING column as a satisfied no-default claim', async () => {
+    // Absent from the catalogue is not the same as "has no default", and the
+    // lenient reading would report a dropped column as healthy.
+    const w = clone(FULL); w.columns = [];
+    expect((await readBack(fakeDb(w))).find((c) => c.kind === 'no_column_default').present).toBe(false);
+  });
+
+  it('surfaces every claim through db-health', async () => {
+    query.mockImplementation((sql) => {
+      if (/FROM pg_constraint\b/.test(sql) && /pg_get_constraintdef/.test(sql)) return Promise.resolve({ rows: BOTH });
+      if (/EXPLAIN/i.test(sql)) return Promise.resolve({ rows: [] });
+      return fakeDb(FULL)(sql);
+    });
+    const res = await request(app()).get('/api/jobs/db-health');
+    expect(res.status).toBe(200);
+    expect(res.body.allSchemaClaimsPresent).toBe(true);
+    expect(res.body.schemaClaims.map((c) => c.kind)).toEqual(expect.arrayContaining(['trigger', 'table', 'index', 'constraint', 'no_column_default']));
+  });
+});

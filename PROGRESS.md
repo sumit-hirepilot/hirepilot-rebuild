@@ -53,6 +53,13 @@ nothing is done until verified locally AND on production.
  - Sweeps use an ALLOWLIST of known-safe controls; a denylist fails open, and
    the failure mode is an unrecoverable submission. Auto-Pilot off, or a seeded
    account, before any sweep. D26.
+ - A claim about the DATABASE is unproven unless it is read back from the
+   running database. runMigrations logs a failed statement and continues, so
+   regexing migrations.js proves a statement is WRITTEN, never that it RAN -
+   green either way. Every claim (tables, indexes, uniqueness, constraints,
+   triggers, column defaults) is declared in services/schemaClaims.js and
+   reported by GET /api/jobs/db-health. Anything that cannot be read back gets
+   an endpoint that reads it back. D36.
  - A rule is not proven by a passing test. It is proven by a test that fails
    when the rule is removed AND by evidence the rule is reachable from a live
    call path. no_deletion was green over zero live executions for as long as it

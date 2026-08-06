@@ -8,6 +8,7 @@ const { orderBySql, orderFor } = require('../services/jobOrder');
 const {
   pageOf, BLOCK: DIVERSITY_BLOCK, QUOTA: DIVERSITY_QUOTA,
 } = require('../services/feedDiversity');
+const { readBack: readSchemaClaims } = require('../services/schemaClaims');
 
 /*
  * A7.9 — how many ranked rows the diversity pass reorders.
@@ -652,12 +653,21 @@ router.get('/db-health', verifyToken, async (req, res) => {
         WHERE conrelid = 'applications'::regclass AND contype = 'c'`
     );
     const byName = new Map(cons.rows.map((r) => [r.conname, r.def]));
+    const schemaClaims = await readSchemaClaims(query);
 
     res.json({
       indexes: result.rows,
       expected: wanted.map((name) => ({ name, present: present.has(name) })),
       allPresent: wanted.every((name) => present.has(name)),
       retiredStillPresent: retired.filter((name) => present.has(name)),
+      /*
+       * Every remaining claim this codebase makes about the database, read
+       * back from the running one: tables, triggers, unique indexes, and a
+       * column default whose ABSENCE is the claim. Asserting these from
+       * migrations.js proves the statement is written, never that it ran.
+       */
+      schemaClaims,
+      allSchemaClaimsPresent: schemaClaims.every((c) => c.present),
       constraints: cons.rows,
       expectedConstraints: wantedConstraints.map((name) => ({
         name, present: byName.has(name), def: byName.get(name) || null,
