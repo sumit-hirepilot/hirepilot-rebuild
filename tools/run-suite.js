@@ -61,7 +61,22 @@ const { numTotalTests = 0, numPassedTests = 0, numFailedTests = 0 } = r;
 console.log(`${dir}: ${numPassedTests} passed, ${numFailedTests} failed, ${numTotalTests} executed (floor ${min})`);
 
 if (numFailedTests > 0 || failed) {
+  /*
+   * NAME the failures. "FAILURES" alone sent me chasing two red runs this
+   * session that I could not reproduce afterwards, with no record of which
+   * tests they were - and an unreproducible failure with no name is not a
+   * lead, it is a rumour. The JSON summary already has this; it was simply
+   * never read.
+   */
   console.error(`${dir}: FAILURES`);
+  for (const suite of r.testResults || []) {
+    for (const t of suite.assertionResults || []) {
+      if (t.status !== 'failed') continue;
+      console.error(`  ${suite.name ? suite.name.split('/').pop() : '?'} :: ${t.fullName || t.title}`);
+      const first = (t.failureMessages || [])[0];
+      if (first) console.error(`    ${first.split('\n')[0].slice(0, 160)}`);
+    }
+  }
   process.exit(1);
 }
 if (numTotalTests < min) {

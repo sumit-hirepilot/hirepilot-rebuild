@@ -168,18 +168,40 @@ const fetchAshbyCompany = async (slug) => {
   }));
 };
 
+/*
+ * GOAL 1d — bounded concurrency, because this is the largest allocation in the
+ * process.
+ *
+ * This was Promise.all over EVERY company, so every company's HTTP response
+ * and parsed JSON was resident at the same moment before being flattened.
+ * Greenhouse alone returns 10,180 postings across its company list, ashby
+ * 4,409 - measured on a real cycle, not estimated. The container ceiling is
+ * 1 GB (Railway trial plan limit) and the service died during ingest five
+ * times.
+ *
+ * A small window keeps the fetch parallel enough to finish quickly while
+ * bounding how much is in flight. Nothing waits on ingest - it runs on a
+ * timer - so throughput here is worth far less than headroom.
+ */
+const FETCH_WINDOW = Number(process.env.ATS_FETCH_WINDOW) || 4;
+
 const fetchAllForPlatform = async (companies, fetchOne, platformLabel) => {
-  const results = await Promise.all(
-    companies.map(async (slug) => {
-      try {
-        return await fetchOne(slug);
-      } catch (err) {
-        console.error(`${platformLabel} (${slug}) error:`, err.message);
-        return [];
-      }
-    })
-  );
-  return results.flat();
+  const all = [];
+  for (let i = 0; i < companies.length; i += FETCH_WINDOW) {
+    const window = companies.slice(i, i + FETCH_WINDOW);
+    const results = await Promise.all(
+      window.map(async (slug) => {
+        try {
+          return await fetchOne(slug);
+        } catch (err) {
+          console.error(`${platformLabel} (${slug}) error:`, err.message);
+          return [];
+        }
+      })
+    );
+    for (const rows of results) all.push(...rows);
+  }
+  return all;
 };
 
 const fetchGreenhouseJobs = () => fetchAllForPlatform(GREENHOUSE_COMPANIES, fetchGreenhouseCompany, 'Greenhouse');
