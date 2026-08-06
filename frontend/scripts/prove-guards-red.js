@@ -196,7 +196,7 @@ const CASES = [
   { suite: 'sweepSafety',
     test: 'watches the DOM and the network, not the text length',
     file: '../tools/ui-sweep.js',
-    mutate: (s) => s.replace('${document.body.innerHTML.length}|', '') },
+    mutate: (s) => s.replace('  document.body.innerHTML.length,\n', '') },
 
   /* ---- A7.5: Find contacts rendered nothing ---- */
   { suite: 'networkSuggest',
