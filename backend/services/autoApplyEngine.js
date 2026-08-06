@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { MAX_DAILY_SUBMISSIONS, submissionsHalted } = require('./submissionGate');
 const { candidateOrderBySql } = require('./jobOrder');
 const { calculateMatchesForUser } = require('./matchingEngine');
 const { generateCoverLetterContent } = require('./coverLetterGenerator');
@@ -21,7 +22,8 @@ const runAutoApplyForUser = async (user) => {
     return { applied: 0, flagged: 0, skipped: 0, pendingReview: 0 };
   }
 
-  const dailyLimit = prefs.auto_apply_limit_per_day || 5;
+  // Item 0 — the server ceiling wins over any per-user preference.
+  const dailyLimit = Math.min(prefs.auto_apply_limit_per_day || 5, MAX_DAILY_SUBMISSIONS);
   const minScore = prefs.auto_apply_min_score != null ? Number(prefs.auto_apply_min_score) : 0.75;
   const blacklist = (prefs.blacklist_companies || []).map(normalize);
   const dreamCompanies = (prefs.dream_companies || []).map(normalize);

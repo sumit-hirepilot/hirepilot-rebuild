@@ -688,6 +688,20 @@ const STATEMENTS = [
   `ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS on_demand BOOLEAN NOT NULL DEFAULT FALSE`,
 
   /*
+   * Item 0 — the global submission kill switch. A row, not an env var, so an
+   * operator can halt every account's submissions on the next request without
+   * a deploy or a restart. Absent row means not halted; the gate fails closed
+   * if the table cannot be read at all.
+   */
+  `CREATE TABLE IF NOT EXISTS system_flags (
+     key VARCHAR(64) PRIMARY KEY,
+     value TEXT NOT NULL,
+     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `INSERT INTO system_flags (key, value) VALUES ('submissions_halted', 'false')
+     ON CONFLICT (key) DO NOTHING`,
+
+  /*
    * A7.2 (second half) — correct the rows that predate the ingest guard.
    *
    * 181 himalayas rows carry the literal string `name` as company_name. The

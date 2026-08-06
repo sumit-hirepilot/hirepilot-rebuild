@@ -1,4 +1,5 @@
 const express = require('express');
+const { MAX_DAILY_SUBMISSIONS } = require('../services/submissionGate');
 const bcrypt = require('bcryptjs');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
@@ -201,7 +202,15 @@ router.put('/preferences', async (req, res) => {
     const excludedKeywords = pick('excludedKeywords', existing.excluded_keywords || []);
     const includeRelocation = pick('includeRelocation', existing.include_relocation || false);
     const autoApplyEnabled = pick('autoApplyEnabled', existing.auto_apply_enabled || false);
-    const autoApplyLimitPerDay = pick('autoApplyLimitPerDay', existing.auto_apply_limit_per_day || 5);
+    /*
+     * Item 0 — clamped to the server ceiling. This field is user-settable and
+     * the operator account was sitting at 50; a per-user preference must not
+     * be able to raise a safety limit.
+     */
+    const autoApplyLimitPerDay = Math.min(
+      pick('autoApplyLimitPerDay', existing.auto_apply_limit_per_day || 5),
+      MAX_DAILY_SUBMISSIONS
+    );
     const autoApplyMinScore = pick('autoApplyMinScore', existing.auto_apply_min_score || 0.75);
     const blacklistCompanies = pick('blacklistCompanies', existing.blacklist_companies || []);
     const dreamCompanies = pick('dreamCompanies', existing.dream_companies || []);

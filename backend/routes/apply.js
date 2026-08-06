@@ -33,6 +33,7 @@
 
 const crypto = require('crypto');
 const { candidateOrderBySql } = require('../services/jobOrder');
+const { checkSubmissionAllowed, MAX_DAILY_SUBMISSIONS } = require('../services/submissionGate');
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
@@ -1046,6 +1047,17 @@ router.post('/queue/:id/skip', verifyToken, async (req, res) => {
 // Extension signals it has started driving the form.
 router.post('/queue/:id/start', verifyToken, async (req, res) => {
   try {
+    /*
+     * Item 0 — the one point that flips an application to 'submitting', which
+     * is the moment the extension is told to go. The global halt and the hard
+     * daily cap are checked here, server-side, before anything moves. A
+     * disabled button is not enforcement.
+     */
+    const gate = await checkSubmissionAllowed(req.user.id);
+    if (!gate.allowed) {
+      return res.status(429).json({ error: gate.message, reason: gate.reason, used: gate.used, cap: gate.cap });
+    }
+
     const r = await query(
       `UPDATE applications SET status = 'submitting', updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND user_id = $2 AND status IN ('approved', 'needs_user')
