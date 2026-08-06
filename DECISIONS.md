@@ -741,3 +741,35 @@ D41 — A7.11's remedy was already built; the measurement was what was missing.
       LAST) and the feed says so with a live count and a one-click way to see
       them, and under a date window they are excluded with the count stated.
       Both verified rendering on production with the real figure.
+
+D43 — The process names its own death, and ends itself when it stops serving.
+      Three outages now, every recovery a human redeploy. The decisive
+      evidence arrived late: the API went down AGAIN on the reverted code,
+      which does not contain the change I had blamed for the second outage. So
+      that attribution was wrong, the cause is still unknown, and the reverting
+      was reasoning from correlation.
+      There was already a Docker HEALTHCHECK hitting /api/health and it has
+      never once helped, because Railway does not act on Docker health status -
+      a wedged container sits there marked unhealthy until someone notices.
+      What the platform reacts to is a process that EXITS.
+      So: uncaughtException, unhandledRejection, SIGTERM/SIGINT and exit all
+      log a stack or a reason first - both of the first two terminate Node by
+      default and neither left a line behind, which is why two outages had to
+      be diagnosed from the outside. And a watchdog probes a real query on a
+      timer, exiting non-zero after consecutive failures so the platform
+      restarts the instance.
+      The probe is a QUERY, not a ping: during the second outage /api/health
+      answered 200 while /api/jobs failed, so "is Node alive" is exactly the
+      question that cannot tell serving from wedged.
+      Tunable by env so it can be exercised on demand - a watchdog nobody can
+      trigger is one nobody has seen work. Verified by running the real server
+      against an unreachable database: bound the port, probe failed twice,
+      logged why, exited 1.
+      Not a second door into anything: it can only end this process, never
+      start work, and it masks nothing - every path states a reason first,
+      because an automatic restart that hides why it restarted converts a
+      visible outage into an invisible one.
+
+D44 — A green local suite and a green ship gate do not prove a process
+      survives production. Changes touching many route modules land one module
+      at a time, verified live between each.

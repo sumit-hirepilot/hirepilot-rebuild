@@ -43,8 +43,14 @@ if (!acorn) {
   process.exit(1);
 }
 
+/*
+ * index.js is scanned too: it is the boot path, and things wired ONLY there -
+ * the crash logging and the watchdog - are as live as anything in a route.
+ * Leaving it out reported them as having no caller, which is the census
+ * telling the truth about its own blind spot rather than about the code.
+ */
 const SCAN = [
-  ['backend', ['services', 'middleware', 'routes']],
+  ['backend', ['services', 'middleware', 'routes', 'index.js']],
   ['frontend', ['lib']],
   ['extension', ['.']],
 ];
@@ -59,7 +65,10 @@ function walk(dir) {
     return e.name.endsWith('.js') ? [p] : [];
   });
 }
-const files = SCAN.flatMap(([base, subs]) => subs.flatMap((s) => walk(path.join(ROOT, base, s))));
+const files = SCAN.flatMap(([base, subs]) => subs.flatMap((s) => {
+  const p = path.join(ROOT, base, s);
+  return s.endsWith('.js') ? (fs.existsSync(p) ? [p] : []) : walk(p);
+}));
 const rel = (f) => path.relative(ROOT, f);
 
 const ast = new Map();

@@ -21,6 +21,8 @@ const { startScheduler } = require('./services/scheduler');
 const { runMigrations } = require('./services/migrations');
 
 const app = express();
+const { installCrashLogging, startWatchdog } = require('./services/watchdog');
+
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
@@ -111,10 +113,33 @@ app.use((err, req, res, next) => {
 // reachable even during a database outage; only DB-backed routes fail,
 // each already handling that per-request via their own try/catch.
 function startServer() {
+  /*
+   * Say why, before dying. Two outages ended with the process simply gone and
+   * a 502 from the edge as the only evidence - uncaughtException and an
+   * unhandled rejection both terminate Node by default, and neither left a
+   * line behind. The second outage then recurred on code that did NOT contain
+   * the change I had blamed, so the cause is still unknown and the next one
+   * has to describe itself.
+   */
+  installCrashLogging();
+
   app.listen(PORT, () => {
     console.log(`HirePilot API Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
+
+  /*
+   * End the process when it stops being able to serve, so the platform
+   * restarts it. There is a Docker HEALTHCHECK already and it has never
+   * helped: Railway does not act on Docker health status, so a wedged
+   * container sits there marked unhealthy until a human redeploys it. Both
+   * recoveries so far have been me.
+   *
+   * The probe is a real query, not a ping. During the second outage
+   * /api/health answered 200 while /api/jobs was failing, so "is Node alive"
+   * is precisely the question that does not distinguish serving from wedged.
+   */
+  startWatchdog(() => pool.query('SELECT 1'));
 
   runMigrations()
     .then(() => {

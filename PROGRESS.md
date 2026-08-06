@@ -53,6 +53,9 @@ nothing is done until verified locally AND on production.
  - Sweeps use an ALLOWLIST of known-safe controls; a denylist fails open, and
    the failure mode is an unrecoverable submission. Auto-Pilot off, or a seeded
    account, before any sweep. D26.
+ - A green local suite and a green ship gate do not prove a process survives
+   production. Land changes that touch many route modules ONE module at a
+   time, verified live between each. D44.
  - A claim about the DATABASE is unproven unless it is read back from the
    running database. runMigrations logs a failed statement and continues, so
    regexing migrations.js proves a statement is WRITTEN, never that it RAN -
