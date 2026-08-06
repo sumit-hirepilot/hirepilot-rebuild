@@ -318,8 +318,22 @@ router.post('/:id/retry', verifyToken, async (req, res) => {
 // app has never driven real form submission on an external ATS.
 router.post('/:id/approve', verifyToken, async (req, res) => {
   try {
+    /*
+     * A7.18 — approving a draft moves it to 'approved', NOT to 'applied'.
+     *
+     * This wrote status='applied' directly. An Auto-Pilot draft carries no
+     * submitted_at, no verified_at, no confirmation and is not manual, so that
+     * row is exactly what applications_applied_requires_submission refuses -
+     * the UPDATE could only ever raise, and the button could only ever 500.
+     * The constraint was right and the write path had never caught up: it is
+     * the same rule as D28, that "applied" is a claim about the employer
+     * having received something, not about the user having clicked approve.
+     *
+     * So approval means what it says - this one may be sent - and 'applied'
+     * arrives later, with a receipt behind it.
+     */
     const result = await query(
-      `UPDATE applications SET status = 'applied', last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      `UPDATE applications SET status = 'approved', last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND user_id = $2 AND status = 'pending_review' RETURNING *`,
       [req.params.id, req.user.id]
     );
@@ -327,7 +341,7 @@ router.post('/:id/approve', verifyToken, async (req, res) => {
 
     await query(
       `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
-       VALUES ($1, 'pending_review', 'applied', CURRENT_TIMESTAMP)`,
+       VALUES ($1, 'pending_review', 'approved', CURRENT_TIMESTAMP)`,
       [req.params.id]
     );
 
@@ -335,6 +349,56 @@ router.post('/:id/approve', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Approve application error:', err);
     res.status(500).json({ error: 'Failed to approve application' });
+  }
+});
+
+/*
+ * A7.18 — approve many at once.
+ *
+ * A full page of drafts was twenty clicks, one per row, and a queue that costs
+ * twenty clicks to clear is a queue people stop clearing. Same transition and
+ * the same rule as the single approve, applied per row: 'approved', never
+ * 'applied', because nothing has been sent yet.
+ *
+ * Scoped by user_id AND by status in one statement, so a stale id from a page
+ * the user has not reloaded cannot approve someone else's row or re-approve a
+ * row that has already moved on.
+ */
+router.post('/approve-bulk', verifyToken, async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
+    if (!ids.length) return res.status(400).json({ error: 'No applications supplied' });
+
+    const result = await query(
+      `UPDATE applications SET status = 'approved', last_status_update = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1 AND id = ANY($2::int[]) AND status = 'pending_review'
+        RETURNING id`,
+      [req.user.id, ids]
+    );
+
+    for (const row of result.rows) {
+      await query(
+        `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
+         VALUES ($1, 'pending_review', 'approved', CURRENT_TIMESTAMP)`,
+        [row.id]
+      );
+    }
+
+    /*
+     * Stated, not implied: ids that did not move are reported rather than
+     * quietly absent from the count, so a partial result cannot read as a
+     * complete one.
+     */
+    const approved = result.rows.map((r) => r.id);
+    res.json({
+      approved,
+      count: approved.length,
+      unchanged: ids.filter((id) => !approved.includes(id)),
+    });
+  } catch (err) {
+    console.error('POST /applications/approve-bulk failed:', err.message);
+    res.status(500).json({ error: 'Could not approve those applications' });
   }
 });
 

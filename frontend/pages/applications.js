@@ -47,6 +47,12 @@ export default function Applications() {
   const [view, setView] = useState('grid');
   const [retrying, setRetrying] = useState(null);
   const [reviewing, setReviewing] = useState(null);
+  /*
+   * A7.18 — a full page of drafts was twenty clicks, one per row. A queue that
+   * costs twenty clicks to clear is a queue people stop clearing.
+   */
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkWorking, setBulkWorking] = useState(false);
 
   const base = API_BASE;
 
@@ -116,6 +122,30 @@ export default function Applications() {
       console.error('Failed to retry application', err);
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const toggleOne = (id) => setSelectedIds((prev) => (
+    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  ));
+
+  const handleApproveSelected = async () => {
+    if (!selectedIds.length) return;
+    setBulkWorking(true);
+    try {
+      const res = await fetch(`${base}/api/applications/approve-bulk`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      if (res.ok) {
+        setSelectedIds([]);
+        await loadApplications(token);
+      }
+    } catch (err) {
+      console.error('Failed to approve applications', err);
+    } finally {
+      setBulkWorking(false);
     }
   };
 
@@ -290,11 +320,43 @@ export default function Applications() {
         {pendingReview.length > 0 && (
           <div className={page.pendingReviewSection}>
             <p className={page.pendingReviewTitle}>
-              Pending your review ({pendingReview.length}) - Auto-Pilot drafted these, approve to actually mark them applied
+              {/* Was "approve to actually mark them applied". It never did that
+                  and could not: the row carries no submission record, which is
+                  exactly what the table refuses. Approving releases a draft to
+                  be sent; "applied" arrives later, with a receipt behind it. */}
+              Pending your review ({pendingReview.length}) - Auto-Pilot drafted these. Approving releases them to be sent; nothing is marked applied until an employer receipt comes back.
             </p>
+            <div className={page.pendingReviewRow}>
+              <label className={page.selectAllLabel}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.length === pendingReview.length && pendingReview.length > 0}
+                  /* Some-but-not-all reads as neither on nor off, so the box
+                     shows it rather than rounding to one of them. */
+                  ref={(el) => { if (el) el.indeterminate = selectedIds.length > 0 && selectedIds.length < pendingReview.length; }}
+                  onChange={(e) => setSelectedIds(e.target.checked ? pendingReview.map((a) => a.id) : [])}
+                />
+                {' '}Select all {pendingReview.length} on this page
+              </label>
+              <button
+                className={page.approveButton}
+                onClick={handleApproveSelected}
+                disabled={!selectedIds.length || bulkWorking}
+              >
+                {bulkWorking ? 'Working...' : `Approve selected (${selectedIds.length})`}
+              </button>
+            </div>
             {pendingReview.map((app) => (
               <div key={app.id} className={page.pendingReviewRow}>
                 <div>
+                  <label className={page.rowCheckbox}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(app.id)}
+                      onChange={() => toggleOne(app.id)}
+                      aria-label={`Select ${app.title}`}
+                    />
+                  </label>
                   <p className={page.roleCell} style={{ marginBottom: '0.125rem' }}>{app.title}</p>
                   <p className={styles.emptyState} style={{ margin: 0, fontSize: '0.75rem' }}>{parsedOr(app.company_name, 'Company not stated')}</p>
                 </div>

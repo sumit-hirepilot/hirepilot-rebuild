@@ -31,7 +31,7 @@ jobs:
       # Not `npx jest --ci`: exit 0 is also what jest returns when it ran
       # NOTHING. The floor asserts a positive executed count.
       - name: Test
-        run: node tools/run-suite.js backend 244
+        run: node tools/run-suite.js backend 254
 
       # A guard that exists and is not invoked is indistinguishable from no
       # guard, and the suite passes either way because it tests the function
@@ -65,7 +65,7 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        run: node tools/run-suite.js frontend 201
+        run: node tools/run-suite.js frontend 207
 
       # No mutation marker or audit artifact may reach a commit. Journalling,
       # self-heal and the dirty-tree check all run on a developer's machine and

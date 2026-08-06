@@ -659,3 +659,21 @@ D36 — A claim about the database is unproven unless it is read back from the
       real flaw in it surfaced: the uniqueness check matched the word "unique"
       anywhere in the definition, and the index is NAMED ..._app_unique, so it
       read a plain index as unique. Matched on CREATE UNIQUE INDEX now.
+
+D37 — Approving a draft releases it to be sent. It never marks it applied.
+      POST /api/applications/:id/approve wrote status='applied' directly, and
+      the button beside it said "approve to actually mark them applied". An
+      Auto-Pilot draft carries no submitted_at, no verified_at, no confirmation
+      id and is not manual - which is exactly the row
+      applications_applied_requires_submission refuses, a constraint confirmed
+      present on the production database this session. The UPDATE could only
+      ever raise, so the button could only ever 500, and the copy promised the
+      one thing that could not happen.
+      The constraint was right; the write path had never caught up. D28 stands:
+      applied is a claim about an employer receiving something, not about a
+      user clicking approve. So approval now means "this one may be sent" and
+      applied arrives later with a receipt behind it - and the copy says so.
+      Found while building A7.18, by asking what the bulk version would write
+      rather than by clicking it. Two paths, one rule, both asserted on the
+      status ARGUMENT rather than on the response, because the response looked
+      fine while the row was wrong.

@@ -331,3 +331,20 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* A7.18 — select-all on the pending-review list. */
+.selectAllLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #475569;
+  cursor: pointer;
+}
+
+.rowCheckbox {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.625rem;
+  vertical-align: middle;
+}
