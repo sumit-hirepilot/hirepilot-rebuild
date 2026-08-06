@@ -230,13 +230,22 @@ export default function Onboarding() {
                   onChange={(e) => setBasics((p) => ({ ...p, location: e.target.value }))}
                   placeholder="e.g. Austin, TX"
                 />
-                {/* Narrowed by BOTH answers, so the second number is honestly
-                  * "of those", not a fresh unrelated count. */}
-                <LiveIndexCount
-                  params={{ search: basics.title, location: basics.location }}
-                  unit={basics.title ? 'of those are near you' : 'jobs near you'}
-                  zeroText="None near that location yet"
-                />
+                {/*
+                  * Only once a LOCATION has actually been given.
+                  *
+                  * Caught on screen at 375px: with the field empty this
+                  * rendered "253 of those are near you" - the same count as
+                  * the line above it, wearing words that claim a narrowing
+                  * nobody asked for. The number was right and the sentence was
+                  * a lie, which is the shape Constraint 1 exists to catch.
+                  */}
+                {basics.location.trim() && (
+                  <LiveIndexCount
+                    params={{ search: basics.title, location: basics.location }}
+                    unit={basics.title ? 'of those are near you' : 'jobs near you'}
+                    zeroText="None near that location yet"
+                  />
+                )}
               </div>
             </>
           )}

@@ -98,3 +98,28 @@ describe('typing does not fire a query per keystroke', () => {
     await user.click(document.body);
   });
 });
+
+/*
+ * Found on screen at 375px, not by a test: with the Location field empty, the
+ * page rendered "253 of those are near you" - the same count as the line
+ * above, wearing words claiming a narrowing nobody had asked for. The number
+ * was correct and the sentence was false, which is exactly the shape
+ * Constraint 1 exists to catch.
+ */
+describe('a count never claims a narrowing that was not asked for', () => {
+  it('asks nothing when only the empty field of the pair is its own', () => {
+    // The component is given both params but the location is blank - the page
+    // must not render this instance at all, and the component must not query
+    // on a blank of its own.
+    render(<LiveIndexCount params={{ location: '' }} unit="near you" />);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('the onboarding page hides the location count until a location exists', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'pages', 'onboarding.js'), 'utf8'
+    );
+    // Guarded on the location itself, not merely on some answer existing.
+    expect(src).toMatch(/basics\.location\.trim\(\)\s*&&/);
+  });
+});

@@ -779,6 +779,39 @@ build, not a polish.
 NOTE: C1a forbids modals in onboarding entirely, and requires inline
 validation under the field. No blocking pop-ups.
 
+## THE FLAKE — worker parallelism DISPROVED. New evidence, new suspect.
+
+I predicted in tools/run-suite.js that if the flake returned under
+--runInBand, worker parallelism was not the cause. It returned, on the very
+next gate run:
+
+    jobsRanking.test.js :: selects the score onto every row
+    Error: socket hang up
+
+That is a SUPERTEST TRANSPORT error, not an assertion failure - the server
+closed the connection mid-request. It is a different signature from the
+frontend's "Unable to find role=button", so there may be two flakes, not one.
+
+Three immediate re-runs: 317/317, three times. Not reproducible on demand.
+
+WHAT IS NOW KNOWN:
+ - NOT worker parallelism. The gate runs --runInBand and it still happened.
+ - NOT the Jest test timeout (20s) or asyncUtilTimeout (10s). Both raised
+   before this.
+ - "socket hang up" points at a supertest server left listening, or an
+   app-level handle surviving between test files in one shared process -
+   --runInBand makes files share a process, so it could even have made THIS
+   signature more likely while removing the other.
+
+NEXT EXPERIMENT, not yet run: several backend test files create an express app
+per test via `request(app())` and never close the server. Under --runInBand
+those accumulate in one process. Check whether the suites that build apps
+close them, and whether jest reports open handles (`--detectOpenHandles`).
+That is a cheap, specific check and it has not been done.
+
+UNTIL THEN: a green gate is still weaker evidence than it looks, and the gate
+naming its failures is what made this diagnosable at all.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
