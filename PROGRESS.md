@@ -511,6 +511,23 @@ NEXT, in order:
 ## GOAL 2 — 1 of 7. Unchanged this session. See the previous entry for the
 route order, parameters, and `git show bc5140d` as the reference.
 
+## GOAL 0 — frontend red run: NOT REPRODUCED. Recorded, not closed.
+
+The ship gate refused a commit with "frontend: 205 passed, 2 failed". Re-run
+ten times since - three through the gate's own run-suite command, six with the
+exact `npx jest --ci` parallel form, one --runInBand - all 207/207. I have no
+record of WHICH two failed, so this is unexplained rather than fixed.
+
+Most likely cause, stated as a hypothesis: at that moment a stray `node
+index.js` from the watchdog verification was still running against an
+unreachable database, competing for CPU. The frontend suite uses
+@testing-library waitFor with a 1s default, and two timing-sensitive tests
+timing out under contention fits. It is not proven.
+
+WHAT TO DO IF IT RECURS: capture the failing test NAMES before re-running -
+that is what is missing here. run-suite.js writes a JSON summary to a temp file
+(--outputFile); read it on failure instead of only the counts.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).

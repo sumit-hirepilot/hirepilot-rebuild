@@ -2,6 +2,48 @@
 
 Goals that failed five attempts, with full diagnosis. Retried at end of wave.
 
+## The app's Railway project is not reachable from this machine — and this is
+## now the blocker on diagnosing five outages
+
+CHECKED TWO WAYS, today, rather than assumed:
+ - `railway whoami` -> logged in as Sumit uxui (sumituxi@gmail.com).
+ - `railway list` and the railway.com dashboard both show exactly two projects:
+   hirepilot-site and regintel-ai. One workspace, no others in the switcher.
+
+The app is neither of them. hirepilot-site is the marketing site; the running
+API (hirepilot-production-e70d) and web (hirepilot-rebuild-production) services
+belong to a project under a DIFFERENT Railway account. So the memory graph, the
+container exit codes and the service settings cannot be read or changed from
+here, by CLI or by browser.
+
+NEW OBSERVATION, and it may matter more than the memory hypothesis: the
+sumituxi account is on a "Limited Trial - 23 days or $4.54 left. Upgrade to
+keep your services online." If the account hosting the APP is also on a trial
+or out of credit, Railway suspends the service - and suspension fits the
+evidence BETTER than an OOM kill does:
+ - no crash record, ever, across five outages (a stopped container never
+   crashes, so there is nothing to record)
+ - the watchdog never fires (it exits a wedged process; it cannot act on a
+   container the platform has stopped)
+ - recovery ONLY on redeploy, every single time (a deploy restarts the
+   container)
+ - and it explains why removing a real unbounded memory load changed nothing.
+This is a hypothesis, not a finding. It is cheap to check and should be checked
+FIRST, before more memory work.
+
+WHAT THE OPERATOR NEEDS TO DO, in this order:
+ 1. Sign in to the Railway account that owns the HirePilot app project. Check
+    the plan and remaining credit on that account first.
+ 2. Backend service -> Metrics -> memory graph across the outage windows. A
+    line that climbs then drops to zero is an OOM; a flat line that simply
+    stops is a suspension or a stop.
+ 3. Deployments -> open a crashed one -> exit code. 137 or OOMKilled confirms
+    memory. A stop or suspension will not show 137.
+ 4. Only if it is memory: Settings -> raise the limit temporarily so RSS can be
+    watched climbing instead of the container dying.
+ 5. Do NOT delete deploy history, logs or metrics. They are the only record of
+    the five outages.
+
 ## Railway healthcheckPath — operator action
 
 The API has gone down three times and never restarted itself. c1cc33a adds a
