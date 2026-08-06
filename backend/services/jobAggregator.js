@@ -394,6 +394,7 @@ const aggregateJobs = async () => {
   }
 
   await pruneStaleJobs(results);
+  await pruneOperationalLogs(results);
 
   console.log('Aggregation complete:', results);
   return results;
@@ -410,6 +411,60 @@ const aggregateJobs = async () => {
 // age: those FKs are ON DELETE CASCADE, so deleting such a job would
 // silently destroy the user's application history along with it.
 const PRUNE_AFTER_DAYS = parseInt(process.env.JOB_RETENTION_DAYS || '21', 10);
+
+/*
+ * GOAL 1g — retention for the tables that only ever grow.
+ *
+ * jobs has had a 21-day policy since the volume filled once before. Nothing
+ * else did. Measured on production: source_ingestion_runs held 6,140 rows and
+ * gains one per source per cycle - twelve sources, four cycles a day, forever.
+ * crash_reports is worse and it is mine: the watchdog writes a memory sample
+ * every five minutes, which is ~288 rows a day added by the very thing built
+ * to diagnose a full disk.
+ *
+ * A full volume stops WRITES - no ingest, no application records, no crash
+ * reports - silently. A diagnostic table that fills the disk it exists to
+ * watch would be the purest form of this whole week's lesson.
+ *
+ * Crash rows are kept longer than samples, and the most recent are kept
+ * whatever their age: the reason a process died six weeks ago is still the
+ * only record of it.
+ */
+const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || '30', 10);
+const CRASH_KEEP_RECENT = parseInt(process.env.CRASH_KEEP_RECENT || '200', 10);
+
+const pruneOperationalLogs = async (results) => {
+  try {
+    const runs = await query(
+      `DELETE FROM source_ingestion_runs
+        WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '${LOG_RETENTION_DAYS} days'`
+    );
+
+    // Memory samples are a trend and age out. Crashes are evidence: the newest
+    // CRASH_KEEP_RECENT survive regardless of age.
+    const samples = await query(
+      `DELETE FROM crash_reports
+        WHERE event = 'memory'
+          AND occurred_at < CURRENT_TIMESTAMP - INTERVAL '${LOG_RETENTION_DAYS} days'`
+    );
+    const crashes = await query(
+      `DELETE FROM crash_reports
+        WHERE event <> 'memory'
+          AND id NOT IN (
+            SELECT id FROM crash_reports WHERE event <> 'memory'
+             ORDER BY occurred_at DESC LIMIT ${CRASH_KEEP_RECENT}
+          )
+          AND occurred_at < CURRENT_TIMESTAMP - INTERVAL '${LOG_RETENTION_DAYS} days'`
+    );
+
+    const pruned = (runs.rowCount || 0) + (samples.rowCount || 0) + (crashes.rowCount || 0);
+    if (pruned) console.log(`Retention: pruned ${pruned} operational log rows`);
+    if (results) results.logRowsPruned = pruned;
+  } catch (err) {
+    // Retention failing must never stop ingest - it is housekeeping, not the job.
+    console.error('Operational log retention failed:', err.message);
+  }
+};
 
 const pruneStaleJobs = async (results) => {
   try {
