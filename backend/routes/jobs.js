@@ -463,6 +463,28 @@ router.get('/field-integrity', async (req, res) => {
      * so a correction that never applied is indistinguishable from one that
      * did. Containment is not existence.
      */
+    /*
+     * A7.4b — how many stored screening reasons still quote an internal key.
+     * The generator is fixed; these are the frozen copies in
+     * applications.screening_answers. Reading the count from outside is the
+     * only way to tell a correction that applied from one that was merely
+     * recorded - A7.2 reported 399 rows while changing none.
+     */
+    const { rows: staleReasons } = await query(
+      `SELECT COUNT(*)::int AS applications,
+              COALESCE(SUM(hits), 0)::int AS questions
+         FROM (
+           SELECT a.id,
+                  COUNT(*) FILTER (
+                    WHERE q->>'reason' ~ '^Your saved answer to "[^"]*" is not one of this form''s options\\.$'
+                  ) AS hits
+             FROM applications a,
+                  LATERAL jsonb_array_elements(COALESCE(a.screening_answers->'questions', '[]'::jsonb)) q
+            GROUP BY a.id
+         ) per_app
+        WHERE hits > 0`
+    );
+
     const { rows: corrections } = await query(
       `SELECT correction, row_count, applied_at
          FROM data_corrections
@@ -474,6 +496,7 @@ router.get('/field-integrity', async (req, res) => {
       ...rows[0],
       badCompanyBySource: bySource,
       correctionApplied: corrections[0] || null,
+      staleScreeningReasons: staleReasons[0] || { applications: 0, questions: 0 },
       nonJobRows: nonJob,
       dateCoverage: {
         undated: undatedTotal,

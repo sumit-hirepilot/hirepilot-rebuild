@@ -46,22 +46,24 @@ describe('A7.4 — a demographic key is never quoted back at the user', () => {
      * stored concept labels ARE those keys, so the first attempt printed the
      * same token by a different route.
      *
-     * Naming the question was the wrong idea. What the user needs in order to
-     * act is the answer that did not fit, so they can choose the option that
-     * matches it - which the sibling branch already did.
+     * Rewritten from matching the sentence literal, which A7.4b's extraction
+     * into optionMismatchReason moved: the guard failed on a change that did
+     * not touch the behaviour. The property is that no reason is built from a
+     * question identifier.
      */
-    const reasons = src.match(/reason: `Your saved answer[^`]*`/g) || [];
-    expect(reasons.length).toBeGreaterThanOrEqual(2);
+    const reasons = src.match(/reason: [^,\n]+/g) || [];
+    expect(reasons.length).toBeGreaterThanOrEqual(4);
     for (const r of reasons) {
       expect(r).not.toMatch(/matchedQuestion|conceptLabel|questionLabel/);
     }
   });
 
   it('says the same thing in both branches', () => {
-    // Two messages for one situation is two situations to a reader.
-    const reasons = src.match(/reason: `Your saved answer[^`]*`/g) || [];
-    const shapes = new Set(reasons.map((r) => r.replace(/\$\{[^}]*\}/g, 'X')));
-    expect(shapes.size).toBe(1);
+    // Two messages for one situation is two situations to a reader, so the
+    // sentence has exactly one definition and both branches call it.
+    const literals = src.match(/`Your saved answer \([^`]*`/g) || [];
+    expect(literals).toHaveLength(1);
+    expect((src.match(/optionMismatchReason\(/g) || []).length).toBeGreaterThanOrEqual(3);
   });
 
   it('still humanises a bare key wherever one is displayed', () => {

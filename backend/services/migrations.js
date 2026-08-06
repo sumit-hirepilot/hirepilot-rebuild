@@ -738,6 +738,107 @@ const STATEMENTS = [
 ];
 
 /*
+ * A7.4b — the reasons already written into applications.screening_answers.
+ *
+ * A7.4 fixed the generator; the page kept showing the old sentence, because
+ * PATCH /api/apply/queue/:id/questions persists each reason and every row
+ * written before the fix carries its own frozen copy. Production had 8 such
+ * questions across 6 applications, all reading
+ *   Your saved answer to "are_you_hispanic_latino" is not one of this form's
+ *   options.
+ *
+ * REGENERATED, not patched. correctedReason() rebuilds the sentence from the
+ * question's own `suggestion` - the saved answer, which is what the generator
+ * names - using the generator's own builder, so the two cannot diverge. It
+ * returns null rather than guessing when there is no saved answer, and it is
+ * idempotent, so a redeploy is a no-op.
+ *
+ * Only `reason` is written. The answers are the user's own data and a
+ * demographic answer must never be rewritten by a migration.
+ *
+ * Recorded before it is applied, AND the applied count is returned - A7.2's
+ * correction reported 399 rows while changing none, because runMigrations
+ * swallowed a constraint violation. The record alone is not evidence.
+ */
+const backfillScreeningReasons = async () => {
+  try {
+    const { correctedReason } = require('./screeningPrefill');
+
+    const { rows } = await query(
+      `SELECT id, user_id, screening_answers
+         FROM applications
+        WHERE screening_answers IS NOT NULL
+          AND screening_answers::text LIKE '%is not one of this form%'
+        LIMIT 2000`
+    );
+
+    const changes = [];
+    for (const row of rows) {
+      const sa = row.screening_answers;
+      const questions = Array.isArray(sa && sa.questions) ? sa.questions : null;
+      if (!questions) continue;
+
+      let touched = 0;
+      const next = questions.map((q) => {
+        const corrected = correctedReason(q);
+        if (!corrected) return q;
+        touched += 1;
+        // Spread first, overwrite only `reason` - answer, options, suggestion
+        // and everything else pass through untouched.
+        return { ...q, reason: corrected };
+      });
+
+      if (touched) {
+        changes.push({
+          id: row.id,
+          userId: row.user_id,
+          touched,
+          old: questions.filter((q) => correctedReason(q)).map((q) => q.reason),
+          value: { ...sa, questions: next },
+        });
+      }
+    }
+
+    if (!changes.length) return { scanned: rows.length, applications: 0, questions: 0 };
+
+    await query(
+      `INSERT INTO data_corrections (correction, table_name, row_count, detail)
+       VALUES ('a7.4b-screening-reason', 'applications', $1, $2)`,
+      [
+        changes.length,
+        JSON.stringify({
+          ids: changes.map((c) => c.id),
+          questions: changes.reduce((n, c) => n + c.touched, 0),
+          oldValues: changes.flatMap((c) => c.old).slice(0, 50),
+          reason: 'reason quoted an internal profile key; regenerated from the saved answer',
+        }),
+      ]
+    );
+
+    let applied = 0;
+    for (const c of changes) {
+      const res = await query(
+        `UPDATE applications
+            SET screening_answers = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2 AND user_id = $3`,
+        [JSON.stringify(c.value), c.id, c.userId]
+      );
+      applied += res.rowCount || 0;
+    }
+
+    console.log(`A7.4b: corrected ${applied}/${changes.length} applications`);
+    return {
+      scanned: rows.length,
+      applications: applied,
+      questions: changes.reduce((n, c) => n + c.touched, 0),
+    };
+  } catch (err) {
+    console.error('A7.4b screening-reason backfill failed:', err.message);
+    return { error: err.message };
+  }
+};
+
+/*
  * Parse existing flat-text resumes into the structured model.
  *
  * Idempotent by `doc IS NULL`, so it fills in rows created before the column
@@ -800,6 +901,7 @@ const runMigrations = async () => {
     }
   }
   await backfillResumeDocs();
+  await backfillScreeningReasons();
   console.log('Migrations complete');
 };
 

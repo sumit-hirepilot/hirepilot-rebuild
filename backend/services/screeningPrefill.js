@@ -261,7 +261,7 @@ function prefillAnswers(questions, profile, jobContext = {}) {
              * can pick the option that matches it. That is what the sibling
              * branch below already says, and now both agree.
              */
-            reason: `Your saved answer ("${String(similar.answer).slice(0, 70)}") is not one of this form's options.`,
+            reason: optionMismatchReason(similar.answer),
           };
         }
         return { ...base, answer: hit, source: 'profile_similar', matchedQuestion: similar.matchedQuestion,
@@ -333,7 +333,7 @@ function prefillAnswers(questions, profile, jobContext = {}) {
             answer: null,
             source: 'requires_user',
             suggestion: rendered,
-            reason: `Your saved answer ("${rendered}") is not one of this form's options.`,
+            reason: optionMismatchReason(rendered),
           };
         }
         return { ...base, answer: hit, source: 'profile', profileField: rule.field };
@@ -384,7 +384,48 @@ function summarize(prefilled) {
   };
 }
 
+
+/*
+ * A7.4b — ONE definition of this sentence.
+ *
+ * It was written out at two call sites, and a third copy of it is sitting in
+ * every applications.screening_answers row already persisted. Correcting the
+ * stored rows means regenerating the sentence, and regenerating it from a
+ * second spelling is how A7.17's ranking paths drifted. Generator and
+ * corrector call this.
+ */
+function optionMismatchReason(savedAnswer) {
+  return `Your saved answer ("${String(savedAnswer ?? '').slice(0, 70)}") is not one of this form's options.`;
+}
+
+/*
+ * The shape this replaces: the saved answer's QUESTION was quoted, and that
+ * field holds an internal profile key, so the page read
+ *   Your saved answer to "are_you_hispanic_latino" is not one of this form's
+ *   options.
+ * Matched here rather than in the migration so the corrector cannot look for
+ * one thing while the generator emits another.
+ */
+const OPTION_MISMATCH_LEGACY = /^Your saved answer to "[^"]*" is not one of this form's options\.$/;
+
+/**
+ * The corrected reason for a stored question, or null if it needs no change.
+ *
+ * Recomputed from `suggestion` - the saved answer the generator itself uses -
+ * never patched out of the old sentence. Returns null rather than guessing
+ * when there is no saved answer to name.
+ */
+function correctedReason(question) {
+  const reason = question && question.reason;
+  if (typeof reason !== 'string' || !OPTION_MISMATCH_LEGACY.test(reason)) return null;
+  const saved = question.suggestion;
+  if (saved === null || saved === undefined || String(saved).trim() === '') return null;
+  const next = optionMismatchReason(saved);
+  return next === reason ? null : next;
+}
+
 module.exports = {
   prefillAnswers, summarize, normalizeKey, labelFor, LABELS,
+  optionMismatchReason, correctedReason, OPTION_MISMATCH_LEGACY,
   countryForLocation, isAuthorizedIn,
 };
