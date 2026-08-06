@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.4 - a key must never reach a user as a key.
+import { labelFor } from '../lib/labels';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
@@ -220,7 +222,7 @@ export default function Home({ stats = null }) {
                     {activeTicker ? (
                       <p className={styles.terminalLine}>
                         <span className={styles.terminalPrompt}>&gt;</span> scanning{' '}
-                        {SOURCE_LABELS[activeTicker.source] || activeTicker.source}…{' '}
+                        {labelFor(activeTicker.source, SOURCE_LABELS)}…{' '}
                         <span className={styles.terminalCount}>{activeTicker.count} active</span>
                       </p>
                     ) : (
@@ -290,7 +292,7 @@ export default function Home({ stats = null }) {
                     {sources.length ? (
                       sources.slice(0, 4).map((s) => (
                         <p key={s.source} className={styles.terminalLine}>
-                          <span className={styles.terminalPrompt}>&gt;</span> {SOURCE_LABELS[s.source] || s.source}{' '}
+                          <span className={styles.terminalPrompt}>&gt;</span> {labelFor(s.source, SOURCE_LABELS)}{' '}
                           <span className={styles.terminalCount}>+{s.count}</span>
                         </p>
                       ))

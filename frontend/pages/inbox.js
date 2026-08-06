@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.4 - a key must never reach a user as a key.
+import { labelFor } from '../lib/labels';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -30,6 +32,20 @@ const CATEGORIES = [
 const TONE = {
   offer: 'good', interview: 'good', rejection: 'bad',
   assessment: 'warn', verification: 'info', reminder: 'warn',
+};
+
+/*
+ * A7.4 - the inbox rendered {m.category} straight from the row, so a category
+ * the server adds shows up as a token. Explicit where the wording matters,
+ * humanised by labelFor otherwise.
+ */
+const CATEGORY_LABELS = {
+  interview: 'Interview',
+  interviewing: 'Interviewing',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  rejection: 'Rejection',
+  all: 'All',
 };
 
 export default function Inbox() {
@@ -168,7 +184,7 @@ export default function Inbox() {
             >
               <div className={page.itemTop}>
                 <span className={page.itemFrom}>{m.from_name || m.from_email || 'Unknown sender'}</span>
-                <span className={`${page.cat} ${page[TONE[m.category] || 'neutral']}`}>{m.category}</span>
+                <span className={`${page.cat} ${page[TONE[m.category] || 'neutral']}`}>{labelFor(m.category, CATEGORY_LABELS)}</span>
               </div>
               <div className={page.itemSubject}>{m.subject || '(no subject)'}</div>
               {m.job_title && <div className={page.itemJob}>{m.job_title}</div>}
@@ -189,7 +205,7 @@ export default function Inbox() {
                 {selected.from_name ? `${selected.from_name} · ` : ''}{selected.from_email}
               </div>
               <div className={page.readerMeta}>
-                <span className={`${page.cat} ${page[TONE[selected.category] || 'neutral']}`}>{selected.category}</span>
+                <span className={`${page.cat} ${page[TONE[selected.category] || 'neutral']}`}>{labelFor(selected.category, CATEGORY_LABELS)}</span>
                 {selected.job_title && <span>{selected.job_title} · {selected.job_company}</span>}
                 {selected.received_at && <span>{formatDateTime(selected.received_at)}</span>}
               </div>

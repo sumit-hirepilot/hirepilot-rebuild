@@ -103,6 +103,27 @@ const CASES = [
     file: 'backend/routes/jobs.js',
     mutate: (s) => s.replace('FROM ranked ${countWhere}`, scoreParams)', 'FROM ranked ${where}`, scoreParams)') },
 
+  /* ---- A7.4: no key reaches a user as a key ---- */
+  { suite: 'labels',
+    test: 'has no LABELS[key] || key fallback anywhere',
+    file: 'pages/analytics.js',
+    mutate: (s) => s.replace('labelFor(s.status, STATUS_LABELS)',
+      'STATUS_LABELS[s.status] || s.status') },
+  { suite: 'labels',
+    test: 'does not interpolate a category or stage straight into JSX',
+    file: 'pages/inbox.js',
+    mutate: (s) => s.replace('>{labelFor(m.category, CATEGORY_LABELS)}<', '>{m.category}<') },
+  { suite: 'labels',
+    test: "never gives a separator-carrying token back unchanged",
+    file: 'lib/labels.js',
+    mutate: (s) => s.replace('return humanise(key);', 'return key;') },
+  { suite: 'labels',
+    test: 'honours a mapped empty string rather than falling through to the key',
+    file: 'lib/labels.js',
+    mutate: (s) => s.replace(
+      'if (Object.prototype.hasOwnProperty.call(map, key)) return map[key];',
+      'if (map[key]) return map[key];') },
+
   /* ---- A7.2 second half: the legacy rows the guard was written after ---- */
   { suite: 'legacyBadCompany', dir: 'backend', base: true,
     test: 'nulls a company that is a field-name token rather than an employer',

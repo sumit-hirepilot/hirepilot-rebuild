@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.4 - a key must never reach a user as a key.
+import { labelFor } from '../lib/labels';
 import { useRouter } from 'next/router';
 import { useEffect, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -118,7 +120,7 @@ export default function Analytics() {
                 ) : (
                   data.statusBreakdown.map((s) => (
                     <div key={s.status} className={page.breakdownRow}>
-                      <span className={page.breakdownLabel}>{STATUS_LABELS[s.status] || s.status}</span>
+                      <span className={page.breakdownLabel}>{labelFor(s.status, STATUS_LABELS)}</span>
                       <div className={page.breakdownTrack}>
                         <div className={page.breakdownFill} style={{ width: `${(s.count / maxStatus) * 100}%` }} />
                       </div>
@@ -136,7 +138,7 @@ export default function Analytics() {
               ) : (
                 data.sourceBreakdown.map((s) => (
                   <div key={s.source} className={page.breakdownRow}>
-                    <span className={page.breakdownLabel}>{SOURCE_LABELS[s.source] || s.source}</span>
+                    <span className={page.breakdownLabel}>{labelFor(s.source, SOURCE_LABELS)}</span>
                     <div className={page.breakdownTrack}>
                       <div className={page.breakdownFill} style={{ width: `${(s.count / maxSource) * 100}%` }} />
                     </div>

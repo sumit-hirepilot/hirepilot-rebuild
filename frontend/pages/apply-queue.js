@@ -1,4 +1,6 @@
 import Head from 'next/head';
+// A7.4 - a key must never reach a user as a key.
+import { labelFor } from '../lib/labels';
 // A7.2 - a company that did not parse must never render as if it did.
 import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
@@ -205,7 +207,7 @@ export default function ApplyQueue() {
                 </span>
               </div>
               <span className={`${page.status} ${page[`s_${item.status}`] || ''}`}>
-                {STATUS_LABEL[item.status] || item.status}
+                {labelFor(item.status, STATUS_LABEL)}
               </span>
             </button>
           ))}
@@ -329,7 +331,7 @@ export default function ApplyQueue() {
                       <span className={page.fieldSource}>
                         {edits[a.question] !== undefined
                           ? 'You edited this'
-                          : SOURCE_LABEL[a.source] || a.source}
+                          : labelFor(a.source, SOURCE_LABEL)}
                         {a.confidence !== undefined && edits[a.question] === undefined && (
                           <span className={a.confidence >= 0.7 ? page.confHigh : page.confLow}>
                             {' '}{Math.round(a.confidence * 100)}% match
