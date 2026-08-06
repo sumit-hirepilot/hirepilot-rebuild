@@ -88,6 +88,79 @@ time filter runs INSIDE the personalised set - `job_matches` is capped at
 problem. This also fully explains A7.13: `figma + 24h` was 11 keyword hits
 intersected with a 500-row window.
 
+## A7.4 — CLOSED for generated text. One data correction still open (specified below).
+
+REPRODUCED FIRST, and the filed symptom did not hold where it was filed. The
+activity feed already reads as English and names the company:
+"Auto-Pilot applied to UX Designer Senior at Valtech", "Submitted Platform
+Designer at Scaleai - waiting on the employer's confirmation". That surface was
+closed in an earlier pass. So the goal became: where DO keys reach users?
+
+FOUND AND FIXED, as rules rather than call sites:
+
+1. The inbox rendered {m.category} straight from the row - no map at all.
+2. Five sites used `SOME_LABELS[key] || key`. That reads as a safe fallback and
+   is the opposite: the day the server adds a status, source or category, the
+   raw token renders and nothing fails.
+
+   labelFor(key, map) replaces both. Explicit labels still win ("hackernews"
+   must not become "Hackernews"); anything unmapped is humanised, so a new key
+   reads "Phone screen" rather than "phone_screen". It uses hasOwnProperty, not
+   truthiness, so a label deliberately set to "" means show nothing instead of
+   printing the token.
+
+   Guarded over the whole pages+components trees: no LABELS[k] || k anywhere,
+   and no category/stage interpolated into rendered text.
+
+3. THE ONE THAT MATTERED MOST. The applications page read:
+   Your saved answer to "are_you_hispanic_latino" is not one of this form's
+   options - an internal profile key quoted back at the user, beside a
+   demographic question, which is the worst place in the product for it.
+
+   First attempt preferred conceptLabel. Production showed the same token,
+   because the stored concept labels ARE those keys - it printed the same thing
+   by a different route, and only checking the rendered page caught it.
+
+   Naming the question was the wrong idea. What the user needs in order to act
+   is the ANSWER that did not fit, so they can pick the option matching it -
+   which the sibling branch already said. Both messages now agree, and the
+   guard asserts ONE message shape for one situation.
+
+   Verified on production: /api/apply/queue and /api/applications no longer
+   generate any reason containing a key.
+
+STILL OPEN — the stored copies. PATCH /api/apply/queue/:id/questions runs
+prefillAnswers and PERSISTS each reason into applications.screening_answers
+(backend/routes/apply.js:760). The page renders text frozen at the time the
+extension last scanned that form, so rows written before this fix still show
+"are_you_hispanic_latino" on screen. Same shape as A7.2's legacy rows, one
+table over. The generator is correct and live; the data is not corrected.
+
+124 backend / 108 frontend, 79/79 guards proven red.
+
+### Next goal — A7.4b, correct the stored screening reasons (executable cold)
+
+- The text lives in applications.screening_answers (JSONB), one `reason` per
+  question object, written by PATCH /api/apply/queue/:id/questions.
+- Reproduce first: load /applications on production and confirm the raw keys
+  are still on screen while /api/apply/queue returns none.
+- Prefer RECOMPUTING over string surgery: the row still carries the question
+  and the saved answer, so the reason can be regenerated from the same
+  prefillAnswers path rather than pattern-matching old sentences. String
+  surgery on user data is the fragile option and it cannot be verified.
+- Whatever the route, record it in data_corrections BEFORE applying, with ids
+  and old values - and CHECK IT APPLIED. A7.2's correction reported 399 rows
+  corrected while changing none, because company_name was NOT NULL and
+  runMigrations swallowed the constraint violation. Read the result back
+  through an endpoint, not the boot log.
+- Do not touch the `answer` fields. Only `reason` is wrong; the answers are
+  the user's own data and a demographic answer must never be rewritten.
+- Verify: /applications on production shows no [a-z]+_[a-z_]+ token, at
+  375/768/1440, zero console errors.
+
+Then A7.8 (orderFor helper), A7.10 (interaction coverage - unblocked now that
+user-event is installed), A7.18 (select-all), Wave C, then B1-B5.
+
 ## A7.5 SWEEP + A7.2 second half — CLOSED. Verified on production.
 
 ### The sweep map (all 14 nav destinations, signed in)
