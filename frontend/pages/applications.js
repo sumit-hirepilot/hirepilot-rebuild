@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import SubmissionReceipt from '../components/SubmissionReceipt';
 // A7.2 - a company that did not parse must never render as if it did.
 import { parsedOr } from '../lib/renderState';
 import { useRouter } from 'next/router';
@@ -409,6 +410,13 @@ export default function Applications() {
                           <p className={page.cardMeta}>
                             {formatDateShort(app.applied_at)}
                           </p>
+                          {/* A4 — on EVERY card, not only failures. The receipt
+                              has existed server-side since A4 and nothing
+                              rendered it; for a product that submits
+                              autonomously, being unable to read what went out
+                              in your name is the defect that matters most,
+                              because an application cannot be unsent. */}
+                          <SubmissionReceipt applicationId={app.id} token={token} />
                           {app.status === 'failed' ? (
                             <>
                               <p className={page.failureReason}>{app.failure_reason}</p>

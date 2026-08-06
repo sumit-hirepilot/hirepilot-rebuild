@@ -117,6 +117,21 @@ const CASES = [
     file: 'backend/services/labels.js',
     mutate: (s) => s.replace(".replace(/[_-]+/g, ' ')", ".replace(/[_]+/g, ' ')") },
 
+  /* ---- A4/Item 0: the receipt on screen ---- */
+  { suite: 'submissionReceiptView',
+    test: 'renders fields, answers, the file hash and the platform response',
+    file: 'components/SubmissionReceipt.js',
+    mutate: (s) => s.replace('{receipt.resume_sha256 || \'Not recorded\'}', "{'-'}") },
+  { suite: 'submissionReceiptView',
+    test: 'distinguishes a display failure from a missing record',
+    file: 'components/SubmissionReceipt.js',
+    mutate: (s) => s.replace("setState('error');", "setState('none');") },
+  { suite: 'submissionReceiptView',
+    test: 'never invents a value it was not given',
+    file: 'components/SubmissionReceipt.js',
+    mutate: (s) => s.replace("{receipt.platform_confirmation_id || 'None returned'}",
+      '{receipt.platform_confirmation_id || \'GH-PENDING\'}') },
+
   /* ---- Item 0: the tailoring guards, both directions ---- */
   { suite: 'resumeGuardLive', dir: 'backend', base: true,
     test: 'blocks an invented number',
