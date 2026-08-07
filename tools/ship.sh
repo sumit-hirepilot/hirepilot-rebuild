@@ -75,8 +75,16 @@ node tools/check-mock-boundaries.js
 # one. Feature 4a's frontend never reached production: `next build` failed on an
 # ESLint error, Railway kept serving the last good build, and nothing said so.
 # Jest does not build. Only the build builds.
+#
+# NEXT_PUBLIC_API_URL is passed explicitly because a production build now
+# REFUSES to run without it (next.config.js). It is compiled into the client
+# bundle, so a build that guesses ships an app calling the wrong host with no
+# way to correct it afterwards. The value here is a placeholder: this stage
+# proves the code compiles, and each deployment supplies its own real origin as
+# a build arg. Leaving it unset would fail the gate for the right reason but
+# the wrong purpose.
 echo "== 9/11 the frontend actually builds =="
-( cd frontend && npx next build >/tmp/hp-next-build.log 2>&1 ) || {
+( cd frontend && NEXT_PUBLIC_API_URL="https://api.invalid.ship-gate.local" npx next build >/tmp/hp-next-build.log 2>&1 ) || {
   echo "FRONTEND BUILD FAILED - this would deploy nothing and say nothing:"
   tail -25 /tmp/hp-next-build.log
   exit 1

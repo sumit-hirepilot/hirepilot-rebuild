@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import styles from '../styles/Home.module.css';
 import { API_BASE } from '../lib/apiBase';
+import { SITE_URL } from '../lib/siteUrl';
 import { formatDateTime, formatNumber } from '../lib/format';
 
 const SOURCE_LABELS = {
@@ -121,7 +122,11 @@ const FAQS = [
  * says so, with the last sync time, instead of hanging on a skeleton.
  */
 export async function getServerSideProps() {
-  const base = process.env.NEXT_PUBLIC_API_URL || 'https://hirepilot-production-e70d.up.railway.app';
+  // API_BASE, not a second inline fallback. This one named a specific deployed
+  // backend, so on any other environment the landing stats would have been read
+  // from a different database than the rest of the page - the one number a
+  // visitor sees before signing up, sourced from somewhere else entirely.
+  const base = API_BASE;
   try {
     const ctrl = new AbortController();
     // Well inside the 2s budget; a slow stats query must not hold the page.
@@ -194,14 +199,18 @@ export default function Home({ stats = null }) {
         <meta property="og:site_name" content="HirePilot" />
         <meta property="og:title" content="HirePilot — job search with the numbers shown" />
         <meta property="og:description" content="Match scores that break down into their weights. Resume tailoring that cannot invent experience. Applied means the employer confirmed it." />
-        <meta property="og:url" content="https://hirepilot-rebuild-production.up.railway.app" />
-        <meta property="og:image" content="https://hirepilot-rebuild-production.up.railway.app/og.png" />
+        {/* Absolute by necessity - a crawler resolves these on its own host.
+            Omitted rather than guessed when the site URL is not configured: a
+            missing preview is honest, one pointing at a different deployment
+            is not. */}
+        {SITE_URL && <meta property="og:url" content={SITE_URL} />}
+        {SITE_URL && <meta property="og:image" content={`${SITE_URL}/og.png`} />}
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="HirePilot — job search with the numbers shown" />
         <meta name="twitter:description" content="Match scores that break down into their weights. Resume tailoring that cannot invent experience. Applied means the employer confirmed it." />
-        <meta name="twitter:image" content="https://hirepilot-rebuild-production.up.railway.app/og.png" />
+        {SITE_URL && <meta name="twitter:image" content={`${SITE_URL}/og.png`} />}
         <link rel="icon" href="/favicon.ico" />
       </Head>
 

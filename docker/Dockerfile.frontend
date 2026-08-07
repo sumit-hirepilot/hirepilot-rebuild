@@ -23,6 +23,12 @@ COPY frontend/ .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+# The site's own public origin, for og:url and og:image - the only tags that
+# must state an absolute address. Unset is allowed and omits them; see
+# frontend/lib/siteUrl.js for why that is preferred to guessing.
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+
 RUN npm run build
 
 # Runtime stage
