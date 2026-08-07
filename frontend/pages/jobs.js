@@ -380,6 +380,10 @@ export default function Jobs() {
   const [message, setMessage] = useState('');
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  // How many are being prepared right now, 0 when idle. A count rather than a
+  // boolean so the button can say what it is doing - "Preparing 12…" is a
+  // different promise from a spinner.
+  const [queueing, setQueueing] = useState(0);
   const [savedIds, setSavedIds] = useState(new Set());
   const [savedJobs, setSavedJobs] = useState([]);
   const [showSavedOnly, setShowSavedOnly] = useState(false);
@@ -777,7 +781,15 @@ export default function Jobs() {
   // the approval gate before the extension submits on the employer's site.
   const handleQueue = async (jobIds) => {
     const ids = Array.isArray(jobIds) ? jobIds : [jobIds];
+    if (queueing) return;              // a second click would prepare them twice
     setMessage('');
+    /*
+     * Preparing is SLOW and was silent. The backend tailors a resume, writes a
+     * cover letter and resolves the screening answers for every job, five at a
+     * time - seconds each. Nothing on screen said so, the button stayed live,
+     * and clicking again sent the whole batch a second time.
+     */
+    setQueueing(ids.length);
     try {
       const res = await fetch(`${base}/api/apply/queue`, {
         method: 'POST',
@@ -795,14 +807,40 @@ export default function Jobs() {
         return next;
       });
       setSelectedIds(new Set());
+
       const skipped = data.skipped?.length
         ? ` ${data.skipped.length} already in your queue or tracker.`
         : '';
+
+      /*
+       * preparationFailed was returned by the API and read by nothing.
+       *
+       * A batch where some jobs failed to prepare reported "Prepared 12
+       * applications" and said nothing about the other three - the user goes to
+       * Ready to send, finds twelve, and has no way to learn which three are
+       * missing or why. Same shape as the receipt that reported its own failure
+       * into a field nobody read.
+       *
+       * Named, with the reason, and capped so a wholly failed batch does not
+       * produce a wall of text.
+       */
+      const failed = data.preparationFailed || [];
+      let failedText = '';
+      if (failed.length) {
+        const shown = failed.slice(0, 3)
+          .map((f) => `${f.title || `job ${f.jobId}`} (${f.reason})`)
+          .join('; ');
+        const more = failed.length > 3 ? ` and ${failed.length - 3} more` : '';
+        failedText = ` ${failed.length} could not be prepared: ${shown}${more}.`;
+      }
+
       setMessage(
-        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve under Ready to send.${skipped}`
+        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve under Ready to send.${skipped}${failedText}`
       );
     } catch (err) {
       setMessage('Could not prepare the application. Please try again.');
+    } finally {
+      setQueueing(0);
     }
   };
 
@@ -927,9 +965,11 @@ export default function Jobs() {
             <button
               className={page.applyButton}
               onClick={() => handleQueue(job.id)}
+              disabled={queueing > 0}
+              aria-busy={queueing > 0}
               title="Queues this with a tailored resume, cover letter and pre-filled answers. The extension fills and submits it."
             >
-              Apply Now
+              {queueing > 0 ? 'Preparing…' : 'Apply Now'}
             </button>
           )}
           <a href={job.job_url} target="_blank" rel="noreferrer" className={page.originalLink}>Original posting</a>
@@ -1319,8 +1359,12 @@ export default function Jobs() {
               <button
                 className={page.bulkPrimary}
                 onClick={() => handleQueue(Array.from(selectedIds))}
+                disabled={queueing > 0}
+                aria-busy={queueing > 0}
               >
-                Prepare {selectedIds.size} application{selectedIds.size === 1 ? '' : 's'}
+                {queueing > 0
+                  ? `Preparing ${queueing} application${queueing === 1 ? '' : 's'}…`
+                  : `Prepare ${selectedIds.size} application${selectedIds.size === 1 ? '' : 's'}`}
               </button>
               <button className={page.bulkGhost} onClick={() => setSelectedIds(new Set())}>
                 Clear

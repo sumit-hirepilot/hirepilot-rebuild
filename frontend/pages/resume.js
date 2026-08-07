@@ -659,6 +659,40 @@ function TailorForJob({ jobs, token, base, reload }) {
                   </div>
                 </>
               )}
+
+              {/*
+                * Skills the job asks for that were NOT added, and why.
+                *
+                * The guard withholds anything it cannot trace to the user's own
+                * resume, skills or work history - after D51 that includes things
+                * like "Marketing" matched only against "market positioning". The
+                * design is that a withheld skill becomes a QUESTION rather than a
+                * silent addition, and this page dropped the question: it rendered
+                * the matched skills and the score and discarded needsConfirmation
+                * entirely, so the user saw a tailored resume with no sign that
+                * anything had been held back or that it was theirs to confirm.
+                *
+                * The editor page had always shown these. This one had not.
+                */}
+              {result.needsConfirmation?.length > 0 && (
+                <>
+                  <p className={page.compareLabel} style={{ marginTop: '0.75rem' }}>
+                    Not added — only you can say whether these are yours
+                  </p>
+                  <ul className={page.holdList}>
+                    {result.needsConfirmation.map((s) => (
+                      <li key={s.text || s}>
+                        <strong>{s.text || s}</strong>
+                        {s.why ? <span className={page.holdWhy}> — {s.why}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className={page.holdNote}>
+                    The job mentions these and your resume does not, so they were left out.
+                    Add them to your profile if you have the experience, and tailor again.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 

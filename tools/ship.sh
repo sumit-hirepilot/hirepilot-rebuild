@@ -64,6 +64,9 @@ node tools/check-stale-origins.js
 # soft-failure flags no test reads. That shape hid the missing receipt for the
 # product's entire life.
 node tools/check-swallowed-writes.js
+# D52c - a failure the API reports that the UI never renders, which turns a
+# partial failure into a reported success at the boundary.
+node tools/check-failure-fields-are-read.js
 echo
 
 echo "== 6/11 backend suite =="
