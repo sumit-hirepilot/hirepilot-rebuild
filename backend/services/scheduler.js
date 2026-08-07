@@ -2,17 +2,20 @@ const cron = require('node-cron');
 const { aggregateJobs } = require('./jobAggregator');
 const { runAllActiveAgents } = require('./agentRunner');
 const { runAutoApplyForAllUsers } = require('./autoApplyEngine');
+const { mem } = require('./memlog');
 
 let aggregationTask;
 
 const runCycle = async (label) => {
   console.log(`${label} started at`, new Date().toISOString());
+  mem(`${label}:cycle start`);
   try {
     await aggregateJobs();
   } catch (err) {
     console.error(`${label} - aggregation error:`, err);
   }
 
+  mem(`${label}:after aggregation`);
   try {
     const result = await runAllActiveAgents();
     console.log(`${label} - ran ${result.agentsRun} search agents, ${result.totalNewMatches} new matches`);
@@ -20,12 +23,14 @@ const runCycle = async (label) => {
     console.error(`${label} - search agent run error:`, err);
   }
 
+  mem(`${label}:after agents`);
   try {
     const result = await runAutoApplyForAllUsers();
     console.log(`${label} - auto-apply: ${result.usersProcessed} users, ${result.totalApplied} applications sent, ${result.totalPendingReview} pending review, ${result.totalFlagged} flagged for dream companies`);
   } catch (err) {
     console.error(`${label} - auto-apply error:`, err);
   }
+  mem(`${label}:cycle end`);
 };
 
 const startScheduler = () => {

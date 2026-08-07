@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { mem } = require('./memlog');
 const { isParsed, notAJobReason } = require('./parsedField');
 const remoteOKClient = require('./apis/remoteok');
 const motiveClient = require('./apis/remotive');
@@ -379,8 +380,12 @@ const aggregateJobs = async () => {
    * Sequential means at most ONE source's rows are resident at a time, and the
    * previous array is unreachable before the next fetch begins.
    */
+  mem('aggregate:start', { sources: SOURCES.length });
   for (const source of SOURCES) {
     await runSource(source, results);
+    // Per source, because "one source at a time" is only a bound if each one
+    // is actually released before the next begins.
+    mem(`aggregate:after ${source.key || source.name || 'source'}`, { total: results.total });
   }
 
   // Mark jobs as inactive if not updated in last 7 days
@@ -393,8 +398,10 @@ const aggregateJobs = async () => {
     console.error('Error marking stale jobs as inactive:', err);
   }
 
+  mem('aggregate:before prune');
   await pruneStaleJobs(results);
   await pruneOperationalLogs(results);
+  mem('aggregate:after prune');
 
   console.log('Aggregation complete:', results);
   return results;

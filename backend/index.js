@@ -19,6 +19,10 @@ const trackerRoutes = require('./routes/tracker');
 const plansRoutes = require('./routes/plans');
 const { startScheduler } = require('./services/scheduler');
 const { runMigrations } = require('./services/migrations');
+// `memLog`, not `mem`: the health handler below already binds `mem` to a
+// process.memoryUsage() snapshot, and two different meanings for one name in
+// one file is how the wrong one gets called.
+const { mem: memLog, peak: memPeak } = require('./services/memlog');
 
 const app = express();
 const { installCrashLogging, startWatchdog } = require('./services/watchdog');
@@ -49,6 +53,9 @@ app.get('/api/health', async (req, res) => {
       timestamp: result.rows[0],
       rssMb: Math.round(mem.rss / 1048576),
       heapUsedMb: Math.round(mem.heapUsed / 1048576),
+      // High-water mark since boot. rssMb alone cannot show a spike that has
+      // already fallen back, which is exactly the shape of the boot peak.
+      peakRssMb: memPeak(),
       uptimeSeconds: Math.round(process.uptime()),
     });
   } catch (err) {
@@ -179,6 +186,7 @@ function startServer() {
    */
   startWatchdog(() => pool.query('SELECT 1'), { sink: crashSink });
 
+  memLog('boot:before migrations');
   runMigrations()
     .then(() => {
       if (process.env.NODE_ENV !== 'test') {
