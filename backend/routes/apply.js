@@ -38,6 +38,7 @@ const {
 } = require('../services/submissionGate');
 const express = require('express');
 const { query } = require('../db');
+const { boundText, boundInt } = require('../services/requestBounds');
 const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 const { buildTailoredText } = require('../services/resumeTailorEngine');
 const { generateCoverLetterContent } = require('../services/coverLetterGenerator');
@@ -542,8 +543,14 @@ router.get('/queue/next', verifyToken, async (req, res) => {
      * `exclude` lets the caller skip ids it has already tried this run, so a
      * server-side state it disagrees with cannot spin the loop either.
      */
-    const exclude = String(req.query.exclude || '')
-      .split(',').map((n) => Number(n)).filter(Number.isInteger);
+    /*
+     * Bounded: a comma list read off the query string is unbounded until
+     * proven otherwise, and this one becomes an id set. 200 is far above any
+     * real queue and far below anything that costs.
+     */
+    const excludeB = boundText(req.query.exclude, { max: 4000 });
+    const exclude = excludeB.value
+      .split(',').map((n) => Number(n)).filter(Number.isInteger).slice(0, 200);
 
     const r = await query(
       `SELECT a.id FROM applications a
@@ -563,7 +570,7 @@ router.get('/queue/next', verifyToken, async (req, res) => {
     if (req.query.runId) {
       await query(
         'UPDATE applications SET run_id = $1 WHERE id = $2 AND user_id = $3',
-        [Number(req.query.runId), r.rows[0].id, req.user.id]
+        [boundInt(req.query.runId, { def: 0, min: 0, max: 2147483647 }).value, r.rows[0].id, req.user.id]
       ).catch(() => {});
     }
     return res.json({ item: await buildReviewPayload(req.user.id, r.rows[0].id) });
@@ -1536,7 +1543,7 @@ router.get('/blockers', verifyToken, async (req, res) => {
     const params = [req.user.id];
     let scope = '';
     if (req.query.runId) {
-      params.push(Number(req.query.runId));
+      params.push(boundInt(req.query.runId, { def: 0, min: 0, max: 2147483647 }).value);
       scope = ` AND a.run_id = $${params.length}`;
     }
 

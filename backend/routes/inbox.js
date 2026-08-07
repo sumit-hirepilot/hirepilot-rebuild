@@ -17,6 +17,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { query } = require('../db');
+const { boundText, boundInt } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -80,7 +81,14 @@ async function ensureProxyEmail(userId) {
 
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { category, search, limit = 50 } = req.query;
+    /*
+     * Bounded. `search` becomes a LIKE pattern and `limit` a row count; both
+     * came straight off the query string. Same class as the paging outage.
+     */
+    const { category } = req.query;
+    const searchB = boundText(req.query.search);
+    const search = searchB.value || undefined;
+    const limit = boundInt(req.query.limit, { def: 50, min: 1, max: 200 }).value;
     const params = [req.user.id];
     let where = 'WHERE m.user_id = $1';
 
@@ -156,7 +164,13 @@ router.post('/inbound', async (req, res) => {
   try {
     const secret = process.env.INBOUND_MAIL_SECRET;
     if (!secret) return res.status(503).json({ error: 'Inbound mail is not configured' });
-    const supplied = req.get('x-hirepilot-signature') || req.query.token;
+    /*
+     * Bounded before comparison. It is compared with === against a secret, so
+     * length was never a correctness risk - but an unbounded value reaching a
+     * comparison is still an unbounded value read from a request, and the
+     * sweep is only useful if it has no exceptions carved into it.
+     */
+    const supplied = req.get('x-hirepilot-signature') || boundText(req.query.token, { max: 512 }).value;
     if (supplied !== secret) return res.status(401).json({ error: 'Bad signature' });
 
     const b = req.body || {};

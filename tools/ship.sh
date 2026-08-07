@@ -47,8 +47,9 @@ echo "== 3/10 every frontend /api call has a route behind it =="
 node tools/check-frontend-endpoints.js
 
 # A write that cannot satisfy a live constraint is a guaranteed 500.
-echo "== 4/10 every write can satisfy the live constraints =="
+echo "== 4/10 every write can satisfy the live constraints, every input bounded =="
 node tools/check-write-paths.js
+node tools/check-query-bounds.js
 
 echo "== 5/10 user-visible claims still match the code =="
 node tools/check-landing-claims.js

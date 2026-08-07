@@ -168,6 +168,33 @@ const STATEMENTS = [
    * existing row still satisfies it.
    */
   `ALTER TABLE tailored_resumes ALTER COLUMN job_id DROP NOT NULL`,
+
+  /*
+   * Feature 4a — a job the USER linked, not one this product indexed.
+   *
+   * `added_by_user_id` marks it and, with is_active = false, keeps it out of
+   * every shared surface: 16 separate queries filter is_active, so the feed,
+   * the counts and all five facets exclude it without one change to the hot
+   * path. It stays reachable BY ID, which is all that scoring, tailoring and
+   * queueing need.
+   *
+   * That is the ToS line made structural rather than promised: one person's
+   * link never becomes a row in an index served to everyone else.
+   */
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_added_by_user ON jobs(added_by_user_id) WHERE added_by_user_id IS NOT NULL`,
+
+  /*
+   * company_name was NOT NULL, and a generic careers page often does not say
+   * the company anywhere a parser can reach. A NOT NULL that forces a value
+   * forces an INVENTED one, which is the constraint that actually matters
+   * here - so the column is relaxed and the absence is stored as absence. The
+   * UI already renders `parsedOr(company_name, 'Company not stated')`.
+   *
+   * Non-destructive: no existing row loses anything, and every aggregator
+   * insert still supplies it.
+   */
+  `ALTER TABLE jobs ALTER COLUMN company_name DROP NOT NULL`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'indexed_job'`,
 
   /*

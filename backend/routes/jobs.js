@@ -5,6 +5,10 @@ const { aggregateJobs, SOURCES } = require('../services/jobAggregator');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildSearchTiering, buildExcludeCondition } = require('../services/jobSearch');
 const { orderBySql, orderFor } = require('../services/jobOrder');
+const { fetchJobUrl } = require('../services/jobUrlFetch');
+const { extractJob } = require('../services/jobPageExtract');
+const { upsertLinkedJob, linksInLastHour, MAX_LINKS_PER_HOUR } = require('../services/userLinkedJob');
+const { boundText, boundList, boundFloat, boundEnum, boundPaging, clampReport } = require('../services/requestBounds');
 const {
   pageOf, BLOCK: DIVERSITY_BLOCK, QUOTA: DIVERSITY_QUOTA,
 } = require('../services/feedDiversity');
@@ -296,6 +300,118 @@ function extractContactEmails(description) {
 // ATS keyword-coverage scores for a page of jobs, against the signed-in
 // user's resume. Batched deliberately: the jobs list renders 20 rows, and one
 // request beats 20 round trips.
+/*
+ * Feature 4a — a user pastes any job link and it becomes a scoreable job.
+ *
+ * A7.19 reshaped where coverage comes from: crawling boards is a ToS question
+ * this product will not answer, so the user brings the link instead. One
+ * person, one URL, one page they are already looking at. Nothing here follows
+ * a link, enumerates an id, or runs on a schedule.
+ *
+ * Greenhouse, Lever and Ashby resolve to their OWN public posting APIs, so
+ * those three involve no HTML and no scraping at all. Everything else is a
+ * single plain request with an honest User-Agent, and a refusal is accepted as
+ * an answer: LinkedIn and Naukri decline automated requests, and when they do
+ * the user is told which board declined and handed the paste box, which
+ * produces the identical result. That is why this needs no ToS gamble.
+ *
+ * The fetched page is DATA. It is parsed for fields and never obeyed - same
+ * architecture as feature 3's paste path.
+ *
+ * Every failure carries a reason code and a sentence written for the person
+ * reading it. "Could not fetch" is what this endpoint exists to never say.
+ */
+router.post('/from-url', verifyToken, async (req, res) => {
+  try {
+    const { value: url } = boundText(req.body?.url, { max: 2048 });
+    if (!url.trim()) {
+      return res.status(400).json({ error: 'Paste the link to the job posting.', reason: 'empty' });
+    }
+
+    /*
+     * The limit is what keeps "a person pasting links" from being able to
+     * become a crawler, so it is counted from the rows rather than memory -
+     * an in-process counter resets on every deploy.
+     */
+    const recent = await linksInLastHour(query, req.user.id);
+    if (recent >= MAX_LINKS_PER_HOUR) {
+      return res.status(429).json({
+        error: `That is ${MAX_LINKS_PER_HOUR} job links in an hour, which is the limit. `
+          + 'Everything already added stays. Try again later, or paste a description directly.',
+        reason: 'rate_limited_local',
+        canPaste: true,
+      });
+    }
+
+    const fetched = await fetchJobUrl(url);
+    if (!fetched.ok) {
+      /*
+       * 422, not 500: nothing failed here. A board declining an automated
+       * request is a valid outcome with a valid next step, and a 500 would put
+       * it in the crash logs as though the product were broken.
+       */
+      return res.status(422).json({
+        error: fetched.detail,
+        reason: fetched.reason,
+        board: fetched.board || null,
+        canPaste: fetched.canPaste !== false,
+      });
+    }
+
+    const extracted = extractJob(fetched, fetched.classified);
+    if (!extracted.ok) {
+      return res.status(422).json({
+        error: extracted.detail,
+        reason: extracted.reason,
+        board: fetched.board || null,
+        canPaste: true,
+        ...(extracted.partial ? { foundTitle: extracted.partial.title } : {}),
+      });
+    }
+
+    const saved = await upsertLinkedJob(query, req.user.id, extracted.job, fetched.finalUrl || url);
+
+    /*
+     * Scored immediately, because an unscored job is the one thing this
+     * product must not show - a row with no percentage next to rows that have
+     * one reads as a zero.
+     */
+    let score = null;
+    try {
+      /*
+       * scoreJobsForUser is the SAME path the feed scores through, and it is
+       * already imported at the top of this file. The first cut of this called
+       * a `calculateMatchForJob` that does not exist, behind a
+       * `typeof === 'function'` check - so scoring would have silently stayed
+       * null forever and looked deliberate. Caught by reading the module's
+       * exports instead of trusting the name I had written.
+       */
+      const scores = await scoreJobsForUser(req.user.id, [saved.id]);
+      score = scores.get(saved.id) ?? scores.get(String(saved.id)) ?? null;
+    } catch (err) {
+      // Scoring failing must not lose the job the user just added.
+      console.warn('[from-url] scoring failed, job kept:', err.message);
+    }
+
+    res.status(201).json({
+      job: {
+        ...saved,
+        // Stated, never guessed: these two are the fields most likely to be
+        // absent, and the UI must say so rather than render a blank.
+        companyStated: Boolean(saved.company_name),
+        postedAtKnown: Boolean(saved.posted_at),
+      },
+      via: extracted.job.via,
+      weak: Boolean(extracted.job.weak),
+      score,
+      alreadyHad: saved.added_by_user_id !== req.user.id,
+    });
+  } catch (err) {
+    console.error('POST /jobs/from-url failed:', err.message, err.stack);
+    res.status(500).json({ error: 'Something went wrong reading that link.', reason: 'server_error' });
+  }
+});
+
 router.post('/ats-batch', verifyToken, async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.jobIds) ? req.body.jobIds.slice(0, 50) : [];
@@ -947,9 +1063,39 @@ async function cachedCount(sql, params) {
 router.get('/', attachUserIfPresent, async (req, res) => {
   try {
     const {
-      page: rawPage = 1, limit: rawLimit = 20, search, source, location, experience, includeRelated,
-      scope, datePosted, jobType, company,
+      page: rawPage = 1, limit: rawLimit = 20, search: rawSearch, source: rawSource,
+      location: rawLocation, experience, includeRelated,
+      scope: rawScope, datePosted, jobType: rawJobType, company: rawCompany,
     } = req.query;
+
+    /*
+     * `scope` is compared against a fixed set - but inside jobSearch, where a
+     * file-scoped check cannot see it, so it sat flagged. Bounding it AT THE
+     * BOUNDARY makes the allowed set visible here and means the service is no
+     * longer the only thing standing between a query string and a field name.
+     * Same three values jobSearch already accepts; default unchanged.
+     */
+    const scope = boundEnum(rawScope, ['title', 'description', 'title_description'], undefined);
+
+    /*
+     * GOAL 2's carried bounds sweep, folded in because 4a touches this route.
+     *
+     * Every one of these is already a SQL parameter, so injection was never
+     * the risk - unbounded SIZE is. A 1 MB `search`, or 5,000 `keywords`
+     * expanding to 5,000 placeholders, is a denial of service reachable from
+     * the URL bar, which is the same shape as the paging outage.
+     *
+     * Clamped rather than refused, and reported rather than silently
+     * truncated.
+     */
+    const searchB = boundText(rawSearch);
+    const sourceB = boundText(rawSource, { max: 50 });
+    const locationB = boundText(rawLocation);
+    const companyB = boundText(rawCompany);
+    const search = searchB.value || undefined;
+    const source = sourceB.value || undefined;
+    const location = locationB.value || undefined;
+    const company = companyB.value || undefined;
 
     /*
      * Bounded, because these came straight off the query string and were used
@@ -965,15 +1111,23 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * A7.9 defect again. Rows past the bound are still reachable by filtering
      * or sorting, and `total` still counts them honestly.
      */
+    /*
+     * Through services/requestBounds now, not clamped inline.
+     *
+     * The inline version was correct and is what ended the outage - but it was
+     * a SECOND definition of the same rule, and GOAL 2's sweep could not see
+     * it, so this route sat permanently red in check-query-bounds. boundPaging
+     * applies exactly the same clamp (1..100, maxPage = floor(5000 / limit)),
+     * verified against the code it replaces before the swap.
+     */
     const MAX_LIMIT = 100;
     const MAX_OFFSET = 5000;
-
+    const bounded = boundPaging(rawPage, rawLimit, {
+      defLimit: 20, maxLimit: MAX_LIMIT, maxOffset: MAX_OFFSET,
+    });
+    const { limit, page, maxPage } = bounded;
     const requestedLimit = Math.floor(Number(rawLimit));
-    const limit = Math.min(Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 20), MAX_LIMIT);
-
-    const requestedPage = Math.floor(Number(rawPage));
-    const maxPage = Math.max(1, Math.floor(MAX_OFFSET / limit));
-    const page = Math.min(Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1), maxPage);
+    const requestedPage = bounded.requestedPage;
 
     const paging = {
       page,
@@ -1006,7 +1160,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const sort = req.query.sort === 'recent' || req.query.sort === 'score'
       ? req.query.sort
       : sortDefault;
-    const minScore = Number(req.query.minScore ?? 0.4);
+    const minScoreB = boundFloat(req.query.minScore, { def: 0.4, min: 0, max: 1 });
+    const minScore = minScoreB.value;
 
     /*
      * `sort` and `ranked` are different questions, and conflating them lost the
@@ -1037,12 +1192,12 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // falls back to the single ?search= param for backward compatibility
     // (search agents and other internal callers still use `search`).
     const rawKeywords = req.query.keywords;
-    const keywords = rawKeywords
-      ? (Array.isArray(rawKeywords) ? rawKeywords : [rawKeywords])
-      : (search ? [search] : []);
+    const keywordsB = boundList(rawKeywords, { maxItems: 25, maxLength: 80 });
+    const keywords = rawKeywords ? keywordsB.value : (search ? [search] : []);
 
     const rawExclude = req.query.exclude;
-    const excludeTerms = rawExclude ? (Array.isArray(rawExclude) ? rawExclude : [rawExclude]) : [];
+    const excludeB = boundList(rawExclude, { maxItems: 25, maxLength: 80 });
+    const excludeTerms = rawExclude ? excludeB.value : [];
 
     /*
      * A7.13 — every filter is DECLARED, not concatenated onto a string.
@@ -1081,7 +1236,14 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     // (?jobType=full-time&jobType=contract) and OR's within a facet while
     // AND'ing across facets, which is the behaviour a checkbox filter panel
     // implies. Single values still work, so existing callers are unaffected.
-    const jobTypes = asArray(jobType);
+    /*
+     * A multi-value FILTER, not a selector: ?jobType=full-time&jobType=contract
+     * is legitimate, so it is bounded as a list rather than compared against
+     * one value. The canonical set has 8 members, so 10 is room without being
+     * a lever.
+     */
+    const jobTypeB = boundList(rawJobType, { maxItems: 10, maxLength: 30 });
+    const jobTypes = jobTypeB.value;
     if (jobTypes.length) {
       addFilter('jobType', `Employment type: ${jobTypes.join(', ')}`, (p) => {
         // Compare against the normalised expression, not the raw column - the
@@ -1093,7 +1255,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     // Region: matched against the derived expression rather than a column,
     // because location is free text and jobs.country is mostly empty.
-    const regions = asArray(req.query.region);
+    const regionB = boundList(req.query.region, { maxItems: 10, maxLength: 40 });
+    const regions = regionB.value;
     if (regions.length) {
       addFilter('region', `Location: ${regions.join(', ')}`, (p) => {
         const ph = regions.map((r) => { p.push(r); return `$${p.length}`; });
@@ -1101,7 +1264,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       });
     }
 
-    const workArrangements = asArray(req.query.workArrangement);
+    const workArrangementB = boundList(req.query.workArrangement, { maxItems: 6, maxLength: 20 });
+    const workArrangements = workArrangementB.value;
     if (workArrangements.length) {
       addFilter('workArrangement', `Workplace: ${workArrangements.join(', ')}`, (p) => {
         const ph = workArrangements.map((w) => { p.push(w); return `$${p.length}`; });
@@ -1111,7 +1275,8 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 
     // Salary bands are USD-equivalent (mixed source currencies converted with
     // static reference rates). Multiple bands OR together.
-    const salaryBands = asArray(req.query.salary);
+    const salaryB = boundList(req.query.salary, { maxItems: 8, maxLength: 20 });
+    const salaryBands = salaryB.value;
     const salaryConds = salaryBands
       .map((b) => (b === 'not_listed' ? 'salary_min IS NULL' : bandCondition(b)))
       .filter(Boolean);

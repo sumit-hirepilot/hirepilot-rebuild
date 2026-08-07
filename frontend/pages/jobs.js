@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { scoreLabel, bandFor } from '../lib/scoreBands';
 import { useRouter } from 'next/router';
+import AddJobByLink from '../components/AddJobByLink';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
@@ -1256,6 +1257,13 @@ export default function Jobs() {
             {refreshing ? 'Refreshing...' : 'Refresh jobs'}
           </button>
         </div>
+
+        {/*
+          * Feature 4a — the answer to "this board is not in your list".
+          * A job added here is the user's own: it is written inactive, so it
+          * never appears in anyone else's feed, counts or facets.
+          */}
+        <AddJobByLink token={token} base={base} onAdded={() => loadJobs(token)} />
 
         <div className={page.sourcesBanner}>
           {/* A7.14 - not every source in this list is live, and calling the
