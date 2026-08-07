@@ -1296,3 +1296,84 @@ The word-level rule still stems `-ing`, so prose could in principle introduce
 not demonstrated to be exploitable on the shipped paths, so it is not being
 changed on a hunch. It is written down here so the next person does not have to
 rediscover the asymmetry.
+
+## D52 — a failure reported in a field nobody reads is a failure swallowed
+
+The submission receipt had never once been written, on any environment. The
+freeze query selected `a.resume_id` and `a.ats` — columns of
+`submission_receipts`, the table it INSERTS into, which have never existed on
+`applications`. Postgres threw on every submission ever made.
+
+The catch turned that into `{frozen: false, reason: 'receipt could not be
+written'}` and the endpoint answered **200**. The old production's **0
+submission_receipts** had been read as "nobody has submitted yet".
+
+### Two guards, because the obvious one would not have caught it
+
+`tools/check-swallowed-writes.js` runs both and is stage 5 of the gate.
+
+**D52a** — a catch around an INSERT/UPDATE/DELETE that neither rethrows nor
+sends a 4xx/5xx, on a path that then responds, with nothing in the response
+naming the failure. Proved on a known positive: a probe route with exactly that
+shape is caught, and removing it goes clean again.
+
+**D52b** — and this is the one that matters, because **D52a would not have
+caught the receipt defect**. That catch DID surface its failure: it assigned
+`receipt`, and `receipt` was in the JSON. What was missing was anyone reading
+it — no test asserted the failure branch, so nothing distinguished "never
+written" from "written every time". So: a soft-failure flag returned on a 2xx
+must be named in a test.
+
+D52b found one live instance: `verified: false` on the evidence endpoint — the
+refusal behind "nothing reaches applied without a submission record", proved by
+hand on production and by no test at all. Now covered, both directions, through
+the real route.
+
+### The honest limit
+
+D52a is a shape check. It cannot tell a correct catch from a careless one — a
+notification that fails genuinely must not un-submit an application. It reports
+only the case where nothing at all reaches the caller.
+
+## D53 — bounding what is in flight is not bounding what is resident
+
+The early-boot peak was **687 MB RSS / 458 MB heap** against a 500 MB budget
+and a 1 GB container ceiling.
+
+**Two hypotheses died before anything was measured**, and both are recorded so
+nobody re-runs them: concurrent source fetches (GOAL 1d had already made them
+sequential) and the search-agent scan (this environment has zero active
+agents, so it cannot have run).
+
+Per-phase instrumentation (`services/memlog.js`, kept permanently) located it
+in one step:
+
+```
+aggregate:after jobindex    rss=243MB heap=25MB   total=3,740
+aggregate:after greenhouse  rss=377MB heap=158MB  total=13,919
+```
+
+GOAL 1d bounded how many companies were fetched **at once**. It did not bound
+how many postings were **resident**: every window's rows were pushed into one
+array and the whole array returned to the caller, which held it while writing.
+Greenhouse is 10,179 postings with descriptions. It scales with the SOURCE, not
+with usage.
+
+The three ATS sources now hand each window to a consumer that writes it before
+the next fetch begins. The batch is **awaited** — without that, two windows are
+resident and the bound is only half applied, which would read as fixed while
+still peaking. A test asserts both.
+
+| | before | after |
+|---|---|---|
+| peak RSS | **687 MB** | **281 MB** |
+| greenhouse step | 243 → 377 MB, heap 158 MB | 243 → 272 MB, heap 32 MB |
+
+`agentRunner` carried the same shape — one unbounded SELECT of every matching
+job WITH its description, once per agent, against ~53 MB of description text.
+It has never fired in anger only because no account has created a search agent,
+which is not a bound but an absence of users. Paged by id.
+
+`nofluffjobs` is now the largest single step (112 → 246 MB) and is a single API
+call with no pagination, so it cannot be streamed the same way. Inside budget,
+recorded as the next candidate if the ceiling tightens.

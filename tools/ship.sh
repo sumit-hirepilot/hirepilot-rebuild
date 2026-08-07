@@ -60,6 +60,10 @@ node tools/check-mobile-claims.js
 # Production moved accounts; a hostname is correct on exactly one deployment and
 # silently wrong everywhere else. Covers the marketing-site tree too.
 node tools/check-stale-origins.js
+# D52 - a write that fails inside a catch on a path that then answers 2xx, and
+# soft-failure flags no test reads. That shape hid the missing receipt for the
+# product's entire life.
+node tools/check-swallowed-writes.js
 echo
 
 echo "== 6/11 backend suite =="
