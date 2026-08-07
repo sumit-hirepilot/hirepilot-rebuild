@@ -116,13 +116,39 @@ function sourceStatus(key, lastRun) {
 // selecting "Full-time" matched 12,473 of the 16,789 jobs that actually are
 // full-time. Normalising at query time keeps already-stored rows correct
 // without a migration.
+/*
+ * `ELSE lower(job_type)` used to pass anything unmapped straight through, so
+ * the Employment type chip offered a user, verbatim:
+ *
+ *   Clt(14)      Brazil's CLT labour regime, from a Brazilian board. Shown to
+ *                an Indian job seeker as a type of employment, capitalised.
+ *   Hybrid(13)   a WORKPLACE arrangement, not an employment type - and the
+ *   Remote(2)    Workplace facet beside it has no Hybrid option at all, so
+ *                the 13 hybrid roles were filed under the wrong question.
+ *   Fixed-term, Freelance   two more spellings of contract work.
+ *
+ * The instance was five stray values; the class is a raw source token reaching
+ * the UI unmapped. So the ELSE is now a closed bucket: a vocabulary nobody has
+ * mapped yet lands in 'other', and can never again be published as though it
+ * were a considered category. Normalising at query time keeps stored rows
+ * untouched - no migration.
+ *
+ * Found in the feature audit by opening the chip and reading its options
+ * against `SELECT DISTINCT job_type`.
+ */
+const JOB_TYPE_NORM = `lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi'))`;
 const JOB_TYPE_SQL = `CASE
-    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('fulltime') THEN 'full-time'
-    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('parttime') THEN 'part-time'
-    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('contract','contractor','b2b') THEN 'contract'
-    WHEN lower(regexp_replace(COALESCE(job_type,''), '[^a-z]', '', 'gi')) IN ('internship','intern') THEN 'internship'
+    WHEN ${JOB_TYPE_NORM} IN ('fulltime','clt','permanent') THEN 'full-time'
+    WHEN ${JOB_TYPE_NORM} IN ('parttime') THEN 'part-time'
+    WHEN ${JOB_TYPE_NORM} IN ('contract','contractor','b2b','freelance','fixedterm') THEN 'contract'
+    WHEN ${JOB_TYPE_NORM} IN ('internship','intern') THEN 'internship'
+    WHEN ${JOB_TYPE_NORM} IN ('temporary','temp') THEN 'temporary'
+    WHEN ${JOB_TYPE_NORM} IN ('volunteer') THEN 'volunteer'
+    -- Workplace arrangements, not employment types. The Workplace facet already
+    -- carries this; asserting an employment type we do not know would be worse.
+    WHEN ${JOB_TYPE_NORM} IN ('hybrid','remote','onsite') THEN 'unspecified'
     WHEN COALESCE(job_type,'') = '' THEN 'unspecified'
-    ELSE lower(job_type)
+    ELSE 'other'
   END`;
 
 // Approximate FX to USD so salaries from mixed-currency sources can be
