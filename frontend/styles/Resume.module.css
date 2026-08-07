@@ -455,3 +455,17 @@
 
 /* Feature 2 — an acronym never stands alone over a bare number. */
 .sectionLabelHint { font-weight: 400; color: var(--text-muted, #6b7280); font-size: 0.85em; }
+
+/* Feature 3 — choosing between an indexed job and a pasted one. */
+.tailorModes { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.tailorModeOn, .tailorModeOff {
+  min-height: 44px; padding: 10px 16px; border-radius: 10px; font: inherit;
+  font-size: 14px; cursor: pointer; border: 1px solid var(--border, #d9dbe3);
+}
+.tailorModeOn { background: #6d28d9; border-color: #6d28d9; color: #fff; font-weight: 600; }
+.tailorModeOff { background: transparent; color: var(--text-muted, #5a5f6e); }
+.tailorPaste {
+  width: 100%; padding: 12px; border-radius: 10px; font: inherit; font-size: 14px;
+  line-height: 1.5; border: 1px solid var(--border, #d9dbe3); resize: vertical;
+}
+.tailorPasteNote { margin: 8px 0 0; font-size: 12.5px; color: var(--text-muted, #6b7280); line-height: 1.5; }

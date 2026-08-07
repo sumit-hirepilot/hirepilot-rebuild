@@ -426,7 +426,20 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
   );
 }
 
+/*
+ * Feature 3 — two ways to say which job, one of which needs no job at all.
+ *
+ * In India the role usually arrives by WhatsApp, by email, or on a board this
+ * product cannot fetch. Making people find an indexed job first meant the
+ * common case was the unsupported one.
+ *
+ * The two inputs are mutually exclusive on purpose, and the backend refuses if
+ * both are sent rather than quietly choosing - tailoring against something the
+ * user did not pick is the kind of surprise that ends up in an application.
+ */
 function TailorForJob({ jobs, token, base, reload }) {
+  const [mode, setMode] = useState('indexed');
+  const [jobText, setJobText] = useState('');
   const [jobId, setJobId] = useState('');
   const [tailoring, setTailoring] = useState(false);
   const [result, setResult] = useState(null);
@@ -435,8 +448,11 @@ function TailorForJob({ jobs, token, base, reload }) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(null);
 
+  const usingPaste = mode === 'paste';
+  const canTailor = usingPaste ? jobText.trim().length >= 40 : Boolean(jobId);
+
   const handleTailor = async () => {
-    if (!jobId) return;
+    if (!canTailor) return;
     setTailoring(true);
     setError('');
     setResult(null);
@@ -446,14 +462,17 @@ function TailorForJob({ jobs, token, base, reload }) {
       const res = await fetch(`${base}/api/resume/tailor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId }),
+        // Exactly one of them, ever. The backend refuses both together.
+        body: JSON.stringify(usingPaste ? { jobText } : { jobId }),
       });
-      const data = await res.json();
+      // Status before body: an error page is also JSON and parses into nulls
+      // that read like missing fields rather than like a failure.
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setResult(data);
         reload();
       } else {
-        setError(data.error || 'Failed to tailor resume');
+        setError(data.error || `Could not tailor the resume (${res.status}).`);
       }
     } catch (err) {
       setError('Failed to tailor resume');
@@ -496,16 +515,63 @@ function TailorForJob({ jobs, token, base, reload }) {
 
   return (
     <div className={styles.card}>
-      <label className={page.sectionLabel}>Select a job</label>
-      <select className={page.select} value={jobId} onChange={(e) => setJobId(e.target.value)}>
-        <option value="">Choose a job to tailor for&hellip;</option>
-        {jobs.map((j) => (
-          <option key={j.id} value={j.id}>
-            {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {parsedOr(j.company_name, 'Company not stated')}
-          </option>
-        ))}
-      </select>
-      <button className={page.saveButton} onClick={handleTailor} disabled={tailoring || !jobId}>
+      <div className={page.tailorModes} role="group" aria-label="Where the job description comes from">
+        <button
+          type="button"
+          className={mode === 'indexed' ? page.tailorModeOn : page.tailorModeOff}
+          aria-pressed={mode === 'indexed'}
+          onClick={() => setMode('indexed')}
+        >
+          Pick a job we have
+        </button>
+        <button
+          type="button"
+          className={mode === 'paste' ? page.tailorModeOn : page.tailorModeOff}
+          aria-pressed={mode === 'paste'}
+          onClick={() => setMode('paste')}
+        >
+          Paste a job description
+        </button>
+      </div>
+
+      {mode === 'indexed' ? (
+        <>
+          <label className={page.sectionLabel} htmlFor="tailorJob">Select a job</label>
+          <select id="tailorJob" className={page.select} value={jobId} onChange={(e) => setJobId(e.target.value)}>
+            <option value="">Choose a job to tailor for&hellip;</option>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {(j.title.length > 50 ? `${j.title.slice(0, 50)}…` : j.title)} &middot; {parsedOr(j.company_name, 'Company not stated')}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <>
+          <label className={page.sectionLabel} htmlFor="tailorPaste">Paste the job description</label>
+          <textarea
+            id="tailorPaste"
+            className={page.tailorPaste}
+            value={jobText}
+            onChange={(e) => setJobText(e.target.value)}
+            rows={9}
+            placeholder="Paste the whole posting here — from WhatsApp, an email, or any site."
+          />
+          {/*
+            * Said plainly, because it is the thing a person would reasonably
+            * worry about: the paste is read for skills and nothing else, and
+            * the same rule applies as everywhere else - nothing goes on the
+            * resume that is not already true of them.
+            */}
+          <p className={page.tailorPasteNote}>
+            {jobText.trim().length} characters. We read it for skills only — anything it
+            asks for that is not already in your resume, skills or work history is shown
+            as a question, never added on its own.
+          </p>
+        </>
+      )}
+
+      <button className={page.saveButton} onClick={handleTailor} disabled={tailoring || !canTailor}>
         {tailoring ? 'Tailoring...' : 'Tailor resume'}
       </button>
 

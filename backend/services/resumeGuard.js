@@ -254,6 +254,35 @@ function verifyAdditions(items, corpus) {
  * exported one invites a caller to believe the path is covered. It remains the
  * engine inside verifyAdditions, which IS wired, at every resume write.
  */
+/*
+ * The third honesty guard: tailoring may only ADD.
+ *
+ * "Nothing already in your resume can be removed" is a promise the product has
+ * always made and, until now, never enforced at runtime. There WAS a
+ * `no_deletion` rule here and it was retired as unreachable - verifyAdditions
+ * passes an empty currentText, so no diff it sees can ever contain a removal.
+ * The promise then rested entirely on `tailorNeverInvents`, a test. A test
+ * proves the engine behaved on the day it ran; it does not stop a future path
+ * from writing a resume with a line missing.
+ *
+ * So it is a guard now, checked on the real output, on both tailoring paths.
+ * Compared on NORMALISED lines because the engine legitimately reflows
+ * whitespace when it inserts a skills line - comparing raw text would fail on
+ * a change that removed nothing.
+ *
+ * Returns the missing lines rather than a boolean: a refusal that cannot say
+ * what went missing is a refusal nobody can act on.
+ */
+function findRemovedLines(originalText, proposedText) {
+  const lines = (t) => String(t || '')
+    .split('\n')
+    .map((l) => normalise(l))
+    .filter((l) => l.length > 0);
+
+  const proposed = new Set(lines(proposedText));
+  return lines(originalText).filter((l) => !proposed.has(l));
+}
+
 module.exports = {
-  buildCorpus, verifyAdditions, normalise, trimToken, stem, STOPWORDS, SAFE_CONNECTIVES,
+  buildCorpus, verifyAdditions, findRemovedLines, normalise, trimToken, stem, STOPWORDS, SAFE_CONNECTIVES,
 };

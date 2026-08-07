@@ -36,6 +36,19 @@ const BOTH = [
     conname: 'applications_applied_requires_submission',
     def: "CHECK ((status)::text <> 'applied'::text OR COALESCE(is_manual, false) = true OR submitted_at IS NOT NULL)",
   },
+  /*
+   * Feature 3. A tailored resume built from a PASTED job description has no
+   * row in `jobs` and never will, so job_id had to stop being NOT NULL - and
+   * the moment it could be null, nothing stopped a job-less row being rendered
+   * as though a real employer were behind it. The constraint is what keeps the
+   * two states honest, and this is here so it is read back from the running
+   * database rather than believed because migrations.js contains the text.
+   */
+  {
+    conname: 'tailored_resumes_source_ck',
+    def: "CHECK (((source)::text = 'pasted_jd'::text AND job_id IS NULL) "
+      + "OR ((source)::text = 'indexed_job'::text AND job_id IS NOT NULL))",
+  },
 ];
 
 function app() {
@@ -118,7 +131,7 @@ describe('db-health reads the constraints from the running database', () => {
 const { readBack, CLAIMS } = require('../services/schemaClaims');
 
 const FULL = {
-  tables: ['submission_receipts', 'data_corrections', 'applications', 'jobs'],
+  tables: ['submission_receipts', 'data_corrections', 'applications', 'jobs', 'tailored_resumes'],
   indexes: [
     { indexname: 'idx_submission_receipts_app_unique', indexdef: 'CREATE UNIQUE INDEX idx_submission_receipts_app_unique ON public.submission_receipts USING btree (application_id)' },
     { indexname: 'idx_jobs_active_posted', indexdef: 'CREATE INDEX idx_jobs_active_posted ON public.jobs USING btree (is_active, posted_at)' },
@@ -126,6 +139,8 @@ const FULL = {
   constraints: [
     { conname: 'applications_applied_at_requires_submitted', tbl: 'applications' },
     { conname: 'applications_applied_requires_submission', tbl: 'applications' },
+    // Feature 3 — keeps a job-less tailored resume from reading as a real employer.
+    { conname: 'tailored_resumes_source_ck', tbl: 'tailored_resumes' },
   ],
   triggers: [{ tgname: 'trg_submission_receipts_immutable', tbl: 'submission_receipts' }],
   columns: [{ table_name: 'applications', column_name: 'applied_at', column_default: null }],

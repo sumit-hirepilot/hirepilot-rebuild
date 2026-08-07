@@ -156,6 +156,32 @@ const STATEMENTS = [
   // the draft tailored text.
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS original_snapshot TEXT`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS diff_json JSONB`,
+
+  /*
+   * Feature 3 — a tailored resume can come from a JD the user PASTED, which
+   * has no row in `jobs` and never will. job_id was NOT NULL, so that write
+   * was a guaranteed 500: the same shape as the approve endpoint writing a
+   * status the CHECK constraint refuses. Found by reading the constraint
+   * before shipping the path rather than after.
+   *
+   * Relaxing a NOT NULL is non-destructive - no row loses data and every
+   * existing row still satisfies it.
+   */
+  `ALTER TABLE tailored_resumes ALTER COLUMN job_id DROP NOT NULL`,
+  `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'indexed_job'`,
+
+  /*
+   * The honesty lives in the DATABASE, not only in the route.
+   *
+   * A row with no job_id must say it came from a paste, and a row claiming to
+   * come from an indexed job must actually have one. Without this, a future
+   * path could write a job-less row that the UI renders as a real employer -
+   * a fabricated record, which is Constraint 1.
+   */
+  `ALTER TABLE tailored_resumes DROP CONSTRAINT IF EXISTS tailored_resumes_source_ck`,
+  `ALTER TABLE tailored_resumes ADD CONSTRAINT tailored_resumes_source_ck CHECK (
+     (source = 'pasted_jd' AND job_id IS NULL) OR (source = 'indexed_job' AND job_id IS NOT NULL)
+   )`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS final_text TEXT`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP`,
 

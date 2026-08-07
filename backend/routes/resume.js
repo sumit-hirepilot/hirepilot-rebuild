@@ -11,7 +11,8 @@ const { fixMojibake } = require('../services/apis/textSanitizer');
 const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../services/resumeTailorEngine');
 const docModel = require('../services/resumeDocument');
 const { renderHtml, templateList, FONTS, DEFAULT_STYLE } = require('../services/resumeTemplate');
-const { buildCorpus, verifyAdditions } = require('../services/resumeGuard');
+const { buildCorpus, verifyAdditions, findRemovedLines } = require('../services/resumeGuard');
+const { parsePastedJobText, MIN_JOB_TEXT } = require('../services/pastedJobText');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -249,13 +250,61 @@ router.get('/tailored', async (req, res) => {
 // new tailored_resumes row is created per job every time (never reused
 // across jobs), left unconfirmed until the user reviews the diff and
 // accepts/rejects each addition via POST /tailored/:id/confirm.
+/*
+ * Feature 3 — one route, two ways in.
+ *
+ * `jobId` tailors against a job this product indexed. `jobText` tailors
+ * against one the user pasted, which is the common case in India: the role
+ * arrives by WhatsApp, by email, or on a board nothing here can fetch.
+ *
+ * The two paths converge IMMEDIATELY, before anything is generated, so there
+ * is exactly one guarded pipeline rather than two that must be kept in step.
+ * A7.17 and the approve-endpoint defect were both "two paths for one
+ * operation, one of them guarded" - this is written so that shape cannot
+ * recur here.
+ *
+ * The paste is untrusted: bounded and stripped by parsePastedJobText, read
+ * only for the skill tokens in it, never obeyed. See that file for why the
+ * defence is architectural rather than a filter.
+ */
 router.post('/tailor', async (req, res) => {
   try {
     const { jobId } = req.body;
-    if (!jobId) return res.status(400).json({ error: 'jobId is required' });
+    const hasPaste = typeof req.body.jobText === 'string' && req.body.jobText.trim().length > 0;
+
+    if (!jobId && !hasPaste) {
+      return res.status(400).json({ error: 'Give a jobId, or paste the job description.' });
+    }
+    if (jobId && hasPaste) {
+      // Refuse rather than pick one: silently ignoring half of what was sent is
+      // how a user ends up tailoring against something they did not choose.
+      return res.status(400).json({ error: 'Send either jobId or jobText, not both.' });
+    }
+
+    let pasted = null;
+    if (hasPaste) {
+      pasted = parsePastedJobText(req.body.jobText);
+      if (pasted.tooShort) {
+        return res.status(400).json({
+          error: `That is too short to read as a job description (${pasted.text.length} characters after cleaning, ${MIN_JOB_TEXT} needed).`,
+        });
+      }
+      if (pasted.instructionLike) {
+        /*
+         * Logged, never acted on. The honesty guard below protects the resume
+         * identically whether or not this is true, and behaviour that depends
+         * on spotting a phrase is behaviour someone can phrase around.
+         */
+        console.warn('[tailor] pasted JD contains instruction-like text', {
+          userId: req.user.id, length: pasted.text.length,
+        });
+      }
+    }
 
     const [jobResult, resumeResult, prefsResult] = await Promise.all([
-      query('SELECT title, company_name, description, requirements FROM jobs WHERE id = $1', [jobId]),
+      jobId
+        ? query('SELECT title, company_name, description, requirements FROM jobs WHERE id = $1', [jobId])
+        : Promise.resolve({ rows: [] }),
       query(
         `SELECT id, original_file_text FROM resumes WHERE user_id = $1
          ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
@@ -264,19 +313,27 @@ router.post('/tailor', async (req, res) => {
       query('SELECT resume_tailor_mode FROM user_preferences WHERE user_id = $1', [req.user.id]),
     ]);
 
-    if (!jobResult.rows.length) return res.status(404).json({ error: 'Job not found' });
+    if (jobId && !jobResult.rows.length) return res.status(404).json({ error: 'Job not found' });
     if (!resumeResult.rows.length || !resumeResult.rows[0].original_file_text?.trim()) {
       return res.status(400).json({ error: 'Save or upload a resume first (Resume Manager tab) before tailoring for a job.' });
     }
 
-    const job = jobResult.rows[0];
+    /*
+     * A pasted JD has no company and no title we can vouch for. They are left
+     * null rather than guessed from the text: a company name scraped out of a
+     * paste and shown as fact is a fabricated record, and the tracker already
+     * refuses to invent one.
+     */
+    const job = jobResult.rows[0] || { title: null, company_name: null, description: null, requirements: null };
     job.title = fixMojibake(job.title);
     job.company_name = fixMojibake(job.company_name);
     const resume = resumeResult.rows[0];
     const originalText = resume.original_file_text;
     const tailorMode = prefsResult.rows[0]?.resume_tailor_mode || 'honest';
 
-    const jobText = `${job.title} ${job.description || ''} ${job.requirements || ''}`;
+    const jobText = pasted
+      ? pasted.text
+      : `${job.title} ${job.description || ''} ${job.requirements || ''}`;
     const proposed = buildTailoredText(originalText, jobText, tailorMode);
 
     /*
@@ -317,6 +374,27 @@ router.post('/tailor', async (req, res) => {
       : { tailoredText: originalText, addedSkills: [], matchedSkills: proposed.matchedSkills };
 
     const tailoredText = rebuilt.tailoredText;
+
+    /*
+     * Third honesty guard, on the real output, before a single row is written.
+     *
+     * "Nothing already in your resume can be removed" rested on a test until
+     * now. A test proves the engine behaved when it ran; it cannot stop a
+     * future path writing a resume with a line missing. Refusing is correct
+     * here - a resume quietly short a line is worse than no tailoring, because
+     * it goes out under the user's name and cannot be unsent.
+     */
+    const removed = findRemovedLines(originalText, tailoredText);
+    if (removed.length) {
+      console.error('[tailor] refused: tailoring dropped lines', {
+        userId: req.user.id, count: removed.length,
+      });
+      return res.status(422).json({
+        error: 'Tailoring was refused because it would have removed something already in your resume.',
+        removedLines: removed.slice(0, 5),
+      });
+    }
+
     const addedSkills = allowedSkills;
     const matchedSkills = proposed.matchedSkills;
     const diff = diffTailoring(originalText, tailoredText);
@@ -324,15 +402,22 @@ router.post('/tailor', async (req, res) => {
 
     const saved = await query(
       `INSERT INTO tailored_resumes
-       (user_id, resume_id, job_id, tailored_summary, highlighted_skills, ats_score, original_snapshot, diff_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
-      [req.user.id, resume.id, jobId, tailoredText, matchedSkills, score, originalText, JSON.stringify(diff)]
+       (user_id, resume_id, job_id, tailored_summary, highlighted_skills, ats_score, original_snapshot, diff_json, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at`,
+      [req.user.id, resume.id, jobId || null, tailoredText, matchedSkills, score, originalText, JSON.stringify(diff),
+        pasted ? 'pasted_jd' : 'indexed_job']
     );
 
     await query(
       `INSERT INTO activity_log (user_id, event_type, job_id, metadata)
        VALUES ($1, 'resume_tailored', $2, $3)`,
-      [req.user.id, jobId, JSON.stringify({ job_title: job.title, company_name: job.company_name })]
+      [req.user.id, jobId || null, JSON.stringify({
+        job_title: job.title,
+        company_name: job.company_name,
+        // Recorded as what it is. A pasted JD has no verified employer behind
+        // it, and the tracker must never show one as though it had.
+        source: pasted ? 'pasted_jd' : 'indexed_job',
+      })]
     );
 
     res.status(201).json({

@@ -55,6 +55,11 @@ const CLAIMS = [
     why: 'corrective migrations would have nowhere to record what they changed',
   },
   {
+    kind: 'constraint', name: 'tailored_resumes_source_ck', table: 'tailored_resumes',
+    why: 'a tailored resume could be stored with no job and no record that it came from a '
+      + 'pasted JD, and the UI would render it as though a real employer were behind it',
+  },
+  {
     /*
      * The absence IS the claim. applied_at carried DEFAULT CURRENT_TIMESTAMP,
      * so every inserted row looked applied the moment it existed; a migration
