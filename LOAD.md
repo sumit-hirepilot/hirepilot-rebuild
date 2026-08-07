@@ -97,6 +97,17 @@ still work (crash rows persist, 25,399 jobs readable), so there is headroom,
 but it is thin. Removing the spill removed this symptom without giving the
 database more room. Pruning is a separate goal.
 
+## Feature 1 (notice period, parse chips, failed-parse path) — steady state
+
+| Users | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|
+| 50 | 150/150 | 0 | 1,152 ms | 257 MB |
+| 200 | 600/600 | 0 | **2,822 ms** | 300 MB |
+| 500 | 1,500/1,500 | 0 | 6,232 ms | 336 MB |
+
+No regression (previous 1,226 / 2,745 / 6,484). Zero failures. Run at uptime
+330s, past the 5-minute rule.
+
 ## Feature 1 (experience bands) — load test at steady state
 
 | Users | OK | Failed | p95 | RSS after |
