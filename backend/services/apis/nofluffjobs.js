@@ -15,22 +15,38 @@ const axios = require('axios');
  * candidate if the ceiling tightens". Their catalogue grew and it stopped
  * being inside budget - which is what a note like that is for.
  *
- * `POST /api/search/posting?offset=` serves the same data ~4MB at a time and
- * reports totalCount, so the cap below can say what it skipped.
+ * `POST /api/search/posting?limit=&page=` serves the same data a page at a time
+ * and reports totalCount, so the cap below can say what it skipped.
+ *
+ * The parameters are NOT what they look like, and getting this wrong shipped a
+ * broken source once already:
+ *
+ *   offset=  IGNORED. Every request returns the identical first page. The first
+ *            version paged on offset, fetched the same 200 postings forty
+ *            times, deduped them to 20 unique jobs, and cut this source from
+ *            ~3,000 jobs to 20 - while the memory graph looked perfect. Caught
+ *            by reading the ingest line, not the memory one.
+ *   limit=   the number of UNIQUE JOBS in the response, not the row count:
+ *            limit=250 returns ~2,080 raw postings (~16MB) carrying 250
+ *            distinct jobs, because the API repeats a posting per province.
+ *   page=    pages properly, and consecutive pages differ.
  */
 const SEARCH_URL = 'https://nofluffjobs.com/api/search/posting';
 
 /*
  * A cap, REPORTED rather than silent.
  *
- * Their index is ~22,000 postings, nearly all Polish. This source contributed
- * ~3,000 after dedup when it was pulled whole; reading all 22,000 would change
- * what the product is - a board mostly of one country - and cost ~45 requests a
- * cycle. So it is bounded, and when the bound bites it logs how many were left,
- * because a silent truncation reads as "that is all there was".
+ * Their index is ~22,000 postings carrying ~3,000 distinct jobs, nearly all
+ * Polish. 3,000 matches what this source produced when it was pulled whole, so
+ * the cap restores the previous yield rather than quietly shrinking it - at 250
+ * unique a page that is ~12 requests instead of one 160MB response.
+ *
+ * When the bound bites it logs, because a silent truncation reads as "that is
+ * all there was".
  */
-const MAX_RAW = Number(process.env.NOFLUFFJOBS_MAX_RAW) || 8000;
-const PAGE_TIMEOUT_MS = 20000;
+const PAGE_UNIQUE = 250;                      // ~16MB a response
+const MAX_UNIQUE = Number(process.env.NOFLUFFJOBS_MAX_UNIQUE) || 3000;
+const PAGE_TIMEOUT_MS = 30000;
 
 /*
  * One page's worth, deduped against what earlier pages already yielded.
@@ -102,14 +118,14 @@ const fetchJobs = async (onBatch) => {
     // Keys only. The postings themselves are released with each page, so this
     // stays small however many pages are read.
     const seen = new Set();
-    let offset = 0;
-    let fetchedRaw = 0;
+    let page = 1;
+    let unique = 0;
     let totalCount = null;
 
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
       const response = await axios.post(
-        `${SEARCH_URL}?offset=${offset}&salaryCurrency=PLN&salaryPeriod=month&region=pl`,
+        `${SEARCH_URL}?limit=${PAGE_UNIQUE}&page=${page}&salaryCurrency=PLN&salaryPeriod=month&region=pl`,
         { rawSearch: '' },
         {
           timeout: PAGE_TIMEOUT_MS,
@@ -121,30 +137,37 @@ const fetchJobs = async (onBatch) => {
       if (totalCount == null) totalCount = Number(response.data?.totalCount) || null;
       if (!postings.length) break;
 
-      fetchedRaw += postings.length;
-      offset += postings.length;
-
       const rows = mapPostings(postings, seen);
+      /*
+       * A page that adds nothing new means paging has stopped advancing -
+       * which is exactly what a wrong parameter looks like. Stopping here
+       * turns that into a short run instead of an endless identical one.
+       */
+      if (!rows.length) break;
+
+      unique += rows.length;
+      page += 1;
+
       // eslint-disable-next-line no-await-in-loop
       if (onBatch) await onBatch(rows);
       else collected.push(...rows);
 
-      if (fetchedRaw >= MAX_RAW) {
-        if (totalCount && totalCount > fetchedRaw) {
+      if (unique >= MAX_UNIQUE) {
+        if (totalCount && totalCount > unique) {
           console.log(
-            `nofluffjobs: stopped at ${fetchedRaw} of ${totalCount} postings `
-            + `(NOFLUFFJOBS_MAX_RAW=${MAX_RAW}); ${totalCount - fetchedRaw} not read`
+            `nofluffjobs: stopped at ${unique} unique jobs of ~${totalCount} postings `
+            + `(NOFLUFFJOBS_MAX_UNIQUE=${MAX_UNIQUE})`
           );
         }
         break;
       }
     }
 
-    return onBatch ? { fetched: fetchedRaw } : collected;
+    return onBatch ? { fetched: unique } : collected;
   } catch (err) {
     console.error('NoFluffJobs API error:', err.message);
     throw err;
   }
 };
 
-module.exports = { fetchJobs, MAX_RAW };
+module.exports = { fetchJobs, MAX_UNIQUE, PAGE_UNIQUE };
