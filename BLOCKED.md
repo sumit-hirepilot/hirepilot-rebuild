@@ -278,3 +278,23 @@ follows from it:
   be.
 - Every config, the Chrome extension, the marketing site and every tool now
   point at the new backend. MIGRATION.md records what moved and what did not.
+
+
+## Operator dependency — 1,000 concurrent needs more than one replica
+
+The load bar is 1,000 concurrent with zero failures. At 1,000 the service now
+returns 1–10 client timeouts per run (never a 5xx); 50, 200 and 500 are all
+clean. Full evidence and the ruled-out causes are in LOAD.md.
+
+Memory is not the constraint: idle 125–145 MB against a 300 MB budget, peak
+220 MB against 500 MB.
+
+Every request is served; the slowest cross the client's 20–30 s timeout while
+queued behind 3,000 requests on **one** replica of a Limited Trial. All three
+paths in the mix answer in ~0.35 s when idle, so this is queueing, not query
+cost.
+
+**What the operator decides:** whether to run more than one replica, which is a
+plan and cost question. `railway scale <region>=N` is the mechanism.
+
+Work continues meanwhile — this does not block the feature queue.

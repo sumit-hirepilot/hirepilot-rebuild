@@ -433,3 +433,42 @@ the pre-fix boot alone reached 687 MB.
 Idle 263 MB (budget 300), peak since boot 281 MB (budget 500). p95 is better
 than the previous run's 34 s on a warmer cache; the earlier figure stands as
 the honest cold number rather than being replaced by the flattering one.
+
+
+## After feature 8 + the nofluffjobs memory fix — 1,000 FAILS the bar
+
+| concurrent | requests | ok | failed | p95 | wall | RSS |
+|---|---|---|---|---|---|---|
+| 50 | 150 | 150 | **0** | 1,250 ms | 2.3 s | 145 → 165 MB |
+| 200 | 600 | 600 | **0** | 2,844 ms | 4.9 s | 165 → 181 MB |
+| 500 | 1,500 | 1,500 | **0** | 6,423 ms | 10.6 s | 181 → 246 MB |
+| 1,000 | 3,000 | 2,999 | **1** | 13,232 ms | 46 s | 143 → 144 MB |
+
+Three runs at 1,000: **1, 4 and 10 failures** — all `TimeoutError` and
+`ConnectionResetError`, never a 5xx. Two earlier runs on this same code path
+were clean at 1,000 with a **20.8 s** wall. Throughput has roughly halved and
+the tail now crosses the client's 20–30 s timeouts.
+
+**Memory is not the cause and is well inside budget**: idle 125–145 MB (budget
+300), peak 220 MB (budget 500), and RSS *falls* across the 1,000 step.
+
+**What was ruled out, by checking rather than assuming:**
+
+- *the container being replaced under load* — the RSS drop from 246 → 143
+  between steps looked exactly like a restart. Uptime spans the whole test
+  window (930 s) and the log holds one `Starting Container`, from the original
+  boot. It was V8 releasing after the burst. **Dead lead.**
+- *the disk* — 289 MB of 500 on the volume, database 87 MB.
+- *a slow endpoint* — all three paths in the mix return in **0.32–0.42 s** when
+  idle. The tail is queueing, not query cost.
+
+**What I cannot separate, and will not pretend to have:** whether the halved
+throughput is something in the last three commits or variance on a Limited
+Trial replica. Nothing in those commits touches the read path — feature 8 added
+endpoints the mix never calls, and the nofluffjobs change only affects the
+ingest cycle, which is finished by the time these runs start.
+
+**The bar is not met at 1,000 and this is recorded as failing, not massaged.**
+The one lever that plainly addresses queueing on a single replica — running
+more than one — is a plan and cost decision on a trial account, not an
+engineering change.
