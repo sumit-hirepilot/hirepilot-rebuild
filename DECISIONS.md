@@ -1160,3 +1160,79 @@ truthfully rather than as decoration.
 A → B · 4. Until that ships, the numbers move without explanation — which is
 the defect class this whole decision exists to avoid, and is why the request
 is filed rather than assumed.
+
+## D50 — a migration that only ever ran on a database that already had the column
+
+Found while building the new Railway environment, by the instrument that was
+written for exactly this and had never had a fresh database to run against.
+
+`/api/jobs/db-health` reads all nine schema claims back from the system
+catalogues. On the brand-new database it reported **8 of 9**. Missing:
+
+```
+constraint applications_applied_requires_submission
+```
+
+That is the constraint behind **"applied status requires a submission record"**
+— one of the standing constraints on this project. Without it a row can claim
+`status = 'applied'` with nothing to show anything was ever sent.
+
+### The real error, before any theory about it
+
+The deploy log carried the cause, though not where it was easy to see:
+`runMigrations` logs `statement.slice(0, 60)`, the statement begins with a
+multi-line `DO $$`, so Railway split it across five log lines and the message
+landed at the end of the fifth:
+
+```
+column "is_manual" does not exist
+```
+
+### Why it had never shown up
+
+A CHECK constraint is validated against the table as it stands when the ALTER
+runs. The constraint reads `is_manual`; the column was added ~120 statements
+further down, with the tracker columns. Every other column it names
+(`submitted_at`, `confirmation_captured_at`, `employer_confirmation_id`,
+`verified_at`) is added at statements 347–351, well before it.
+
+So on any database that already had `is_manual` from an earlier deploy — which
+is every environment that has ever existed, including production — the
+statement succeeded. On a database created from scratch it failed,
+`runMigrations` logged it and continued (correctly: one bad statement must not
+stop the rest), and the environment came up without the constraint.
+
+**Nothing that reads `migrations.js` could have caught this.** The statement is
+written correctly. It just ran too early. This is the exact failure the
+schemaClaims file was written about — *"a migration that threw and one that
+succeeded produce identical output"* — and it is the first time the fresh-
+database case has actually been exercised.
+
+### The fix, and the class
+
+`is_manual` moved up beside the other columns the constraint reads.
+
+The class is guarded by `migrationOrderHoldsOnAFreshDatabase.test.js`, which
+walks STATEMENTS in order, tracks every column as it is introduced, and fails
+if any `ADD CONSTRAINT … CHECK` names a column that does not exist yet. Proved
+red by moving `is_manual` back down: both tests fail.
+
+### Proved on a real database, not just in a test
+
+The new database was dropped to empty (`DROP SCHEMA public CASCADE`) and the
+migrations re-run from nothing:
+
+| | claims |
+|---|---|
+| before the fix, fresh database | **8 / 9** |
+| after the fix, fresh database | **9 / 9** |
+
+And presence is not function, so the constraint was exercised both ways:
+
+```
+INSERT … status='applied'                  -> rejected by the constraint
+INSERT … status='applied', submitted_at=now() -> accepted, id 2
+```
+
+The accepted row was deleted afterwards; a fabricated application must not
+survive in a database that is about to become production.

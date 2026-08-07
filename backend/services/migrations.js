@@ -349,6 +349,26 @@ const STATEMENTS = [
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS confirmation_captured_at TIMESTAMP`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP`,
+  /*
+   * is_manual lives HERE, beside the other columns the
+   * applications_applied_requires_submission CHECK reads, and not down with the
+   * tracker columns where it was first added.
+   *
+   * A CHECK constraint is validated against the table as it stands when the
+   * ALTER runs. That statement referenced is_manual while the column was still
+   * ~120 statements further down the list, so on a database that already had
+   * the column from an earlier deploy the constraint was created, and on a
+   * FRESH database the statement failed with `column "is_manual" does not
+   * exist`, runMigrations logged it and carried on, and the environment came up
+   * without the one constraint standing behind "applied status requires a
+   * submission record".
+   *
+   * Found by /api/jobs/db-health reading the claim back from pg_constraint on a
+   * new deploy: 8 of 9 present. Nothing that inspects migrations.js could have
+   * found it, because the statement is written correctly - it just ran too
+   * early.
+   */
+  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS target_form_url VARCHAR(1024)`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS screening_answers JSONB DEFAULT '{}'::jsonb`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`,
@@ -623,7 +643,6 @@ const STATEMENTS = [
    */
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS tracker_stage VARCHAR(32)`,
   `ALTER TABLE applications ADD COLUMN IF NOT EXISTS stage_changed_at TIMESTAMP`,
-  `ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
   `CREATE INDEX IF NOT EXISTS idx_applications_stage ON applications(user_id, tracker_stage)`,
 
   /*
@@ -1066,4 +1085,4 @@ const runMigrations = async () => {
   console.log('Migrations complete');
 };
 
-module.exports = { runMigrations };
+module.exports = { runMigrations, STATEMENTS };
