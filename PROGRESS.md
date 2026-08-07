@@ -919,6 +919,39 @@ STILL OWED on feature 1, in order:
 THEN: the FULL FEATURE AUDIT (standing goal, spec above), then features 2, 3,
 4a, 4b, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, with the audit after every third.
 
+## FEATURE 1 — three of six remaining items DONE. Three left, specified.
+
+DONE this session (on top of live counts + experience bands):
+ - Notice period as chips, stored as the plain string application_profiles
+   already holds, one declaration in lib/noticePeriods.js so the onboarding
+   chips and the screening prefill cannot drift. PUT /api/apply/profile
+   already accepted notice_period - it was wiring, as expected.
+ - Parse-as-first-wow: roles render as REMOVABLE chips the moment the resume
+   is read, and the years found are stated beside the level they selected.
+ - Failed parse as a designed path: a real 44px control on the same screen,
+   "Fill it in myself instead", replacing a sentence that told the user to
+   scroll and work it out.
+
+STILL LEFT on feature 1, in build order:
+ 1. SEARCHABLE SELECTS for city and role title, prefilled from the resume,
+    replacing the bare text inputs on step 0. Today both are plain <input>s
+    with only a placeholder - the user faces an empty field with no guidance,
+    which the spec forbids. Suggested values should come from the parse
+    (parsedRoles already exists in state) and from /api/jobs/facets, which
+    already returns per-value counts for region.
+ 2. TIME-TO-FIRST-MATCH at step 4-5: one real scored job before onboarding
+    ends, from the real query, never a sample. Nothing exists yet. The feed
+    endpoint already returns scored rows - GET /api/jobs?limit=1 with the
+    user's title returns a row with overall_score, which is the honest source.
+    Constraint 1: if there is no match yet, say so; never show a sample.
+ 3. ABANDONMENT RECOVERY: return to the step left, nothing re-entered, no
+    percentage-complete pressure bar. Nothing exists yet. `step` is local
+    state and is lost on reload. Persist the step and the answers already
+    given (localStorage is enough - the answers are already saved server-side
+    per step in goNext).
+
+THEN: the FULL FEATURE AUDIT before feature 2, per the standing goal.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
