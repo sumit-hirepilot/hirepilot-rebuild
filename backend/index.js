@@ -103,6 +103,11 @@ app.use('/api/tracker', trackerRoutes);
 // Tiers, allowances, and the credit counter (PRD 6).
 app.use('/api/plans', plansRoutes);
 
+// The controlled submission target that stands in for an employer's ATS
+// while A5 is unresolved. See routes/atsSandbox.js for what it does and
+// does not prove.
+app.use('/api/ats-sandbox', require('./routes/atsSandbox'));
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);

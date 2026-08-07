@@ -541,6 +541,27 @@ const STATEMENTS = [
      END IF;
    END $$;`,
 
+  /*
+   * The controlled submission target's capture log (A5 workaround).
+   *
+   * Separate table on purpose. It records what an EMPLOYER-SHAPED endpoint
+   * received, which is evidence about the pipeline, not a record of the user's
+   * job search - it must never be confused with `applications` or with
+   * `submission_receipts`, and nothing user-facing reads it.
+   *
+   * Bounded: JSONB columns are written from already-truncated strings, and rows
+   * are pruned by the retention sweep. The 500MB volume is the reason.
+   */
+  `CREATE TABLE IF NOT EXISTS ats_sandbox_submissions (
+     id SERIAL PRIMARY KEY,
+     confirmation_id VARCHAR(64) NOT NULL UNIQUE,
+     fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+     answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+     file_info JSONB,
+     received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_ats_sandbox_received ON ats_sandbox_submissions(received_at)`,
+
   `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
 
   /*

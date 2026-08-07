@@ -59,6 +59,13 @@ const ATS_BY_SOURCE = {
   ashby: 'ashby',
 };
 const ATS_BY_URL = [
+  /*
+   * The controlled test target (A5 workaround). Matched on OUR OWN path only,
+   * and it resolves to its own platform name rather than to 'greenhouse' - a
+   * HirePilot URL must never report itself as an employer's ATS, on any screen
+   * or in any row. It is only ever driveable when ATS_SANDBOX_ENABLED is on.
+   */
+  [/\/ats-sandbox\/greenhouse\b/i, 'ats_sandbox'],
   [/job-boards\.greenhouse\.io|boards\.greenhouse\.io|greenhouse\.io/i, 'greenhouse'],
   [/jobs\.lever\.co|lever\.co/i, 'lever'],
   [/jobs\.ashbyhq\.com|ashbyhq\.com/i, 'ashby'],
@@ -92,6 +99,17 @@ const SUPPORTED_ATS = new Set([
   // 'lever',   // adapter written, never run against a live form
   // 'ashby',   // adapter written, never run against a live form
 ]);
+
+/*
+ * The controlled target is driveable only when explicitly switched on, and it
+ * is a SEPARATE platform from greenhouse so nothing can confuse the two.
+ *
+ * Off by default: an always-on sandbox platform is a second door into the
+ * submission path, and the whole point of SUPPORTED_ATS is that entry to it is
+ * deliberate. With the flag off, a job pointing at the sandbox reports
+ * automationSupported: false exactly like an unverified ATS.
+ */
+if (process.env.ATS_SANDBOX_ENABLED === 'true') SUPPORTED_ATS.add('ats_sandbox');
 
 function detectAts(job) {
   const bySource = ATS_BY_SOURCE[(job.source || '').toLowerCase()];
