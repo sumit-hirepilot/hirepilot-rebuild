@@ -332,3 +332,58 @@ describe('a fetched job is stored as the user\'s own, never in the shared index'
     expect(res.body.job).toHaveProperty('companyStated');
   });
 });
+
+describe('the stored link is the posting, not the API we fetched', () => {
+  it('stores absolute_url for a Greenhouse job, never boards-api', async () => {
+    /*
+     * On production a real Adyen link stored
+     * `https://boards-api.greenhouse.io/v1/boards/adyen/jobs/8110807` as the
+     * job_url. Two defects in one: the user's "Original posting" link pointed
+     * at raw JSON, and since the shared index stores the real posting URL the
+     * row did not collide with it - so linking a job already in the index made
+     * a second row instead of matching the first.
+     *
+     * Found by fetching a real posting on production and reading the row back,
+     * not by any test that existed.
+     */
+    fetchJobUrl.mockResolvedValue({
+      ok: true, status: 200, board: 'greenhouse', via: 'public_api',
+      finalUrl: 'https://boards-api.greenhouse.io/v1/boards/adyen/jobs/8110807',
+      classified: { via: 'public_api', board: 'greenhouse', url: 'https://job-boards.greenhouse.io/adyen/jobs/8110807' },
+      body: JSON.stringify({
+        title: 'Staff Software Engineer',
+        content: '<p>Observability, Go and Kubernetes for our Amsterdam team.</p>',
+        absolute_url: 'https://job-boards.greenhouse.io/adyen/jobs/8110807',
+        first_published: '2026-08-07T04:05:44-04:00',
+      }),
+    });
+
+    const res = await post({ url: 'https://job-boards.greenhouse.io/adyen/jobs/8110807' });
+    expect(res.status).toBe(201);
+
+    const insert = query.mock.calls.find(([sql]) => /INSERT INTO jobs/.test(sql));
+    const stored = insert[1].find((v) => typeof v === 'string' && v.startsWith('http'));
+    expect(stored).toBe('https://job-boards.greenhouse.io/adyen/jobs/8110807');
+    expect(stored).not.toMatch(/boards-api\.greenhouse\.io/);
+  });
+
+  it('keeps first_published, which IS a publication date', async () => {
+    // The counterpart to refusing updated_at: a real publication date must
+    // survive, or "no fabricated freshness" would just mean "no dates".
+    fetchJobUrl.mockResolvedValue({
+      ok: true, status: 200, board: 'greenhouse', via: 'public_api',
+      finalUrl: 'https://boards-api.greenhouse.io/v1/boards/adyen/jobs/1',
+      classified: { via: 'public_api', board: 'greenhouse', url: 'https://job-boards.greenhouse.io/adyen/jobs/1' },
+      body: JSON.stringify({
+        title: 'Staff Engineer',
+        content: '<p>Observability and Go for the platform team in Amsterdam.</p>',
+        absolute_url: 'https://job-boards.greenhouse.io/adyen/jobs/1',
+        first_published: '2026-08-07T04:05:44-04:00',
+      }),
+    });
+
+    await post({ url: 'https://job-boards.greenhouse.io/adyen/jobs/1' });
+    const insert = query.mock.calls.find(([sql]) => /INSERT INTO jobs/.test(sql));
+    expect(insert[1].some((v) => typeof v === 'string' && v.startsWith('2026-08-07T08:05:44'))).toBe(true);
+  });
+});

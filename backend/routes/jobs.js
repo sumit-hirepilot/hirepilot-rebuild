@@ -369,7 +369,22 @@ router.post('/from-url', verifyToken, async (req, res) => {
       });
     }
 
-    const saved = await upsertLinkedJob(query, req.user.id, extracted.job, fetched.finalUrl || url);
+    /*
+     * The POSTING url, not the one we fetched.
+     *
+     * For Greenhouse, Lever and Ashby the fetch goes to their public API, so
+     * `finalUrl` is an api.* endpoint. Storing that made two things wrong at
+     * once on production: the user's "Original posting" link pointed at raw
+     * JSON, and because the shared index stores the real posting URL, the row
+     * did not collide with it - so a link to a job already in the index
+     * created a second row instead of matching the first.
+     *
+     * `applyUrl` is absolute_url / hostedUrl / jobUrl from those APIs, and the
+     * page URL everywhere else. Found by fetching a real Adyen posting on
+     * production and reading the row back.
+     */
+    const canonicalUrl = extracted.job.applyUrl || fetched.finalUrl || url;
+    const saved = await upsertLinkedJob(query, req.user.id, extracted.job, canonicalUrl);
 
     /*
      * Scored immediately, because an unscored job is the one thing this
