@@ -2,61 +2,74 @@
 
 ## Now
 
-**D45 — a test asserts behaviour, never the claim that describes it.** New
-standing rule, recorded in the master prompt and DECISIONS.md, and swept.
-`944cd3d`.
+**D45 (new standing rule) and feature 2 are both done, deployed and verified.**
+`944cd3d`, `5e585df`, `f38df2b`, `d78718a`.
 
-The rule came from the audit: `landingTruth` required the pricing page to say
-"never per application" while `submissionGate` refuses to submit at
-`remaining <= 0`. Green throughout, defending a sentence the product
-contradicts — the correction would have read as a regression.
+### D45 — a test asserts behaviour, never the claim that describes it
 
-The sweep found three more of the same shape, and each had a real defect under
-it:
+Recorded in the master prompt and DECISIONS.md, and swept. `landingTruth`
+required the pricing page to say "never per application" while
+`submissionGate` refuses to submit at `remaining <= 0` — green throughout,
+defending a sentence the product contradicts.
+
+The sweep found three more of the shape, each with a real defect under it:
 
 | Claim the test pinned | What was actually true | Fix |
 |---|---|---|
-| "Cancel in one click", routed to Settings → Plans → Cancel | no Cancel control, no cancel path anywhere | **built the control** — cancelling is returning to Free, which `/api/plans/select` already did |
-| "Runs in your mobile browser — the whole product" | `<meta name="viewport">` was on the landing page **only**; every other page laid out at the ~980px fallback on a real phone | moved to `_app.js` |
-| "Nothing reached the employer" on a failed application | `apply.js` sets `failed` only where it *could not verify* — the form may have gone through | "Not confirmed", with an honest hint |
+| "Cancel in one click", routed to Settings → Plans → Cancel | no Cancel control, no cancel path anywhere | **built the control**; clicked on production, Copilot → Free → restored |
+| "Runs in your mobile browser — the whole product" | viewport meta was on the landing page **only**; every other page laid out at ~980px on a phone | moved to `_app.js`; verified on 6 pages |
+| "Nothing reached the employer" | `apply.js` sets `failed` only where it could not *verify* — a duplicate-application risk | "Not confirmed", honest hint |
 
-The mobile one is the sharpest: the 375px audit pass could not see it, because
-resizing sets a true viewport width so the media queries ran and every page
-looked correct. Only a real mobile browser reads that tag. The instrument could
-not see the defect it was pointed at.
+`tools/check-claim-tests.js` sweeps for the shape. Its first cut counted the
+`read('pages', ...)` call itself as grounding, so every claim test grounded
+itself and it reported **green on both defects it was written from**.
 
-The "nothing reached the employer" wording was also a duplicate-application
-risk: it told people to retry something that may already have been submitted.
+### Feature 2 — plain language
 
-`tools/check-claim-tests.js` sweeps for the shape; REVIEWED records each judged
-block **with its reason**. Its first cut counted "calls something with a string"
-as grounding, which matched the `read('pages', ...)` call that fetches the copy
-— so every claim test grounded itself and it reported **green on both defects it
-was written from**. Caught only by proving it on a known positive, the same way
-the guard-wiring census went wrong twice.
+Jargon replaced on live surfaces: Jobs Indexed → Jobs we track; Every indexed
+job → Every job we have; Unranked → Not scored; synced every 6h → updated every
+6 hours; Copy access token → Copy pairing code; Applications Tracked →
+Applications you have sent; Interview Pipeline → Interviews.
 
-Verified on production: viewport present on all six pages checked, Cancel
-control renders at 44px and **was clicked** — Copilot → Free, 600 credits,
-"No payment was taken" — then the tier restored.
+**ATS is kept** — it is the phrase Indian job seekers search for — but never
+stands alone; both sites carry a plain gloss now.
 
-Load test at uptime 352s: **200 concurrent 600/600, p95 2,669 ms vs 2,767 ms.
-No regression, zero failures.** Peak RSS 338 MB.
+`tools/check-plain-language.js` gates it. Two bugs found while proving it on
+known positives: the JSX heuristic spanned code and reported `filter(Boolean)`
+as the word "boolean", and the gloss rule was a regex **literal** containing
+`${term}`, which never interpolates — it had been inert.
 
-Suites: backend **327**, frontend **245**.
+### Both carried audit findings, closed
+
+**The experience facet and the filter disagreed** — facet said 9,709 of 25,431,
+filtering by "Mid level" returned 16,129. Cause: **three** copies of one
+definition (filter, facet, and `classifyExperience` labelling each card). All
+three now derive from `EXPERIENCE_TERMS`. Verified on production: all four
+bands match exactly, and the facet reports `experienceOverlapping: true`
+because the bands match on the title and do not sum to the index.
+
+Correcting my own audit note: the UI never displayed those counts — experience
+is a plain select — so no user saw "38%". The defect was the missing `mid`
+bucket.
+
+**Tap targets.** Measured 13–19px at 375; now 44px minimum, verified on
+production: `stillUnder28: []` on both `/jobs` and `/dashboard`, all 21
+checkboxes at a 44px effective hit height, zero overflow. Took two passes — the
+first rule was too narrow, and the checkbox needed a padded label because a
+44px checkbox looks broken.
+
+Load test: **200 concurrent 600/600, p95 3,025 / 2,538 ms vs 2,669 ms. No
+regression. 1,000 concurrent completed with zero failures for the first time.**
+The first pass read 11,931 ms at 200 — slower than 500 — and was re-measured
+per the contamination rule rather than reported.
+
+Suites: backend **332**, frontend **245**.
 
 ## Next
 
-**Feature 2 — plain language across the app.** The queue after it: 3, 4a, 4b,
-5, 6, 8, 9, 10, 11, 12, 13, 14, 15, with the full audit repeated after every
-third feature.
-
-Two findings from this audit belong to feature 2 and carry forward:
-
-- The `experience` facet covers 9,709 of 25,431 jobs (38%). It is inferred only
-  where detectable and does not overstate, but a filter that silently omits 62%
-  of the index should say so on the surface.
-- Tap targets under 28 px at 375: checkboxes at 13–16 px, "Original posting" at
-  19 px.
+**Feature 3 — tailor resume with a pasted or selected JD.** Then 4a
+(paste-any-URL ingest), 4b (Instahyre), then **the full audit again**, then 5,
+6, 8, 9, 10, 11, 12, 13, 14, 15 with the audit after every third.
 
 ## Carried, not started
 

@@ -281,3 +281,33 @@ failures. Peak RSS 338 MB.
 No backend source changed in this deploy — the fixes were frontend copy, a
 viewport tag, a settings control, tests and tools. Measured anyway, because
 "believed to be cosmetic" is not evidence.
+
+## Feature 2 (plain language) — load test after deploy
+
+Run at uptime 1,806s. `d78718a`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,225 ms | 268 MB |
+| 200 | 600 | **600** | **0** | **3,025 / 2,538 ms** (two clean runs) | 301 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,076–6,142 ms | 302 MB |
+| 1,000 | 3,000 | **3,000** | **0** | 13,548 ms | 305 MB |
+
+Against 2,669 ms at 200 last run: no regression. Zero failures at 200 across
+all three runs, and **1,000 concurrent completed with zero failures** — the
+first time every step has been clean.
+
+### The 5-minute rule fired again, on a run that was past it
+
+The first pass read **p95 11,931 ms at 200 users and 6,142 ms at 500**. A
+smaller load slower than a larger one is not a curve, and LOAD.md already says
+to treat that as a contaminated instrument rather than a regression. Uptime was
+1,806s, so this was not the post-deploy ingest — something else competed for
+the database during that step.
+
+Re-measured immediately: 3,025 ms, then 2,538 ms, with 500 at 6,076 ms. The
+ordering is coherent again.
+
+Reported as a regression, that first reading would have been a 4.5x p95 blowup
+at exactly the concurrency the acceptance bar names, on a change that touched
+only copy, a viewport tag and CSS.
