@@ -23,28 +23,41 @@ const { verifyToken, attachUserIfPresent } = require('../middleware/auth');
 
 const router = express.Router();
 
+/*
+ * The `id` is the value stored in users.plan_tier and is NOT renamed here -
+ * renaming it would rewrite live rows and the submission gate's tests for a
+ * cosmetic gain. The `name` is what a person reads, and that is what was
+ * wrong: these were Starter / Pro / Power while /pricing sold Free / Pilot /
+ * Copilot. No overlap at all. The credits pill told an account it was "on
+ * Power", a plan the pricing page does not offer and never has.
+ *
+ * Found in the feature audit by reading the header pill against /pricing. Both
+ * suites were green: nothing connected the two lists, which is exactly why
+ * they drifted. tools/check-plan-names.js now fails the ship gate when they
+ * disagree.
+ */
 const TIERS = {
   starter: {
     id: 'starter',
-    name: 'Starter',
+    name: 'Free',
     applicationsPerMonth: 600,
     autoApply: false,
     features: ['Job matching and tailoring', 'Apply with the extension', 'Tracker and Inbox'],
   },
   pro: {
     id: 'pro',
-    name: 'Pro',
+    name: 'Pilot',
     popular: true,
     applicationsPerMonth: 1500,
     autoApply: false,
-    features: ['Everything in Starter', 'Higher monthly allowance', 'Networking outreach'],
+    features: ['Everything in Free', 'Higher monthly allowance', 'Networking outreach'],
   },
   power: {
     id: 'power',
-    name: 'Power',
+    name: 'Copilot',
     applicationsPerMonth: 4500,
     autoApply: true,
-    features: ['Everything in Pro', 'Auto Apply - hands off, daily capped', 'Priority processing'],
+    features: ['Everything in Pilot', 'Auto Apply - hands off, daily capped', 'Priority processing'],
   },
 };
 

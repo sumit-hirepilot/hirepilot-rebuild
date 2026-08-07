@@ -49,12 +49,25 @@ const SCORE_WEIGHTS = [
   { label: 'Salary alignment', weight: 10 },
 ];
 
-// services/resumeGuard.js - the checks every proposed edit must pass.
+/*
+ * services/resumeGuard.js - the checks every proposed edit must pass.
+ *
+ * These are the REAL rule identifiers, quoted so the page can be checked
+ * against the code rather than believed. tools/check-landing-claims.js fails
+ * the ship gate if this list stops matching resumeGuard's actual rules.
+ *
+ * It listed a `no_deletion` rule that had been removed, under a heading that
+ * said "three checks" when there were two - the page kept advertising a
+ * mechanism the code no longer had. Found by reading the live page; no test
+ * covered it, and every suite was green.
+ */
 const GUARD_RULES = [
-  { rule: 'no_deletion', plain: 'Nothing already in your resume can be removed.' },
   { rule: 'invented_number', plain: 'A figure not already in your material is rejected outright.' },
   { rule: 'untraceable_claim', plain: 'Every word must trace to your resume, skills or work history.' },
 ];
+
+/* Derived, never typed: a hardcoded count is what drifted the first time. */
+const COUNT_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 
 // routes/apply.js - the real status lifecycle.
 const TRACK_STATES = [
@@ -358,7 +371,9 @@ export default function Home({ stats = null }) {
               </div>
               <div className={styles.pipelineVisual}>
                 <div className={styles.diffCard}>
-                  <p className={styles.factTag}>Every proposed edit passes these three checks</p>
+                  <p className={styles.factTag}>
+                    Every proposed edit passes these {COUNT_WORD[GUARD_RULES.length] || GUARD_RULES.length} checks
+                  </p>
                   {GUARD_RULES.map((r) => (
                     <div key={r.rule} className={styles.matchRow}>
                       <code className={styles.factCode}>{r.rule}</code>

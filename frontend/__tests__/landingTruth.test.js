@@ -101,14 +101,24 @@ describe('A7.25 — the questions the page raises have somewhere to go', () => {
     }
   });
 
-  it('never meters per application, and never charges for a score', () => {
+  it('states the application allowance it actually enforces, and never charges for a score', () => {
     /*
-     * The product's whole argument is that the scoring is visible and
-     * explainable. Charging per application would price the thing the user
-     * cannot verify and meter the thing they can.
+     * This assertion used to REQUIRE the opposite - that the page say "never
+     * per application". It was green the whole time, and it was pinning a
+     * false claim in place: routes/plans.js meters 600/1500/4500 a month and
+     * services/submissionGate.js refuses to submit at `remaining <= 0`. A test
+     * can encode a lie and then defend it, which is worse than no test, because
+     * fixing the page would have looked like breaking the suite.
+     *
+     * So it asserts the honest property instead: the page states the allowance
+     * and does not deny it. tools/check-plan-names.js enforces the same thing
+     * against the gate itself, which is the part that cannot drift into prose.
      */
     const pricing = stripComments(read('pages', 'pricing.js'));
-    expect(pricing).toMatch(/never .{0,30}per application|not .{0,20}per application/i);
+    expect(pricing).toMatch(/allowance/i);
+    expect(pricing).not.toMatch(/not metered on any plan|never per application|unlimited applications/i);
+
+    // Still true, still the product's whole argument, and still free.
     expect(pricing).toMatch(/scor\w+ .{0,60}(free|every tier)/i);
   });
 

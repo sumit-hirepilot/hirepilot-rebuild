@@ -10,10 +10,21 @@ import styles from '../styles/Pricing.module.css';
  * Two decisions are load-bearing here and both are stated on the page, not
  * just in this comment:
  *
- * 1. Nothing is metered per application. Charging per application prices the
- *    thing a user cannot verify and taxes the thing they came for. What scales
- *    with a paid plan is depth of work per job - tailoring, cover letters,
- *    outreach research - not how many times you press apply.
+ * 1. There IS a monthly application allowance, and the page says so.
+ *
+ *    It used to say the opposite - "Applications are not metered on any plan",
+ *    in four places - while routes/plans.js metered exactly that (600/1500/4500
+ *    a month), services/submissionGate.js REFUSED to submit at `remaining <= 0`,
+ *    and the header pill counted it down on every authenticated page. The
+ *    pricing page denied a limit the product enforces.
+ *
+ *    The allowance stays: it is the backstop on runaway Auto Apply, and
+ *    weakening a safety control to make a sentence true is the wrong direction.
+ *    The sentence changed instead. What is genuinely true, and kept, is that a
+ *    credit is spent only on a submission an employer CONFIRMS - never on an
+ *    attempt that stalled or was retried.
+ *
+ *    Found in the feature audit by reading the header pill against this page.
  *
  * 2. Match scoring and its four-weight breakdown are free at every tier,
  *    forever. The whole argument of this product is that the score is visible
@@ -34,9 +45,9 @@ const PLANS = [
     features: [
       'Every indexed job, all sources',
       'Match scoring with the full four-weight breakdown',
-      'Unlimited applications you send yourself',
+      '600 applications a month',
       'Application tracker and status history',
-      '3 tailored resumes a month',
+      'Resume tailoring, currently uncapped',
     ],
   },
   {
@@ -48,8 +59,8 @@ const PLANS = [
     highlight: true,
     features: [
       'Everything in Free',
-      '60 tailored resumes a month',
-      '60 cover letters a month',
+      '1,500 applications a month',
+      'Cover letter generation',
       'Screening-answer pre-fill from your profile',
       'Saved searches that run on their own',
     ],
@@ -62,7 +73,8 @@ const PLANS = [
     tagline: 'Research and outreach as well.',
     features: [
       'Everything in Pilot',
-      'Unlimited tailoring and cover letters',
+      '4,500 applications a month',
+      'Auto Apply — hands off, daily capped',
       'Recruiter and referral lookup per role',
       'ATS check against the exact posting',
       'Priority on new-source indexing',
@@ -82,7 +94,7 @@ export default function Pricing() {
         <title>Pricing — HirePilot</title>
         <meta
           name="description"
-          content="Match scoring and its breakdown are free at every tier. Paid plans add depth per job — tailoring, cover letters, outreach research. Nothing is charged per application."
+          content="Match scoring and its breakdown are free at every tier. Paid plans add depth per job — tailoring, cover letters, outreach research — and a larger monthly application allowance."
         />
       </Head>
       <Layout>
@@ -91,8 +103,9 @@ export default function Pricing() {
             <h1>Pricing</h1>
             <p className={styles.sub}>
               Scoring is free, forever, including the breakdown that explains it. Paid plans buy
-              depth of work per job. <strong>Nothing here is charged per application</strong> — how
-              many jobs you apply to is your business, not a meter.
+              depth of work per job, and a larger monthly allowance.{' '}
+              <strong>Every plan has a monthly application allowance</strong>, shown below and
+              counted in the header — one is used when an employer confirms a submission.
             </p>
 
             <div className={styles.toggle} role="group" aria-label="Currency">
@@ -184,10 +197,12 @@ export default function Pricing() {
                 free tier the black box this product exists to argue against.
               </dd>
 
-              <dt>Never per application</dt>
+              <dt>Counted on confirmation, never on an attempt</dt>
               <dd>
-                Applications are not metered on any plan. Paid tiers change how much work happens
-                per job, not how many jobs you are allowed to want.
+                Each plan has a monthly application allowance, and one is used only when an
+                employer confirms a submission — never for an attempt that stalled on a CAPTCHA,
+                a login, or a retry after a bad fill. The number left is in the header on every
+                page, so it is never a surprise.
               </dd>
 
               <dt>Cancel in one click</dt>
