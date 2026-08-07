@@ -77,6 +77,15 @@ const REVIEWED = new Map([
   ['applicationsScreen.test.js::states a network failure and offers a retry',
     'renders against a rejected fetch and asserts the rendered output'],
 
+  /*
+   * Grounded by its SIBLINGS rather than by a backend path: the next two tests
+   * assert the href names a real member of TABS and that /resume honours
+   * `?tab=`. That is the behaviour behind the sentence, and it lives entirely
+   * in the frontend, which the heuristic cannot see.
+   */
+  ['refusalHandoffLands.test.js::offers the handoff whenever the board says the paste box would work',
+    'the sibling tests assert the href resolves to a real tab and that /resume honours ?tab= - the behaviour the sentence describes'],
+
   ['landingTruth.test.js::declares a mobile viewport for every page, not only the one that claims it',
     'grounded on pages/_app.js carrying the viewport meta product-wide; the heuristic only looks for backend paths, and this behaviour lives in the frontend'],
 ]);

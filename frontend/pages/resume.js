@@ -59,6 +59,23 @@ export default function Resume() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [tab, setTab] = useState('Resume Manager');
+
+  /*
+   * Honour ?tab= on load and on back/forward.
+   *
+   * settings.js has done this since PRD 3.9; this page never did, and nothing
+   * needed it until feature 4a. When a board refuses a link, the refusal
+   * offers "Paste the description instead ->" pointing at
+   * /resume?tab=Tailor%20for%20a%20Job - and the page opened Resume Manager,
+   * so the one path that always works was unreachable from the place that
+   * offers it. The link was right; the destination ignored it.
+   *
+   * Found by the audit, by CLICKING the handoff rather than checking the href.
+   */
+  useEffect(() => {
+    const t = router.query.tab;
+    if (typeof t === 'string' && TABS.includes(t)) setTab(t);
+  }, [router.query.tab]);
   const [resumes, setResumes] = useState([]);
   const [tailoredHistory, setTailoredHistory] = useState([]);
   const [jobs, setJobs] = useState([]);
