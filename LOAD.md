@@ -362,3 +362,17 @@ so a small cost here is expected and is the price of the sweep.
 `POST /api/jobs/from-url` is deliberately NOT in this profile: it makes an
 outbound request to a third party, and load-testing it would be pointing load
 at someone else's servers. Its own limit is 20 links per user per hour.
+
+## Audit round 2 — load test after the four fixes
+
+Run at uptime 693s. `197ded6`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,061 ms | 264 MB |
+| 200 | 600 | **600** | **0** | **2,593 ms** | 291 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,380 ms | 304 MB |
+
+Against 2,777 ms at 200 last run: improved, zero failures. All four fixes were
+frontend-only, so no change was expected on these endpoints; measured anyway,
+because "believed to be cosmetic" is not evidence.

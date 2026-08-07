@@ -1,3 +1,99 @@
+# Full feature audit — round 2, before feature 5
+
+Run on production as a signed-in user at 1440 / 768 / 375, plus an **emulated
+phone reporting real device signals** (`userAgentData.mobile: true`,
+`maxTouchPoints: 5`, Android UA) — because resize proves CSS, not mobile
+rendering (D46).
+
+**Four defects. All four fixed and verified on production.** One suspected
+defect was disproved and is recorded as such.
+
+## Pass / fail
+
+| Surface | Result |
+|---|---|
+| **Add a job by link (4a) — the whole frontend** | **FAIL — D1** |
+| **Refusal handoff → paste box** | **FAIL — D2** |
+| **Tailor from a pasted JD — the result** | **FAIL — D3** |
+| **Header at 375** | **FAIL — D5** |
+| Landing numbers vs `/api/jobs/stats` | PASS — jobs 25,429, sources 12, directCompanies 153, all match |
+| Facet sums vs feed total | PASS — workArrangement, jobType, region each sum to exactly 25,429 |
+| jobType vocabulary | PASS — closed, `leaked: []` |
+| Experience facet vs filter | PASS — all four bands match exactly; `experienceOverlapping: true` |
+| Scoring arithmetic | PASS — headline % = Σ contributions, per-component score×weight exact, weights = 1.0, descending |
+| Credits pill vs `/api/plans/credits` | PASS — Copilot, 4500/4500 |
+| Plan names | PASS — Free / Pilot / Copilot on both sides |
+| Refusal reasons (Naukri, Instahyre, LinkedIn) | PASS — each specific, board named, `canPaste: true` |
+| Hostile paste through the real route | PASS — Kubernetes / 15 years / "resume writer" all absent; Kubernetes surfaced as a question |
+| SSRF (metadata, loopback, `file://`) | PASS — refused on production |
+| Dashboard, Applications, Ready to send, Tracker, Inbox, Network, How it is going, Saved searches, Profile, Settings | PASS — correct headings, 0 overflow, 0 errors, 0 raw tokens |
+| Landing, Pricing, Privacy, Terms, Refund policy, Login, Signup | PASS — 200, viewport present, correct h1 |
+| 768 | PASS — 0 overflow on every page checked |
+| 375 + real device signals | PASS after D5 — 0 overflow, 0 controls under 28px, CTA reads "Desktop only" |
+
+## The four defects
+
+**D1 — feature 4a's frontend never deployed, and the gate could not see it.**
+"Add a job by link" was absent from `/jobs`. The component was in the repo and
+mounted; it was in **no served chunk**. `next build` was failing on an ESLint
+error (`<a>` for internal navigation), Railway kept serving the last good
+build, and the backend deployed fine — so `/api/jobs/from-url` worked, which is
+exactly what I had verified when shipping 4a. I tested the API and never opened
+the page.
+
+The worse half is the class: **the ship gate ran ten stages of tests and a push
+that could not build passed every one.** Jest does not build. `next build` is
+now stage 9 of 11.
+
+**D2 — the refusal handoff pointed correctly and landed on the wrong tab.**
+`/resume?tab=Tailor%20for%20a%20Job` was right; `/resume` never honoured
+`?tab=`. The click opened Resume Manager with no paste box — so the one path
+that always works when a board declines was unreachable from the place that
+offers it. Found by **clicking** it, not by reading the href.
+
+**D3 — tailoring succeeded and the screen threw the result away.**
+Paste a JD, press Tailor resume: 201, row written — then the mode reset to
+"Pick a job we have" and nothing was shown. `reload()` called `loadData`, which
+set `loading=true`, which swaps the tab body for a spinner, which unmounted the
+component and destroyed the result stored one line earlier. It hit **both**
+tailoring paths and predates feature 3.
+
+**D5 — the desktop-only label overflowed the header and clipped the credits.**
+At 375 the header was 530px inside a 375px viewport and "4500 left" was cut to
+"45". **Page-level overflow read 0 the whole time** — the header clips
+internally rather than scrolling the page — so the measurement I had been
+trusting could not see it. The screenshot could. Introduced by D46's relabel.
+
+## Disproved
+
+**The dashboard greeting showed an email prefix instead of a name.** It did —
+because *I* had injected a session shaped like `/api/auth/me` (`full_name`)
+rather than like `/api/auth/login` (`fullName`). With a login-shaped user the
+greeting reads "Good afternoon, Asha". My artifact, not a defect.
+
+Worth recording anyway: `/api/auth/login` returns `fullName` and
+`/api/auth/me` returns `full_name` — two endpoints describing one field two
+ways. No user-visible defect today; it is the shape that produces one later.
+
+## What this round says about instruments
+
+Each defect needed a different instrument, and each was invisible to the others:
+
+| defect | what found it | what could not |
+|---|---|---|
+| D1 | grepping the served bundle | tests, the gate, the API |
+| D2 | clicking the link | the href, which was correct |
+| D3 | pressing the button | the endpoint, which returned 201 |
+| D5 | a screenshot | `scrollWidth - clientWidth`, which read 0 |
+
+Two of my own assertions were wrong and were caught by proving red: one bounded
+by `[^}]*` that stopped inside `{ quiet: true }` and failed identically before
+and after the fix, and one reading `textContent` where CSS `display:none` meant
+the text was never visible.
+
+
+---
+
 # Full feature audit — production, before feature 2
 
 Run against `hirepilot-rebuild-production` and `hirepilot-production-e70d` as a

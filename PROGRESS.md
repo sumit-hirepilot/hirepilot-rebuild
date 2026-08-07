@@ -2,63 +2,54 @@
 
 ## Now
 
-**D47 recorded and swept, and 4b assessed.** `fb2596f`. No feature code
-shipped for 4b — the assessment is the deliverable, and it says do not build.
+**Full feature audit, round 2 — done. Four defects, all fixed and verified on
+production.** `d46c991`, `69efd94`, `94ad0ac`, `197ded6`. Full table in
+AUDIT.md.
 
-### D47 — a mock of the thing under test is not a test of it
+| # | Defect | Found by |
+|---|---|---|
+| D1 | **feature 4a's frontend never deployed** — `next build` failed, Railway kept the last good build, and the gate ran ten stages of tests over a bundle that could not be built | grepping the served chunks |
+| D2 | the refusal handoff pointed correctly and **landed on the wrong tab** — `/resume` never honoured `?tab=` | clicking it |
+| D3 | tailoring **succeeded and the screen threw the result away** — `reload()` unmounted the component that held it; hit both paths, predates feature 3 | pressing the button |
+| D5 | the desktop-only label **overflowed the header and clipped "4500 left" to "45"** at 375; page overflow read 0 throughout | a screenshot |
 
-4a's SSRF suite mocked `jobUrlFetch` and replaced `fetchJobUrl` with a bare
-`jest.fn()`. Every private-address case then asserted a refusal produced by a
-mock returning `undefined`. Green, and would have stayed green **with the SSRF
-guard deleted**.
+D1 is the one that matters most: the gate could not see a build. `next build`
+is now stage 9 of 11, proved red by restoring the `<a>`.
 
-The fix is not to stop mocking — the seam is needed to inject a canned 403. The
-fix is the *default*: delegate to `requireActual`, opt into a canned result per
-test.
+D4 was **disproved** — the dashboard greeting looked wrong because I had
+injected a session shaped like `/api/auth/me` (`full_name`) rather than
+`/api/auth/login` (`fullName`). Recorded as an artifact, with the real
+observation kept: those two endpoints describe one field two ways.
 
-**Sweep: all 25 suites that mock a module they also use were read.** 23 mock
-`../db`, which is what the code *talks to* — correct. `scoreOnDemand` and
-`scoreOnRead` mock `matchingEngine` to assert a **route** called it — also
-correct. One instance, already fixed. `tools/check-mock-boundaries.js` catches
-the exact shape and is gate stage 8.
+Everything else passed, checked against the data behind it: landing figures,
+facet sums, closed jobType vocabulary, experience facet == filter on all four
+bands, scoring arithmetic (headline % = Σ contributions, per-component
+score×weight, weights = 1.0), credits, plan names, all refusal reasons, the
+hostile paste, and SSRF — all on production, at 1440 / 768 / 375 and on an
+emulated phone reporting `userAgentData.mobile: true` and 5 touch points.
 
-### 4b — Instahyre: assessed, not integrated
+Load after the fixes: **200 concurrent 600/600, p95 2,593 ms vs 2,777 ms.**
 
-| probe | result |
+Suites: backend **381**, frontend **262**.
+
+### All four Indian boards are now assessed and closed
+
+| board | verdict |
 |---|---|
-| `robots.txt` | 200, `User-agent: *`, **no Disallow at all** |
-| `sitemap.xml` — the file robots.txt advertises to crawlers | **403** |
-| `/search-jobs/` | **403** |
-| a job URL from **Railway egress**, via 4a's shipped path | **403** `blocked_by_site` |
+| Naukri | **FAIL** — 403 on `robots.txt` itself (Akamai edge); cannot even read the permission file |
+| Wellfound | **FAIL** — disallows `/_jobs/` and every job-page query pattern |
+| Cutshort | **FAIL** — disallows `/view/j/`, `/vj/`, `/*?job_listing` — the job views themselves |
+| Instahyre | **FAIL** — permissive `robots.txt`, but the server 403s every page behind a Cloudflare challenge, including the sitemap that file advertises to crawlers |
 
-Every 403 is a Cloudflare interstitial — "Just a moment…", `noindex,nofollow`,
-JS challenge. Named, not guessed.
+**The paste path is the answer, not a workaround.** A user pastes one link or
+one description for a job they are already looking at. That is not a crawl, it
+raises no ToS question, and it reaches an identical tailored resume, score and
+queue entry. When a board declines, the product names it and hands over — which
+is why coverage does not depend on any of the four verdicts above changing.
 
-**A permissive robots.txt is not permission.** The permission *file* says yes
-while the server says no on every path — including the one that file points
-crawlers at. Where they disagree, the server's behaviour is the answer.
-
-This closes D19's open question too. It said a residential 200 says nothing
-about a datacentre IP, and that testing it meant probing their protection from
-the server. No special probe was needed: 4a's user path makes exactly one plain
-request and returns 403 from Railway.
-
-**The coverage questions cannot be answered, and that is the answer.** Job
-count, roles, seniority range, and whether `posted_at` is a publication date or
-a re-sync clock are all unmeasurable without defeating the challenge — which
-D19 forbids. No number to report, and no honest way to get one.
-
-So the queue's premise, *"Instahyre — the only permissive Indian source"*, is
-contradicted by the evidence, and A7.19's "conditional" is resolved to **FAIL**.
-Checked rather than assumed: no product surface ever claimed Instahyre, so
-nothing needed correcting.
-
-**The need is already served** — 4a routes an Instahyre link to a refusal that
-names the board and opens the paste box, reaching an identical tailored resume,
-score and queue entry with no ToS exposure.
-
-No load test: no runtime code changed. Suites: backend **381**, frontend
-**255**.
+**A commercial data agreement with Info Edge (Naukri) is an operator decision,
+logged in BLOCKED.md — never a code path.** The same is true of an official
+Instahyre partner programme. Nothing in this repo may route around a refusal.
 
 ## Next
 
