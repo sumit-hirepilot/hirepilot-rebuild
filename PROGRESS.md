@@ -887,6 +887,38 @@ Acceptance unchanged: 375/768/1440 with screenshots, interaction tests that
 CLICK and assert both state and network call, per-assertion red-green, zero
 console errors, load test after deploy at steady state.
 
+## FEATURE 1 — live counts + experience bands DONE. Three items still owed.
+
+DONE and verified on production:
+ - Live counts: screen said 253, API said 253. Same endpoint as the feed.
+ - The location count no longer claims a narrowing nobody asked for (caught on
+   screen at 375, not by a test).
+ - Experience as tappable NAMED bands, stored as a numeric range. Verified on
+   production at 375: Entry/Mid/Senior/Lead, 54px targets, Senior selects and
+   reports aria-pressed=true. Full slice - migration, clamped endpoint, one
+   declaration in lib/experienceBands.js, chips, and a parsed resume
+   pre-answering the band without ever overwriting a user's own answer.
+ - Load test at steady state: 1,226 / 2,745 / 6,484 ms, zero failures.
+
+STILL OWED on feature 1, in order:
+ 1. Chips for the other known sets: work type, role family, notice period.
+    ChipSelect already exists and is tested - this is wiring, not new work.
+ 2. Searchable select for city and specific role title, prefilled from the
+    resume. Never an empty text field with no guidance. (Today the title and
+    location fields are still bare text inputs.)
+ 3. Resume-parse-as-first-wow: skills DO become removable chips already, but
+    roles and years are not shown and the result is announced as a text
+    summary. Show all three as chips the moment the parse returns.
+ 4. Time-to-first-match at step 4-5: one real scored job before onboarding
+    ends. Nothing exists for this yet.
+ 5. Abandonment recovery: return to the step left. Nothing exists yet.
+ 6. Failed-parse path: the catch already says "you can skip this and add
+    skills manually below", which is close, but the fallback should be a TAP
+    on the same screen rather than a sentence.
+
+THEN: the FULL FEATURE AUDIT (standing goal, spec above), then features 2, 3,
+4a, 4b, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, with the audit after every third.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
