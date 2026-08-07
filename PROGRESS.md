@@ -37,20 +37,50 @@ between server and browser, hydration fails). Jest would not have caught it.
 
 Suites: backend **422**, frontend **264**.
 
-### Close-out step 2 — BLOCKED, and not worked around
+### Close-out step 2 — the refusing half is PROVEN; the submitting half is blocked
 
-The admin token in the order is the literal placeholder `PASTE_TOKEN_HERE`.
-Verified rather than assumed: `POST /api/apply/admin/halt` returns **403
-Forbidden**, and the halt reads `{"halted":true}`.
+**Blocked, and not worked around.** The admin token supplied is **expired** —
+`exp 2026-08-06T20:05:31Z`, now 2026-08-07T14:56Z. Diagnosed two ways rather
+than assumed: it returns **401 "Invalid or expired token"** on `/api/auth/me`
+while the walkthrough token returns 200 on the same endpoint, so the JWT is
+rejected before any admin check and `/admin/halt` 403s because `req.user` is
+never populated.
 
-Proving Auto Apply end to end requires lifting that halt, and the halt is a
-safety control — the standing rule is never to add a second door into one. So
-this is stopped at the token, not routed around.
+Three routes to a credential were tried and all are closed to me:
 
-**Everything else in step 2 is unblocked and not yet started**: the 5/day cap,
-the kill switch, the tier gate, Lever/Ashby staying disabled, and
-applied-requires-a-submission-record can all be exercised without lifting the
-halt, because each of them *refuses* rather than submits.
+| route | result |
+|---|---|
+| Railway CLI | logged in as `sumituxi@gmail.com`; sees only `hirepilot-site` and `regintel-ai` |
+| Railway dashboard in the browser | logged out, showing the login page |
+| App login as `sumituxui@gmail.com` | needs a password |
+
+The halt is a safety control and the standing rule is never to add a second
+door into one, so this stops here rather than routing around it.
+
+**What was proven without lifting it** — every one of these REFUSES rather than
+submits, so none needs the halt down. All observed on production:
+
+| control | evidence |
+|---|---|
+| kill switch halts a start | `POST /queue/:id/start` → **429** `{"reason":"halted"}` |
+| the flag reads as set | `GET /admin/halt` → `{"halted":true}` |
+| Lever not cleared to submit | queued a live Lever job → `automationSupported: false` |
+| Ashby not cleared to submit | queued a live Ashby job → `automationSupported: false` |
+| Greenhouse is the only cleared adapter | queued a live Greenhouse job → `automationSupported: true` |
+| tier gate | Free → `autoApplyIncluded: false`; Copilot → `true` |
+| applied requires a submission record | `/apply/submitted` → 0 rows, and nothing reached `applied` |
+
+Verified through the live queue endpoint, not by reading `SUPPORTED_ATS` — the
+constraint is about what the apply path will *drive*, and Lever/Ashby jobs are
+still ingested from their public APIs, which is a different thing and allowed.
+
+**Walkthrough account restored**: tier back to Copilot, and the three queue
+rows the test created (162–164) skipped. Queue is empty, 0 submitted.
+
+**Still blocked on a working credential**: the live submission proof itself —
+candidate selection → tailoring with the three guards → queue → submit →
+confirmation captured → receipt → tracker, with a screenshot per stage. Also
+the 5/day cap refusing a sixth, which needs five real submissions first.
 
 ### Close-out steps 3 and 4 — not started
 
