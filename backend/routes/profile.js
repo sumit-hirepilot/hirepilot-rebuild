@@ -207,6 +207,27 @@ router.put('/preferences', async (req, res) => {
     const defaultRoles = pick('defaultRoles', existing.default_roles || []);
     const excludedKeywords = pick('excludedKeywords', existing.excluded_keywords || []);
     const includeRelocation = pick('includeRelocation', existing.include_relocation || false);
+
+    /*
+     * Experience as a RANGE, bounded. The UI sends the band it showed; what is
+     * stored is years, because that is what scoring compares against. Clamped
+     * because any value read from a request is unbounded until proven
+     * otherwise, and a negative or 900-year range would silently match
+     * nothing.
+     */
+    const clampYears = (v) => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) ? Math.min(Math.max(n, 0), 50) : null;
+    };
+    const rawMin = pick('experienceMinYears', existing.experience_min_years);
+    const rawMax = pick('experienceMaxYears', existing.experience_max_years);
+    const experienceMinYears = rawMin === null || rawMin === undefined ? null : clampYears(rawMin);
+    let experienceMaxYears = rawMax === null || rawMax === undefined ? null : clampYears(rawMax);
+    // An inverted range is a typo, not a filter. Widen rather than reject, so a
+    // bad pair never silently excludes every job.
+    if (experienceMinYears !== null && experienceMaxYears !== null && experienceMaxYears < experienceMinYears) {
+      experienceMaxYears = experienceMinYears;
+    }
     /*
      * Item A — a toggle may not claim a capability the plan does not include.
      *
@@ -263,9 +284,10 @@ router.put('/preferences', async (req, res) => {
          auto_apply_limit_per_day, auto_apply_min_score, blacklist_companies, dream_companies,
          resume_tailor_mode, auto_tailor_resume, cover_letter_mode, review_before_submit,
          auto_approve, resume_optimization, auto_cover_letter, portfolio_public,
-         notify_recommendations, notify_product, timezone
+         notify_recommendations, notify_product, timezone,
+         experience_min_years, experience_max_years
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20, $21, $22, $23, $24, $25)
+                 $19, $20, $21, $22, $23, $24, $25, $26, $27)
        ON CONFLICT (user_id) DO UPDATE SET
          min_salary = $2, max_salary = $3, job_types = $4, work_arrangements = $5,
          preferred_locations = $6, default_roles = $7, excluded_keywords = $8, include_relocation = $9,
@@ -275,6 +297,7 @@ router.put('/preferences', async (req, res) => {
          auto_approve = $19, resume_optimization = $20, auto_cover_letter = $21,
          portfolio_public = $22, notify_recommendations = $23, notify_product = $24,
          timezone = $25,
+         experience_min_years = $26, experience_max_years = $27,
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
@@ -284,6 +307,7 @@ router.put('/preferences', async (req, res) => {
         resumeTailorMode, !!autoTailorResume, coverLetterMode, !!reviewBeforeSubmit,
         !!autoApprove, resumeOptimization, !!autoCoverLetter, !!portfolioPublic,
         !!notifyRecommendations, !!notifyProduct, timezone,
+        experienceMinYears, experienceMaxYears,
       ]
     );
 

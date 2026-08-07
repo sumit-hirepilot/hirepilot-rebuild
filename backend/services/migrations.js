@@ -476,6 +476,17 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_crash_reports_time ON crash_reports(occurred_at DESC)`,
 
   /*
+   * Wave C target user: 1-15 years, self-taught through senior.
+   *
+   * Stored as a NUMERIC RANGE, never as the label. The UI says "Mid" and
+   * "Senior" because those are the words people use about themselves; scoring
+   * needs years. Keeping the label in the database would mean re-deriving the
+   * range at every read and re-labelling every row whenever the bands move.
+   */
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS experience_min_years INTEGER`,
+  `ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS experience_max_years INTEGER`,
+
+  /*
    * work_mem was 4 MB, and the database has spilled 13,326 MB across 3,120
    * temp files because of it - measured from pg_stat_database, not estimated.
    * That spill is what failed with 53100 when the volume ran out of room, and

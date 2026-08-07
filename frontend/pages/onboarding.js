@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import page from '../styles/Onboarding.module.css';
 import { API_BASE } from '../lib/apiBase';
 import LiveIndexCount from '../components/LiveIndexCount';
+import ChipSelect from '../components/ChipSelect';
+import { EXPERIENCE_BANDS, bandForYears } from '../lib/experienceBands';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
@@ -42,6 +44,8 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
 
   const [basics, setBasics] = useState({ title: '', location: '' });
+  // The band the user tapped. Stored as years on save - see lib/experienceBands.
+  const [experienceBand, setExperienceBand] = useState(null);
   const [skills, setSkills] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
@@ -83,6 +87,18 @@ export default function Onboarding() {
         setUploadMessage(data.error || 'Failed to process resume file');
         return;
       }
+      /*
+       * C1b — the parse pre-answers the question rather than leaving it blank.
+       * A suggestion, never a decision: it renders as selected and one tap
+       * changes it. Only set when nothing has been chosen yet, so a parse can
+       * never overwrite the user's own answer.
+       */
+      const parsedYears = data.parsed.yearsExperience ?? data.parsed.years_experience;
+      if (parsedYears !== undefined && parsedYears !== null && !experienceBand) {
+        const suggested = bandForYears(parsedYears);
+        if (suggested) setExperienceBand(suggested.id);
+      }
+
       const newSkills = (data.parsed.skills || []).filter((s) => !skills.includes(s));
       setSkills((prev) => [...prev, ...newSkills]);
       if (data.parsed.experience?.length) {
@@ -122,7 +138,20 @@ export default function Onboarding() {
       await fetch(`${base}/api/profile/preferences`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(preferences),
+        /*
+         * The band travels as YEARS, because that is what scoring compares
+         * against. The label never reaches the database - it would have to be
+         * re-derived on every read and re-labelled the day the bands move.
+         */
+        body: JSON.stringify({
+          ...preferences,
+          ...(experienceBand
+            ? (() => {
+              const b = EXPERIENCE_BANDS.find((x) => x.id === experienceBand);
+              return b ? { experienceMinYears: b.minYears, experienceMaxYears: b.maxYears } : {};
+            })()
+            : {}),
+        }),
       });
     }
 
@@ -222,6 +251,20 @@ export default function Onboarding() {
                   zeroText="No jobs match that title yet"
                 />
               </div>
+
+              {/*
+                * Tap, do not type. The answer set is known and short, so every
+                * option is visible at once and the user is choosing rather
+                * than recalling. The label is the word people use about
+                * themselves; the years are the hint, and only the years are
+                * stored - see lib/experienceBands.
+                */}
+              <ChipSelect
+                legend="How much experience do you have?"
+                options={EXPERIENCE_BANDS}
+                value={experienceBand}
+                onChange={setExperienceBand}
+              />
               <div className={page.formGroup}>
                 <label>Location</label>
                 <input
