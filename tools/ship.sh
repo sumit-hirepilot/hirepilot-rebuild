@@ -34,24 +34,24 @@ floor_for() {
   echo "$n"
 }
 
-echo "== 1/10 no mutation marker or audit artifact =="
+echo "== 1/11 no mutation marker or audit artifact =="
 node tools/check-no-mutation-artifacts.js
 
 # A guard nothing calls is indistinguishable from no guard, and the suite is
 # green either way because it tests the function and not the path.
-echo "== 2/10 every guard has a live caller =="
+echo "== 2/11 every guard has a live caller =="
 node tools/guard-wiring.js --strict
 
 # A caller whose target is gone fails silently until someone clicks it.
-echo "== 3/10 every frontend /api call has a route behind it =="
+echo "== 3/11 every frontend /api call has a route behind it =="
 node tools/check-frontend-endpoints.js
 
 # A write that cannot satisfy a live constraint is a guaranteed 500.
-echo "== 4/10 every write can satisfy the live constraints, every input bounded =="
+echo "== 4/11 every write can satisfy the live constraints, every input bounded =="
 node tools/check-write-paths.js
 node tools/check-query-bounds.js
 
-echo "== 5/10 user-visible claims still match the code =="
+echo "== 5/11 user-visible claims still match the code =="
 node tools/check-landing-claims.js
 node tools/check-plan-names.js
 node tools/check-claim-tests.js
@@ -59,19 +59,32 @@ node tools/check-plain-language.js
 node tools/check-mobile-claims.js
 echo
 
-echo "== 6/10 backend suite =="
+echo "== 6/11 backend suite =="
 node tools/run-suite.js backend "$(floor_for backend)"
 
-echo "== 7/10 frontend suite =="
+echo "== 7/11 frontend suite =="
 node tools/run-suite.js frontend "$(floor_for frontend)"
 
 # And the endpoint tests have to be able to TELL. Each is re-run with its
 # guard's call removed; one that stays green proves only that the route replies.
-echo "== 8/10 endpoint guard tests go red when the guard is unwired =="
+echo "== 8/11 endpoint guard tests go red when the guard is unwired =="
 node tools/prove-endpoint-guards-red.js
 node tools/check-mock-boundaries.js
 
-echo "== 9/10 commit =="
+# The gate ran ten stages of tests and a push that COULD NOT BUILD passed every
+# one. Feature 4a's frontend never reached production: `next build` failed on an
+# ESLint error, Railway kept serving the last good build, and nothing said so.
+# Jest does not build. Only the build builds.
+echo "== 9/11 the frontend actually builds =="
+( cd frontend && npx next build >/tmp/hp-next-build.log 2>&1 ) || {
+  echo "FRONTEND BUILD FAILED - this would deploy nothing and say nothing:"
+  tail -25 /tmp/hp-next-build.log
+  exit 1
+}
+echo "frontend builds"
+echo
+
+echo "== 10/11 commit =="
 git add -A
 # Nothing staged is not a failure - the gate still had to pass to get here.
 if git diff --cached --quiet; then
@@ -89,7 +102,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-echo "== 10/10 push =="
+echo "== 11/11 push =="
 git push
 
 echo

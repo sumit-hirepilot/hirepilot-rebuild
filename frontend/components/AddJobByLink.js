@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useState } from 'react';
 import styles from '../styles/AddJobByLink.module.css';
 
@@ -126,9 +127,9 @@ export default function AddJobByLink({ token, base, onAdded }) {
              * pasting the description reaches the same place, and saying so
              * here is the difference between a wall and a detour.
              */
-            <a className={styles.pasteLink} href="/resume?tab=Tailor%20for%20a%20Job">
-              Paste the description instead →
-            </a>
+            <Link className={styles.pasteLink} href="/resume?tab=Tailor%20for%20a%20Job">
+              Paste the description instead &rarr;
+            </Link>
           )}
         </div>
       )}
