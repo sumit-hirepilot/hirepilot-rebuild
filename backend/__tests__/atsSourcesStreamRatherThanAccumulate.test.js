@@ -94,12 +94,21 @@ describe('the streaming form never accumulates', () => {
 });
 
 describe('the aggregator declares which sources stream', () => {
-  it('greenhouse, lever and ashby are marked, and nothing else is', () => {
+  it('exactly the sources that need it are marked', () => {
+    /*
+     * Pinned as a SET, so adding or dropping one is a deliberate edit here.
+     * That is why this test failed when nofluffjobs joined - which is the
+     * behaviour wanted, not an inconvenience.
+     *
+     * nofluffjobs is the fourth. Its whole-catalogue endpoint answers 160MB in
+     * one response and took RSS to 688MB on a measured boot, against a 500MB
+     * budget; it is paged now and hands over a page at a time.
+     */
     const src = require('fs').readFileSync(
       require('path').join(__dirname, '..', 'services', 'jobAggregator.js'), 'utf8'
     );
     const table = src.slice(src.indexOf('const SOURCES'), src.indexOf('];', src.indexOf('const SOURCES')));
     const streaming = [...table.matchAll(/key: '(\w+)'[^}]*streams: true/g)].map((m) => m[1]);
-    expect(streaming.sort()).toEqual(['ashby', 'greenhouse', 'lever']);
+    expect(streaming.sort()).toEqual(['ashby', 'greenhouse', 'lever', 'nofluffjobs']);
   });
 });

@@ -1,71 +1,150 @@
 const axios = require('axios');
 
-const BASE_URL = 'https://nofluffjobs.com/api/posting';
+/*
+ * PAGED, because the whole-catalogue endpoint is 160MB in one response.
+ *
+ * `GET /api/posting` returns every posting at once. Measured on a real boot
+ * with per-phase instrumentation, this one source took RSS from 106MB to 688MB
+ * and heap from 28MB to 455MB: ~157MB of that is the raw body held as an
+ * external Buffer, and the rest is the parsed JSON plus the dedup Map plus the
+ * mapped output, all resident together. The budget is 500MB peak; the
+ * container ceiling is 1GB.
+ *
+ * D53 measured this same step at 246MB and recorded it as "the largest single
+ * step, a single API call with no pagination, inside budget, the next
+ * candidate if the ceiling tightens". Their catalogue grew and it stopped
+ * being inside budget - which is what a note like that is for.
+ *
+ * `POST /api/search/posting?offset=` serves the same data ~4MB at a time and
+ * reports totalCount, so the cap below can say what it skipped.
+ */
+const SEARCH_URL = 'https://nofluffjobs.com/api/search/posting';
 
-const fetchJobs = async () => {
+/*
+ * A cap, REPORTED rather than silent.
+ *
+ * Their index is ~22,000 postings, nearly all Polish. This source contributed
+ * ~3,000 after dedup when it was pulled whole; reading all 22,000 would change
+ * what the product is - a board mostly of one country - and cost ~45 requests a
+ * cycle. So it is bounded, and when the bound bites it logs how many were left,
+ * because a silent truncation reads as "that is all there was".
+ */
+const MAX_RAW = Number(process.env.NOFLUFFJOBS_MAX_RAW) || 8000;
+const PAGE_TIMEOUT_MS = 20000;
+
+/*
+ * One page's worth, deduped against what earlier pages already yielded.
+ *
+ * The API returns one entry per (job, province-it-is-visible-in) pair, so a
+ * posting open to several regions appears under a dozen province-suffixed
+ * URLs. The unpaged version could prefer the plain "Remote" variant because it
+ * held every entry at once; paging means that variant may arrive after one is
+ * already kept, so the first seen wins. That is the honest trade for not
+ * holding 22,000 postings in memory, and it moves only the location field -
+ * which is still read from the posting's own places either way.
+ */
+function mapPostings(postings, seen) {
+  const out = [];
+  for (const p of postings) {
+    if (!p.id || !p.title || !p.name) continue;
+    const key = `${p.name}|${p.title}|${p.posted}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(mapPosting(p));
+  }
+  return out;
+}
+
+function mapPosting(p) {
+  const places = p.location?.places || [];
+  const cityPlace = places.find((pl) => pl.city && !/remote/i.test(pl.city));
+  const country = places.find((pl) => pl.country)?.country?.name || '';
+  const isRemote = p.fullyRemote || places.some((pl) => /remote/i.test(pl.city || ''));
+  const location = isRemote ? 'Remote' : (cityPlace?.city || country || 'Poland');
+
+  const salaryFrom = p.salary?.from ? Math.round(p.salary.from) : null;
+  const salaryTo = p.salary?.to ? Math.round(p.salary.to) : null;
+
+  const description = [
+    `${(p.category || '').replace(/-/g, ' ')} role, ${(p.seniority || []).join('/')} level.`,
+    location ? `Location: ${location}.` : '',
+    salaryFrom ? `Salary: ${salaryFrom}-${salaryTo || salaryFrom} ${p.salary?.currency || ''}/month.` : '',
+  ].filter(Boolean).join(' ');
+
+  return {
+    external_id: `nfj-${p.id}`,
+    id: `nfj-${p.id}`,
+    title: p.title,
+    company: p.name,
+    url: `https://nofluffjobs.com/job/${p.url}`,
+    job_url: `https://nofluffjobs.com/job/${p.url}`,
+    description,
+    location,
+    country: country || 'Poland',
+    salary_min: salaryFrom,
+    salary_max: salaryTo,
+    currency: p.salary?.currency || 'PLN',
+    work_arrangement: isRemote ? 'remote' : 'on-site',
+    job_type: 'full-time',
+    posted_at: p.posted ? new Date(Number(p.posted)) : null,
+  };
+}
+
+/**
+ * @param {Function} [onBatch] called with each page's mapped rows. When given,
+ *   nothing accumulates: a page is mapped, handed over and released before the
+ *   next is fetched. Without it the rows are collected and returned, which is
+ *   what the tests and any other caller expect.
+ */
+const fetchJobs = async (onBatch) => {
   try {
-    const response = await axios.get(BASE_URL, {
-      timeout: 10000,
-      headers: { Accept: 'application/json' },
-    });
+    const collected = onBatch ? null : [];
+    // Keys only. The postings themselves are released with each page, so this
+    // stays small however many pages are read.
+    const seen = new Set();
+    let offset = 0;
+    let fetchedRaw = 0;
+    let totalCount = null;
 
-    const postings = response.data?.postings || [];
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const response = await axios.post(
+        `${SEARCH_URL}?offset=${offset}&salaryCurrency=PLN&salaryPeriod=month&region=pl`,
+        { rawSearch: '' },
+        {
+          timeout: PAGE_TIMEOUT_MS,
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        }
+      );
 
-    // The API returns one entry per (job, province-it's-visible-in) pair for
-    // jobs open to multiple regions, not one entry per job - the same
-    // posting shows up under a dozen different province-suffixed URLs. Dedup
-    // to a single canonical entry per (company, title, postedAt), preferring
-    // the plain "Remote" URL variant when one exists.
-    const byKey = new Map();
-    for (const p of postings) {
-      if (!p.id || !p.title || !p.name) continue;
-      const key = `${p.name}|${p.title}|${p.posted}`;
-      const existing = byKey.get(key);
-      const places = p.location?.places || [];
-      const isRemoteVariant = places.some((pl) => /remote/i.test(pl.city || ''));
-      if (!existing || (isRemoteVariant && !existing.__isRemoteVariant)) {
-        byKey.set(key, { ...p, __isRemoteVariant: isRemoteVariant });
+      const postings = response.data?.postings || [];
+      if (totalCount == null) totalCount = Number(response.data?.totalCount) || null;
+      if (!postings.length) break;
+
+      fetchedRaw += postings.length;
+      offset += postings.length;
+
+      const rows = mapPostings(postings, seen);
+      // eslint-disable-next-line no-await-in-loop
+      if (onBatch) await onBatch(rows);
+      else collected.push(...rows);
+
+      if (fetchedRaw >= MAX_RAW) {
+        if (totalCount && totalCount > fetchedRaw) {
+          console.log(
+            `nofluffjobs: stopped at ${fetchedRaw} of ${totalCount} postings `
+            + `(NOFLUFFJOBS_MAX_RAW=${MAX_RAW}); ${totalCount - fetchedRaw} not read`
+          );
+        }
+        break;
       }
     }
 
-    return Array.from(byKey.values()).map((p) => {
-      const places = p.location?.places || [];
-      const cityPlace = places.find((pl) => pl.city && !/remote/i.test(pl.city));
-      const country = places.find((pl) => pl.country)?.country?.name || '';
-      const isRemote = p.fullyRemote || p.__isRemoteVariant;
-      const location = isRemote ? 'Remote' : (cityPlace?.city || country || 'Poland');
-
-      const salaryFrom = p.salary?.from ? Math.round(p.salary.from) : null;
-      const salaryTo = p.salary?.to ? Math.round(p.salary.to) : null;
-
-      const description = [
-        `${(p.category || '').replace(/-/g, ' ')} role, ${(p.seniority || []).join('/')} level.`,
-        location ? `Location: ${location}.` : '',
-        salaryFrom ? `Salary: ${salaryFrom}-${salaryTo || salaryFrom} ${p.salary?.currency || ''}/month.` : '',
-      ].filter(Boolean).join(' ');
-
-      return {
-        external_id: `nfj-${p.id}`,
-        id: `nfj-${p.id}`,
-        title: p.title,
-        company: p.name,
-        url: `https://nofluffjobs.com/job/${p.url}`,
-        job_url: `https://nofluffjobs.com/job/${p.url}`,
-        description,
-        location,
-        country: country || 'Poland',
-        salary_min: salaryFrom,
-        salary_max: salaryTo,
-        currency: p.salary?.currency || 'PLN',
-        work_arrangement: isRemote ? 'remote' : 'on-site',
-        job_type: 'full-time',
-        posted_at: p.posted ? new Date(Number(p.posted)) : null,
-      };
-    });
+    return onBatch ? { fetched: fetchedRaw } : collected;
   } catch (err) {
     console.error('NoFluffJobs API error:', err.message);
     throw err;
   }
 };
 
-module.exports = { fetchJobs };
+module.exports = { fetchJobs, MAX_RAW };

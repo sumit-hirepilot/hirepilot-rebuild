@@ -23,7 +23,8 @@ const SOURCES = [
   { key: 'remotive', fetchJobs: motiveClient.fetchJobs },
   { key: 'himalayas', fetchJobs: himalayasClient.fetchJobs },
   { key: 'hackernews', fetchJobs: hackernewsClient.fetchJobs },
-  { key: 'nofluffjobs', fetchJobs: nofluffjobsClient.fetchJobs },
+  // streams: its catalogue endpoint is 160MB in one response; paged now.
+  { key: 'nofluffjobs', fetchJobs: nofluffjobsClient.fetchJobs, streams: true },
   { key: 'landingjobs', fetchJobs: landingjobsClient.fetchJobs },
   { key: 'workingnomads', fetchJobs: workingnomadsClient.fetchJobs },
   { key: 'jobicy', fetchJobs: jobicyClient.fetchJobs },
