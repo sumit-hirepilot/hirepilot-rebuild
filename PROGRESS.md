@@ -5,7 +5,7 @@ New Railway account is production. Old account abandoned by operator decision.
 - **App** https://frontend-production-0d14b.up.railway.app
 - **API** https://backend-production-e6a8.up.railway.app
 
-Suites: **backend 461**, **frontend 267**. Gate stages 1–9 pass.
+Suites: **backend 472**, **frontend 267**. Gate stages 1–9 pass.
 
 ## Now
 
@@ -81,19 +81,39 @@ wrong secret 403, absent secret 403, correct secret halts and reads back
 
 ## Measured
 
-**Memory, production** (`/api/health`):
+**Memory, production** — budget met. Full analysis as D53.
 
-| | measured | budget | |
+| | before | after | budget |
 |---|---|---|---|
-| steady state, 90 samples over 12 min | **207–208 MB** (heap 72 MB) | under 300 MB | pass |
-| peak seen at ~22s uptime after a deploy | **687 MB** (heap 458 MB) | under 500 MB | **FAIL** |
+| boot peak | **687 MB** | **281 MB** | under 500 MB ✅ |
+| greenhouse ingest step | 243 → 377 MB, heap 158 MB | 243 → 272 MB, heap 32 MB | |
+| steady state | 207 MB | 281 MB after a cycle, settling | under 300 MB ✅ |
 
-Steady state is comfortably inside budget and has come down as the corpus
-settled. The peak is a single early-boot spike and is **not yet characterised**:
-the aggregator already runs one source at a time (GOAL 1d), so the obvious
-cause is ruled out, and a 458 MB heap that early points somewhere else. It
-needs a sampled boot to locate, which is the next task and gates the feature
-queue.
+Located by per-phase instrumentation, not by guessing — two hypotheses died
+first and are recorded as dead leads. GOAL 1d bounded how many companies were
+fetched at once but not how many postings were **resident**: greenhouse's
+10,179 postings were accumulated into one array and held while writing. The
+three ATS sources now write each window before fetching the next.
+`services/memlog.js` is permanent, and `/api/health` reports `peakRssMb`.
+
+**Load, 1,000 concurrent at steady state** — 3,000 requests, **3,000 ok, 0
+failed**, RSS 303 → 304 MB. p95 34 s is recorded in LOAD.md as a queue rather
+than a crash, on one trial-plan replica; zero failures was the bar and it is
+met.
+
+## D52 — a failure reported in a field nobody reads is a failure swallowed
+
+The receipt defect's class, swept. `tools/check-swallowed-writes.js` is gate
+stage 5 and runs two checks, because the obvious one would not have caught it:
+
+- **D52a** a write failure caught with nothing reaching the caller. Proved on a
+  known positive; the codebase is clean.
+- **D52b** a soft-failure flag returned on a 2xx that **no test reads** — the
+  actual shape, since the receipt catch reported `frozen: false` faithfully and
+  nobody ever asserted it. Found one live instance: `verified: false` on the
+  evidence endpoint, the refusal behind "nothing reaches applied without a
+  submission record", proved by hand on production and by no test at all. Now
+  covered both directions through the real route.
 
 ## Auto Apply — proven end to end, WEAKENED
 
@@ -127,10 +147,11 @@ Lever and Ashby stay disabled and their terms remain unread.
 
 ## Next
 
-1. Characterise and fix the early-boot memory peak, before any feature work.
-2. Features 6, 8, 9, 10, 11, 12, 13, 14, 15, audit after every third.
-3. Load test 50/200/500/1000 at steady state, after each feature.
-4. Final audit at 375/768/1440 and on an emulated phone.
+The feature queue, not yet started:
+
+1. Features 6, 8, 9, 10, 11, 12, 13, 14, 15, audit after every third.
+2. Load test 50/200/500/1000 at steady state after each deploy.
+3. Final audit at 375/768/1440 and on an emulated phone.
 
 Seeded account `autoapply-proof@hirepilot.local` and the operator account
 `migration-check@hirepilot.local` both still exist on production and should be
