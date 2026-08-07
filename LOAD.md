@@ -327,3 +327,19 @@ A first pass ran at uptime **205s** and returned a clean, coherent curve
 (1,102 / 2,533 / 7,072 ms). It is discarded anyway — it was inside the
 5-minute window, and a rule that only applies when the numbers look wrong is
 not a rule. Re-measured above at 307s.
+
+## Feature 3 (tailor from a pasted JD) — load test after deploy
+
+Run at uptime 362s. `f53c180`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,102 ms | 270 MB |
+| 200 | 600 | **600** | **0** | **2,488 ms** | 293 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,280 ms | 305 MB |
+
+Against 2,631 ms at 200 last run: no regression, zero failures. Peak RSS 305 MB.
+
+The feed path is untouched by this feature — the new work is on
+`POST /api/resume/tailor`, which the load profile does not exercise. Recorded
+so that is visible rather than read as evidence the new path is fast.

@@ -2,58 +2,56 @@
 
 ## Now
 
-**D46 — browser resize proves CSS, not mobile rendering.** Recorded in the
-master prompt and DECISIONS.md, swept, shipped and verified. `e6bd0a4`.
+**D46 and feature 3 are both done, deployed and verified.** `e6bd0a4`,
+`5f10baa`, `f53c180`.
 
-Resizing sets a **true viewport width**, so media queries run and the page lays
-out correctly whether or not a viewport meta tag exists. The tag is the one
-thing a resized window cannot test. Three 375px audit passes reported zero
-overflow and correct layout while every authenticated page shipped without it.
+### D46 — resize proves CSS, not mobile rendering
 
-### The sweep found a second one, of the same shape and worse
+Recorded in the master prompt and DECISIONS.md. The sweep found a second
+instance of the same blindness, worse than the first: **nothing in the frontend
+detected a phone at all**, so Chrome for Android and every iOS browser were
+offered "Download Extension" and walked through installing it. Neither can.
 
-**Nothing in the frontend detected a phone at all** — no userAgent check, no
-matchMedia, no touch detection anywhere. So on Chrome for Android and every iOS
-browser the header offered "Download Extension" and the post-signin modal
-walked through installing it. Neither can install a Chrome extension. An
-instruction that cannot be followed, shown to exactly the users the landing
-page invites with "runs in your mobile browser".
+`lib/extensionCapable.js` decides from what a device reports and errs toward
+**capable**. It relabels rather than hides — dropping the button would remove
+the only place the desktop-only requirement is stated.
 
-At 375px in a resized desktop window that button is pixel-perfect. No resize
-test could ever have caught it.
+Verified on production against real signals, not a width: emulated Pixel 8
+(`mobile: true`, 5 touch points) gets "Applying needs a desktop" and a
+"Desktop only" modal with no install steps; desktop Mac (`mobile: false`, 0
+touch points) is unchanged. Viewport tag confirmed in the **served HTML** of
+five pages.
 
-`lib/extensionCapable.js` decides from what a device **reports**:
-`userAgentData.mobile`, the UA, and `maxTouchPoints` for iPadOS — which sends a
-desktop Mac UA and is separated from a real Mac only by its touch count. It
-errs toward **capable**: a desktop user wrongly blocked loses a working
-feature, and a touchscreen Windows laptop is explicitly not a phone.
+### Feature 3 — tailor from a pasted JD
 
-It does not go silent. Hiding the button would drop the only place the
-desktop-only requirement is stated. The control is **relabelled** and the modal
-explains, with room to read it.
+`POST /api/resume/tailor` takes `jobId` **or** `jobText`. Both converge before
+anything is generated, so there is one guarded pipeline rather than two.
 
-Verified on production against real device signals, not a width:
+The paste is untrusted: bounded at 20k, control/zero-width/bidi characters
+stripped, `instructionLike` recorded but **never acted on**. The defence is
+architectural and stated as such — the engine is templated, so there is no
+model to instruct.
 
-| | emulated Pixel 8 | desktop Mac |
-|---|---|---|
-| `userAgentData.mobile` | true | false |
-| `maxTouchPoints` | 5 | 0 |
-| CTA | "Applying needs a desktop" | "Download Extension" |
-| modal | "Desktop only", no steps | full install steps |
-| auto-prompt | suppressed | fires |
+All three honesty guards, on both paths, proven through the real route:
+untraceable_claim, invented_number, and **no removal — now a runtime guard**
+(`findRemovedLines`, 422) rather than a promise resting on a test.
 
-Viewport tag confirmed in the **served HTML** of all five pages checked.
+Three things caught before or just after shipping, each by a standing rule:
 
-A first read said the fix was not working. It was — the tab held a stale
-bundle. Checking the served chunk for the new string, rather than trusting the
-rendered page, is what stopped me "fixing" working code.
+| | |
+|---|---|
+| `tailored_resumes.job_id` was **NOT NULL** — the paste path was a guaranteed 500 | read the constraint before shipping the write |
+| **my own guard-3 tests were vacuous** — they passed while the guard never ran, because with no surviving skill the engine returns the input unchanged | mutated the engine to drop a line and watched them stay green |
+| the pasted row was written, accepted by the new CHECK, returned 201 — and **hidden**, because `GET /tailored` inner-joined `jobs` | read the row back from production instead of trusting the 201 |
 
-Load: **200 concurrent 600/600, p95 2,631 / 2,634 ms. No regression.** A first
-pass at uptime 205s gave a clean curve and was discarded anyway — it was inside
-the 5-minute window, and a rule that only applies when the numbers look wrong
-is not a rule.
+Verified on production: hostile paste → 201 with none of Kubernetes, "15
+years", "team of 40" or "resume writer" in the output, and Kubernetes surfaced
+as a question. Too-short → 400. Both inputs → 400. `tailored_resumes_source_ck`
+present in `db-health`, read back from the running database.
 
-Suites: backend **332**, frontend **255**.
+Load: **200 concurrent 600/600, p95 2,488 ms vs 2,631 ms. No regression.**
+
+Suites: backend **348**, frontend **255**.
 
 ## Next
 
