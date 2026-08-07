@@ -2,54 +2,60 @@
 
 ## Now
 
-**Full feature audit, round 2 — done. Four defects, all fixed and verified on
-production.** `d46c991`, `69efd94`, `94ad0ac`, `197ded6`. Full table in
-AUDIT.md.
+**Both lanes merged to main and deployed. D49 is live with its notice and the
+index is re-scored.** `4291a74`.
 
-| # | Defect | Found by |
-|---|---|---|
-| D1 | **feature 4a's frontend never deployed** — `next build` failed, Railway kept the last good build, and the gate ran ten stages of tests over a bundle that could not be built | grepping the served chunks |
-| D2 | the refusal handoff pointed correctly and **landed on the wrong tab** — `/resume` never honoured `?tab=` | clicking it |
-| D3 | tailoring **succeeded and the screen threw the result away** — `reload()` unmounted the component that held it; hit both paths, predates feature 3 | pressing the button |
-| D5 | the desktop-only label **overflowed the header and clipped "4500 left" to "45"** at 375; page overflow read 0 throughout | a screenshot |
+### Close-out step 1 — done
 
-D1 is the one that matters most: the gate could not see a build. `next build`
-is now stage 9 of 11, proved red by restoring the `<a>`.
+`lane-a-backend` then `lane-b-frontend`, rebased. One conflict, `HANDOFF.md`,
+resolved by keeping **both** lanes' sections since neither edits the other's.
 
-D4 was **disproved** — the dashboard greeting looked wrong because I had
-injected a session shaped like `/api/auth/me` (`full_name`) rather than
-`/api/auth/login` (`fullName`). Recorded as an artifact, with the real
-observation kept: those two endpoints describe one field two ways.
+**HANDOFF A → B · 4 shipped in the same deploy as the formula**, which was the
+condition. `ScoreChangeNotice` states what changed, why, and that nothing about
+the user's profile or applications moved.
 
-Everything else passed, checked against the data behind it: landing figures,
-facet sums, closed jobType vocabulary, experience facet == filter on all four
-bands, scoring arithmetic (headline % = Σ contributions, per-component
-score×weight, weights = 1.0), credits, plan names, all refusal reasons, the
-hostile paste, and SSRF — all on production, at 1440 / 768 / 375 and on an
-emulated phone reporting `userAgentData.mobile: true` and 5 touch points.
+**Re-score on production, complete:**
 
-Load after the fixes: **200 concurrent 600/600, p95 2,593 ms vs 2,777 ms.**
-
-Suites: backend **381**, frontend **262**.
-
-### All four Indian boards are now assessed and closed
-
-| board | verdict |
+| | |
 |---|---|
-| Naukri | **FAIL** — 403 on `robots.txt` itself (Akamai edge); cannot even read the permission file |
-| Wellfound | **FAIL** — disallows `/_jobs/` and every job-page query pattern |
-| Cutshort | **FAIL** — disallows `/view/j/`, `/vj/`, `/*?job_listing` — the job views themselves |
-| Instahyre | **FAIL** — permissive `robots.txt`, but the server 403s every page behind a Cloudflare challenge, including the sitemap that file advertises to crawlers |
+| rows | **2,999**, all updated, `remaining: 0` |
+| moved up | **1,252** |
+| moved down | **399** |
+| unchanged (< 0.0001) | 1,348 |
+| mean delta | **+0.036** (weighted across both passes) |
 
-**The paste path is the answer, not a workaround.** A user pastes one link or
-one description for a job they are already looking at. That is not a crawl, it
-raises no ToS question, and it reaches an identical tailored resume, score and
-queue entry. When a board declines, the product names it and hands over — which
-is why coverage does not depend on any of the four verdicts above changing.
+More scores moved *down* than the sample predicted — 399 of them. That is real
+and expected: a user whose skills are broad relative to what postings ask for
+scored well under the old denominator and less well under one that measures
+coverage of the posting.
 
-**A commercial data agreement with Info Edge (Naukri) is an operator decision,
-logged in BLOCKED.md — never a code path.** The same is true of an official
-Instahyre partner programme. Nothing in this repo may route around a refusal.
+Load at steady state: **200 concurrent 600/600, p95 2,656 ms**, zero failures.
+
+The new build gate earned its place immediately — it rejected the notice's
+first cut for `toLocaleString()` with no locale (A3/H3: host locale differs
+between server and browser, hydration fails). Jest would not have caught it.
+
+Suites: backend **422**, frontend **264**.
+
+### Close-out step 2 — BLOCKED, and not worked around
+
+The admin token in the order is the literal placeholder `PASTE_TOKEN_HERE`.
+Verified rather than assumed: `POST /api/apply/admin/halt` returns **403
+Forbidden**, and the halt reads `{"halted":true}`.
+
+Proving Auto Apply end to end requires lifting that halt, and the halt is a
+safety control — the standing rule is never to add a second door into one. So
+this is stopped at the token, not routed around.
+
+**Everything else in step 2 is unblocked and not yet started**: the 5/day cap,
+the kill switch, the tier gate, Lever/Ashby staying disabled, and
+applied-requires-a-submission-record can all be exercised without lifting the
+halt, because each of them *refuses* rather than submits.
+
+### Close-out steps 3 and 4 — not started
+
+Features 6, 8, 9, 10, 11, 12, 13, 14, 15 and the final audit are untouched.
+Stated plainly rather than partially attempted: nothing is in flight.
 
 ## Next
 

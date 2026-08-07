@@ -376,3 +376,17 @@ Run at uptime 693s. `197ded6`.
 Against 2,777 ms at 200 last run: improved, zero failures. All four fixes were
 frontend-only, so no change was expected on these endpoints; measured anyway,
 because "believed to be cosmetic" is not evidence.
+
+## D49 merge — both lanes on main, formula + notice + re-score
+
+Run at uptime 593s. `4291a74`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,099 ms | 321 MB |
+| 200 | 600 | **600** | **0** | **2,656 ms** | 342 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,329 ms | 350 MB |
+
+Zero failures at 200 concurrent, p95 2,656 ms against 2,593 ms last run. The
+scoring formula changed underneath this and the feed is unaffected — the
+denominator is computed from text already loaded, so no extra query.
