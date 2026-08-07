@@ -367,3 +367,23 @@
   opacity: .5; cursor: not-allowed; filter: grayscale(1);
 }
 .connectButton:disabled:hover { background: inherit; border-color: inherit; }
+
+/* The Cancel control /pricing and /refund-policy both point people to.
+   Deliberately not styled as a primary action: it is an exit, and dressing an
+   exit up as the obvious next click is the retention dark pattern the refund
+   page promises there is none of. Min height 44px - the audit found tap
+   targets under 28px at 375. */
+.planCancel {
+  display: inline-block;
+  margin-top: 14px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--border, #d9dbe3);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted, #5a5f6e);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.planCancel:hover { border-color: #b9bcc7; color: var(--text, #1b1d24); }

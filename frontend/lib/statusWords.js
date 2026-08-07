@@ -26,7 +26,22 @@ export const STATUS_WORDS = {
   offer: { label: 'Offer', hint: null },
   hired: { label: 'Hired', hint: null },
   rejected: { label: 'No this time', hint: 'Not a reflection of the work you did.' },
-  failed: { label: 'Did not send', hint: 'Nothing reached the employer — you can try again.' },
+  /*
+   * "Did not send" / "Nothing reached the employer" asserted more than the
+   * system knows. routes/apply.js sets 'failed' in exactly one place: the
+   * branch where there is no confirmation id AND no success message on the
+   * post-submit page. Its own failure_reason says so - "Could not verify
+   * submission ... Not marked as applied." The form may well have gone
+   * through; what is missing is the evidence.
+   *
+   * Telling someone nothing arrived, and inviting a retry, is how a duplicate
+   * application reaches a real employer. Absence of a receipt is not absence
+   * of a submission - containment is not existence.
+   */
+  failed: {
+    label: 'Not confirmed',
+    hint: 'No confirmation came back, so this is not recorded as applied. It may still have gone through — check with the employer before sending again.',
+  },
   skipped: { label: 'You skipped this', hint: null },
 };
 

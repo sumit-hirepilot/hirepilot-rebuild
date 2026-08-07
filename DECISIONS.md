@@ -846,3 +846,38 @@ D47 — Ingest fetched every source concurrently, under a 1 GB ceiling.
       of thrown-and-caught errors per run, wasted allocation, and enough noise
       to bury a real error. Checked before inserting now, because the throw is
       the expensive part.
+
+## D45 — a test asserts behaviour, never the claim that describes it
+
+`landingTruth` asserted the pricing page contains "never per application". It
+was green throughout while `services/submissionGate.js` refused to submit at
+`remaining <= 0` — the suite was defending a sentence the product contradicts,
+so fixing the lie would have read as breaking the tests.
+
+The sweep for the class found three more of the same shape, and each was a real
+defect underneath:
+
+- **"Cancel in one click."** Both `/pricing` and `/refund-policy` gave the
+  route "Settings → Plans → Cancel". There was no Cancel control and no cancel
+  path in the backend. Cancelling is returning to Free, which
+  `/api/plans/select` already does, so the **control was built** rather than
+  the sentence softened. The copy also promised end-of-period cancellation;
+  billing is not connected, so there is no period — it now says so.
+- **"Runs in your mobile browser — the whole product."** `<meta name="viewport">`
+  was in `pages/index.js` and nowhere else, so every authenticated page laid out
+  at the ~980px fallback on a real phone and zoomed out. Moved to `_app.js`.
+  The 375px audit pass could not see this: resizing sets a true viewport width,
+  so the media queries ran and the pages looked correct. Only a real mobile
+  browser reads the tag.
+- **"Nothing reached the employer."** `statusHint('failed')` asserted more than
+  the system knows. `routes/apply.js` sets `failed` in exactly one branch —
+  no confirmation id and no success message — and its own `failure_reason` says
+  "Could not verify submission". The form may have gone through. Telling
+  someone nothing arrived and inviting a retry is how a duplicate application
+  reaches a real employer. Now "Not confirmed", with the honest hint.
+
+`tools/check-claim-tests.js` sweeps for the shape. Its first cut counted
+`\w+\(\s*['"`]` as grounding, which matched the `read('pages', ...)` call that
+fetches the copy — so every claim test grounded itself and the checker reported
+green on the two defects it was written from. Caught only by proving it on a
+known positive, the same way the guard-wiring census went wrong twice.

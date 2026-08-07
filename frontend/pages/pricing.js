@@ -207,9 +207,10 @@ export default function Pricing() {
 
               <dt>Cancel in one click</dt>
               <dd>
-                Settings → Plans → Cancel. One click, effective at the end of the period you have
-                already paid for, no email, no retention call, no form asking why. Your data stays
-                until you delete it, and deleting it is also one click.
+                Settings → Plans → &ldquo;Cancel my plan&rdquo;. One click, no email, no retention
+                call, no form asking why. Billing is not connected yet, so nothing has been
+                charged and cancelling takes effect immediately — it puts you back on Free. Your
+                data stays until you delete it.
               </dd>
 
               <dt>Prices in your currency</dt>

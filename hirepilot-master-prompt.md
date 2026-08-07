@@ -445,6 +445,23 @@ Blocked on: —
 ## Standing rules
 <rules learned from failures>
 
+- **A test must assert the behaviour a claim describes, never that the claim
+  exists.** A test asserting on copy pins that copy in place after the
+  behaviour changes, and turns the correction into a red suite. Coverage
+  pointing the wrong way is worse than no coverage.
+
+  `landingTruth` required the pricing page to say "never per application" while
+  `submissionGate` refused to submit at `remaining <= 0`. It required the page
+  to say "cancel in one click" while no cancel control and no cancel route
+  existed. It required the homepage to say "runs in your mobile browser" while
+  `<meta name="viewport">` was on the landing page only, so every other page
+  laid out at ~980px on a real phone.
+
+  The pattern to copy is `check-plan-names.js`: it checks the metering claim
+  against the **gate**, not against prose. `tools/check-claim-tests.js` sweeps
+  for the shape; its REVIEWED map records each judged block **with the reason**,
+  because a bare allowlist is how a rule quietly stops applying.
+
 ## Shipped
 <RECORD entries, newest last>
 

@@ -2,6 +2,8 @@
  * Wave C — every status reads as something a person would say.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { STATUS_WORDS, statusWord, statusHint } from '../lib/statusWords';
 
 describe('status words', () => {
@@ -30,9 +32,28 @@ describe('status words', () => {
     expect(statusWord('applied')).toBe('Waiting for the company');
   });
 
-  it('is plain about a failure and says it can be retried', () => {
-    expect(statusWord('failed')).toBe('Did not send');
-    expect(statusHint('failed')).toMatch(/nothing reached the employer/i);
+  it('claims only what the failed branch actually knows', () => {
+    /*
+     * This required the hint to say "nothing reached the employer", and was
+     * green while routes/apply.js set 'failed' in exactly one place: the
+     * branch with no confirmation id and no success message - "Could not
+     * verify submission ... Not marked as applied." The form may have gone
+     * through. The test was pinning a certainty the code never had, and the
+     * words it pinned invite a retry that can duplicate a real application.
+     *
+     * Grounded on the setter itself, so the words cannot outrun it again.
+     */
+    const apply = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'backend', 'routes', 'apply.js'), 'utf8'
+    );
+    const setter = apply.slice(apply.indexOf("SET status = 'failed'") - 400,
+      apply.indexOf("SET status = 'failed'") + 400);
+    expect(setter).toMatch(/!verified|Could not verify/);
+
+    // So the words say "unconfirmed", never "did not happen".
+    expect(statusWord('failed')).toBe('Not confirmed');
+    expect(statusHint('failed')).toMatch(/no confirmation|not recorded as applied/i);
+    expect(statusHint('failed')).not.toMatch(/nothing reached the employer|did not send/i);
   });
 
   it('never uses submitted, queued or pending as the word a user reads', () => {

@@ -118,14 +118,52 @@ describe('A7.25 — the questions the page raises have somewhere to go', () => {
     expect(pricing).toMatch(/allowance/i);
     expect(pricing).not.toMatch(/not metered on any plan|never per application|unlimited applications/i);
 
-    // Still true, still the product's whole argument, and still free.
+    /*
+     * "Scoring is free at every tier" is checked where it is DECIDED, not
+     * where it is announced: no scoring path may branch on a plan. Asserting
+     * only the sentence would keep the promise on the page on the day someone
+     * puts a tier check in the matches route.
+     */
+    const matches = read('..', 'backend', 'routes', 'matches.js');
+    expect(matches).not.toMatch(/plan_tier|TIERS\[|req\.user\.tier/);
     expect(pricing).toMatch(/scor\w+ .{0,60}(free|every tier)/i);
   });
 
-  it('says how to cancel, on the page that takes the money', () => {
-    const pricing = stripComments(read('pages', 'pricing.js'));
-    expect(pricing).toMatch(/cancel/i);
-    expect(pricing).toMatch(/one click|single click|1 click/i);
+  it('has the cancel control it tells people to click', () => {
+    /*
+     * This asserted only that the pricing page CONTAINS the words "cancel"
+     * and "one click". It passed for as long as the sentence existed - and the
+     * sentence gave a route, "Settings -> Plans -> Cancel", to a control that
+     * was not built and a backend path that did not exist. The test defended
+     * the instruction instead of the thing it instructs.
+     *
+     * So it now asserts the mechanism. The copy may say it because it is true.
+     */
+    const settings = stripComments(read('pages', 'settings.js'));
+
+    // A control a person can actually press, in the tab the copy names.
+    expect(settings).toMatch(/Cancel my plan/i);
+    // Wired to the free tier through the endpoint that really changes a plan.
+    expect(settings).toMatch(/choosePlan\('starter'\)/);
+    expect(settings).toMatch(/api\/plans\/select/);
+
+    // And only then may the pages point at it.
+    for (const p of ['pricing.js', 'refund-policy.js']) {
+      expect(stripComments(read('pages', p))).toMatch(/Settings\s*→\s*Plans/);
+    }
+  });
+
+  it('does not promise end-of-period cancellation while nothing can be charged', () => {
+    /*
+     * Both pages said cancelling takes effect "at the end of the period you
+     * have already paid for". Billing is not connected - no period exists and
+     * nothing has been paid, so the sentence described a product that is not
+     * running yet.
+     */
+    for (const p of ['pricing.js', 'refund-policy.js']) {
+      const copy = stripComments(read('pages', p));
+      expect(copy).toMatch(/not connected|nothing has been charged|immediately/i);
+    }
   });
 
   it('does not imply a charge occurred at a checkout that cannot charge', () => {
@@ -173,7 +211,25 @@ describe('A7.25 — mobile is described as what it is', () => {
     }
   });
 
-  it('says plainly that it runs in a mobile browser', () => {
+  it('declares a mobile viewport for every page, not only the one that claims it', () => {
+    /*
+     * This asserted only that the landing page SAYS "mobile browser". It was
+     * green while `<meta name="viewport">` existed in pages/index.js and
+     * nowhere else - so the feed, tracker, settings and apply queue laid out
+     * at the ~980px fallback on a real phone and zoomed out, under a homepage
+     * promising "the whole product".
+     *
+     * The 375px audit pass could not see it either: resizing sets a true
+     * viewport width, so the media queries ran and the pages looked correct.
+     * Only a real mobile browser reads the tag.
+     *
+     * So the assertion moved to where the support actually comes from.
+     */
+    const app = read('pages', '_app.js');
+    expect(app).toMatch(/name="viewport"/);
+    expect(app).toMatch(/width=device-width/);
+
+    // And only then may the homepage promise it.
     expect(landing).toMatch(/mobile browser|works on your phone|phone browser/i);
   });
 });

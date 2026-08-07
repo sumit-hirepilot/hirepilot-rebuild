@@ -24,10 +24,12 @@ export default function RefundPolicy() {
             <div className={styles.body}>
               <h2>Cancelling</h2>
               <p>
-                Settings → Plans → Cancel. One click. There is no email to send, no form asking why
-                you are leaving, and no retention offer in the way. Cancelling takes effect at the
-                end of the period you have already paid for, so you keep what you bought until it
-                runs out.
+                Settings → Plans → &ldquo;Cancel my plan&rdquo;. One click. There is no email to
+                send, no form asking why you are leaving, and no retention offer in the way.
+                Billing is not connected yet, so nothing has been charged: cancelling takes effect
+                immediately and puts you back on Free. Once billing is live this will change to
+                the end of the period you have already paid for, and this page will say so before
+                it does.
               </p>
 
               <h2>Refunds</h2>

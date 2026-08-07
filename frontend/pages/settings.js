@@ -471,6 +471,29 @@ export default function Settings() {
               </p>
             )}
             {plans && <p className={page.masterSubtitle}>{plans.creditPolicy}</p>}
+
+            {/*
+              * /pricing and /refund-policy both told people, in those words:
+              * "Settings -> Plans -> Cancel. One click." There was no Cancel
+              * here and no cancel path in the backend - the instruction named
+              * a control that did not exist. A test REQUIRED the pricing page
+              * to keep saying it, so the copy could not drift back to the
+              * truth without the suite going red.
+              *
+              * Cancelling is returning to Free, which /api/plans/select
+              * already does. So the control is real rather than the sentence
+              * being softened.
+              */}
+            {plans?.current && plans.current.tier !== 'starter' && (
+              <button
+                type="button"
+                className={page.planCancel}
+                onClick={() => choosePlan('starter')}
+              >
+                Cancel my plan — go back to Free
+              </button>
+            )}
+
             <div className={page.planGrid}>
               {(plans?.tiers || []).map((t) => (
                 <div key={t.id} className={plans?.current?.tier === t.id ? page.planCardOn : page.planCard}>

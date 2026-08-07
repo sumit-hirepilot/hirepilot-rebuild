@@ -148,10 +148,20 @@ describe('a suggestion is never a raw database token', () => {
     expect(src).toMatch(/humanise\(r\.value\)/);
   });
 
-  it('describes them as regions, because that is what they are', () => {
+  it('describes them as regions, and takes them from the index region facet', () => {
+    /*
+     * This asserted only that the sentence "Regions where the jobs in our
+     * index are" is present. The sentence makes a checkable claim - that the
+     * suggestions come from the index's own region facet - and the test never
+     * checked it, so the label could have gone on describing a list that had
+     * moved to anything at all.
+     */
     const src = require('fs').readFileSync(
       require('path').join(__dirname, '..', 'pages', 'onboarding.js'), 'utf8'
     );
+    // The claim's substance: sourced from the index facet, region specifically.
+    expect(src).toMatch(/api\/jobs\/facets/);
+    expect(src).toMatch(/data\.region/);
     expect(src).toMatch(/Regions where the jobs in our index are/);
   });
 });
