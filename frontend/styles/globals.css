@@ -358,11 +358,23 @@ input:focus, textarea:focus, select:focus {
     min-height: 44px;
   }
 
-  /* Inline links that act as actions, not prose - padded to a real target. */
+  /*
+   * Links that act as CONTROLS, not prose. The first cut only covered
+   * target="_blank" and one class name, so an ordinary action link -
+   * "View all jobs", class Dashboard_sectionLink - was still 19px on a phone.
+   * CSS-module class names keep their author-written part, so matching on
+   * "Link"/"link" reaches them without touching links inside sentences.
+   */
   a[target='_blank'],
-  a[class*='originalLink'] {
+  a[class*='Link'],
+  a[class*='link'] {
     display: inline-flex;
     align-items: center;
+    min-height: 44px;
+  }
+
+  /* A button is always an action. */
+  button {
     min-height: 44px;
   }
 }

@@ -192,11 +192,11 @@ export default function Dashboard() {
             <p className={styles.statValue}>{matchTotal === null ? '—' : formatNumber(matchTotal)}</p>
           </div>
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Applications Tracked</p>
+            <p className={styles.statLabel}>Applications you have sent</p>
             <p className={styles.statValue}>{applicationsSent}</p>
           </div>
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Interview Pipeline</p>
+            <p className={styles.statLabel}>Interviews</p>
             <p className={styles.statValue}>{interviews}<span className={styles.statValueUnit}>active</span></p>
           </div>
           {/* Was "Time Saved", hardcoded to 0 - it was never computed, and any
