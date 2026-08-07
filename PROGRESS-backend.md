@@ -125,6 +125,32 @@ the right rule passes.
 
 Backend suite **409**.
 
+### D49 — the skills denominator, raised not changed
+
+The formula is **unchanged**. It is on every job card, so moving it silently
+would move every number a user has already seen.
+
+Measured on 220 live jobs against the real account: adding a genuine skill
+lowers the score every time (SQL −0.019, Accessibility −0.023); of **74**
+skills the user lacks exactly **1** would raise her score, and it is
+"marketing" for a product designer; deleting six of her eleven real skills
+raises her scores, and keeping only "Leadership" is **+166%**. 219 of 220 jobs
+sit between 50% and 69% overall — the score barely discriminates.
+
+Three options measured, not argued: keep it; `matched/jobSkills` (mean
+0.619 → 0.750, distribution opens up, but every existing score moves); or a
+harmonic hybrid, which was **measured and rejected** because it still falls
+when a real skill is added.
+
+Recommendation is option B with a denominator floor and an announced re-score.
+Full analysis in DECISIONS.md as D49, flagged for the operator in BLOCKED.md.
+The decision — whether every existing score may move — is not a technical one.
+
+**Separate defect found while measuring:** `extractSkills` matches "Go" the
+language against the English verb, firing on 45 of 220 design jobs (*"Go beyond
+execution"*). Tsenta's "Go-Carts" failure in our own dictionary. It inflates
+every option's denominator and is filed as its own defect.
+
 ## Next
 
 Feature 11

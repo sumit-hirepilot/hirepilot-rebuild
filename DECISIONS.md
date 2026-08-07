@@ -943,3 +943,134 @@ corrected — checked rather than assumed.
 The user need is already served: 4a routes an Instahyre link to a refusal that
 names the board and opens the paste box, reaching an identical tailored resume,
 score and queue entry with no ToS exposure.
+
+## D49 — the skills-score denominator: analysis for the operator, NOT a change
+
+Raised before feature 11. **The formula is unchanged.** It is visible on every
+job card and in every breakdown, so changing it silently would move every
+number a user has already seen. This records what it does, with numbers from a
+real feed, and hands the decision over.
+
+### The formula
+
+```js
+skillsScore = matchedSkills.length / userSkills.length      // matchingEngine.js
+overall     = skills*0.40 + experience*0.30 + location*0.20 + salary*0.10
+```
+
+The denominator is **the user's own skill count**. So the score measures *what
+share of your skills this job mentions* — not *what share of this job's needs
+you meet*. Adding a real skill raises the score on jobs mentioning it and
+**lowers it on every job that does not**.
+
+### Measured on a real feed
+
+220 live jobs from production, scored against the real account (11 recorded
+skills, product-design profile). Job skills are the same `extractSkills`
+output the product already shows on each job card.
+
+| | current `matched/userSkills` | `matched/jobSkills` | harmonic hybrid |
+|---|---|---|---|
+| mean skills score | **0.274** | 0.601 | 0.365 |
+| median | 0.273 | 0.600 | 0.375 |
+| jobs scoring 1.0 on skills | 0% | 13% | 0% |
+| adding a real skill | **falls, every time tested** | rises or flat | **falls** |
+
+**Adding one genuine skill, effect on the mean skills score:**
+
+| skill | appears in | current | jobSkills |
+|---|---|---|---|
+| SQL | 10/220 | **−0.019** | +0.006 |
+| Wireframing | 5/220 | **−0.021** | +0.005 |
+| A/B Testing | 4/220 | **−0.021** | +0.003 |
+| Accessibility | 0/220 | **−0.023** | 0.000 |
+
+### The threshold, and why coaching is nearly empty under it
+
+A skill helps only when `shareOfFeed > current mean skills score`. Here that is
+**27.4%** — it must appear in more than 60 of 220 jobs.
+
+> Of the **74** distinct skills this user lacks, exactly **1** would raise her
+> score. That one is "marketing". React, Product Management, Project
+> Management and Customer Success all **lower** it.
+
+Feature 5 reports this honestly, and it is why that feature currently tells
+most users that their most common gap would still make things worse.
+
+### The perverse incentive, stated plainly
+
+| delete this real skill | appears in | effect |
+|---|---|---|
+| UX Research | 5/220 | **+0.025** |
+| UX Design | 10/220 | **+0.023** |
+| Usability Testing | 15/220 | **+0.021** |
+| Sketch | 19/220 | **+0.019** |
+| User Research | 31/220 | **+0.013** |
+| Agile | 47/220 | **+0.006** |
+
+Six of eleven genuinely-held skills are worth deleting. Keeping **only**
+"Leadership" and removing the other ten raises the skills score from 0.274 to
+0.727 — **+166%**.
+
+The product's advice to a user optimising their score is currently: *tell us
+less about yourself.*
+
+### What it does to the visible distribution
+
+Overall score, other three components held at their observed means:
+
+| | current | `matched/jobSkills` |
+|---|---|---|
+| mean | 0.619 | 0.750 |
+| range across 220 jobs | 0.583 – 0.801 | 0.572 – 0.910 |
+| distribution | **98% of jobs land in 50–69%** | spread across 50–99% |
+
+The current formula barely discriminates: 219 of 220 jobs fall in two bands.
+A score that is the same for almost every job is not doing the job the landing
+page says it does.
+
+### The three options and their consequences
+
+**A · Keep `matched/userSkills`.** No migration, no number moves, no user sees
+a change. Keeps the perverse incentive, keeps coaching nearly empty, keeps the
+compressed distribution. Feature 5 must go on explaining why the advice is
+mostly negative.
+
+**B · `matched/jobRequiredSkills`.** Measures what a reader assumes it
+measures. Adding a real skill can never lower the score. Distribution opens up
+and coaching becomes actionable. **But every score on the index changes** —
+mean 0.619 → 0.750 — so every card, every breakdown, every saved match and
+every `minScore` filter the user has set shifts under them. 13% of jobs would
+show 100% on skills, which needs its own honesty check: 100% of *five extracted
+skills* is not the same claim as a perfect match. Also sensitive to jobs with
+one or two extracted skills, where a single overlap reads as a perfect score.
+
+**C · Hybrid (harmonic mean of the two).** Middle distribution (0.365) and
+resistant to the thin-job problem in B — **but it still falls when a real skill
+is added** (−0.019 for SQL), because the current term is inside it. It does not
+solve the stated problem, and it is harder to explain on a card. Measured and
+rejected on the evidence rather than on taste.
+
+### Recommendation, for the operator to accept or refuse
+
+**B**, with two conditions, because it is the only option that removes the
+incentive to hide real skills:
+
+1. A floor on the denominator (e.g. `max(jobSkills, 3)`) so a posting with one
+   extracted skill cannot produce 100%.
+2. Re-score the index in one pass and say so in the UI — "we changed how this
+   is calculated, here is what moved" — rather than letting numbers shift
+   silently. A score that changes without explanation is the same defect class
+   as a label that disagrees with its data.
+
+**Not done, and not to be done without that decision.** Logged in BLOCKED.md.
+
+### Separate defect found while measuring this
+
+`extractSkills` matches **"Go"** as the programming language against the
+English verb. In this design feed it fired on 45 of 220 jobs (20.5%), e.g.
+*"**Go** beyond execution to a place of thought leadership"*. That is Tsenta's
+"Go-Carts" failure inside our own dictionary, and it inflates both the current
+and the proposed denominator. Short dictionary entries that are also common
+words (`Go`, `R`, `C`) need a context rule. Filed separately; it is a defect
+under any of the three options.
