@@ -276,3 +276,27 @@ and is proven on production, so the switch is usable.
 What the operator should do: set ADMIN_HALT_SECRET on the API service. That
 restores a lever that works even if the login system is the thing that has
 failed, which is the scenario the account-based lever cannot cover.
+
+## The data half of the migration — one credential, and only one
+
+The new Railway account is fully built and running: project `hirepilot`,
+backend + frontend + Postgres, 9/9 schema claims on a database re-migrated from
+empty, landing counter matching the database exactly. Details in MIGRATION.md.
+
+**No data has been copied from the old database**, and it cannot be from here.
+
+The old app is Railway project `tranquil-solace` under
+`sumit.designwork@gmail.com`. Its `DATABASE_URL` exists only in that project's
+variables. Checked rather than assumed: the CLI and the browser are both signed
+in as `sumit.uxai@gmail.com`, which cannot see that project; there is no `.env`
+in the tree; the only Postgres URL in shell history is localhost; and the
+running API correctly leaks no environment.
+
+Getting into that account means typing its password, which is the one action
+that stays off-limits however the request is framed. Everything else in the
+migration is done.
+
+**Unblocks with either:** the old `DATABASE_URL` pasted here, or that account
+signed in in a browser so it can be read from the dashboard. The remaining work
+is then a single `pg_dump | psql` — command, ordering constraints and the
+inventory to verify against are all written out in MIGRATION.md.
