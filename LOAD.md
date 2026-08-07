@@ -236,3 +236,30 @@ STEPS=5,10,20,50 python3 tools/loadtest.py <base-url> <token>
 Stops at the first step whose RSS exceeds 800 MB. Records the failure mode, not
 just the count — "22% failed" with no failure mode is a number nobody can act
 on, which is how the first run of this was written and why it was redone.
+
+## Full feature audit (D1-D4) — load test after deploy
+
+Run at uptime 363s, past the 5-minute rule. Backend `f71f566`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,349 ms | 333 MB |
+| 200 | 600 | **600** | **0** | **2,767 ms** | 391 MB |
+| 500 | 1,500 | 1,500 | 0 | 5,871 ms | 424 MB |
+| 1,000 | 3,000 | 2,992 | 8 (TimeoutError) | 11,331 ms | 326 MB |
+
+Against the previous steady state (1,152 / 2,822 / 6,232 ms):
+
+- **200 concurrent: 2,767 ms vs 2,822 ms — no regression, zero failures.** The
+  bar is "any failure or >50% p95 regression at 200 is not done". Met.
+- 500 improved 6,232 → 5,871 ms. 50 rose 1,152 → 1,349 ms (+17%), inside noise
+  for a single step and well under the 50% bar.
+- Peak RSS 424 MB against the 800 MB abort and the 1 GB cap.
+
+The 8 failures at 1,000 concurrent are `TimeoutError` — the client's own 30s
+ceiling on a step whose p95 is 11.3s, not a server response. 1,000 is five
+times the stated bar; recorded, not chased.
+
+The audit's four fixes were all display-layer or query-time, so no latency
+change was expected and none appeared. That is the point of recording it: a
+change believed to be cosmetic is still measured.
