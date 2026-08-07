@@ -84,8 +84,24 @@ export default function Resume() {
 
   const base = API_BASE;
 
-  const loadData = useCallback(async (authToken) => {
-    setLoading(true);
+  /*
+   * `quiet` refreshes the data WITHOUT blanking the screen.
+   *
+   * loadData set loading=true unconditionally, and line ~162 swaps the whole
+   * tab body for a spinner while loading. So every reload() unmounted the tab
+   * and destroyed its local state - and reload() is what runs immediately
+   * after a successful tailor, one line after setResult(data).
+   *
+   * The effect on production: paste a job description, press Tailor resume,
+   * the request succeeds and writes a row, and the screen throws the result
+   * away and resets to "Pick a job we have". The work happened and the user
+   * saw nothing. It hit BOTH tailoring paths, not just the pasted one.
+   *
+   * Only the FIRST load has nothing to show yet, so only the first load
+   * spins. Found by the audit, by pasting a JD and pressing the button.
+   */
+  const loadData = useCallback(async (authToken, { quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
     try {
       const [resumesRes, tailoredRes, matchesRes] = await Promise.all([
         fetch(`${base}/api/resume`, { headers: { Authorization: `Bearer ${authToken}` } }),
@@ -167,11 +183,11 @@ export default function Resume() {
             tailoredHistory={tailoredHistory}
             token={token}
             base={base}
-            reload={() => loadData(token)}
+            reload={() => loadData(token, { quiet: true })}
             setMessage={setMessage}
           />
         ) : tab === 'Tailor for a Job' ? (
-          <TailorForJob jobs={jobs} token={token} base={base} reload={() => loadData(token)} />
+          <TailorForJob jobs={jobs} token={token} base={base} reload={() => loadData(token, { quiet: true })} />
         ) : tab === 'Cover Letters' ? (
           <CoverLetters jobs={jobs} token={token} base={base} />
         ) : tab === 'Screening Answers' ? (
