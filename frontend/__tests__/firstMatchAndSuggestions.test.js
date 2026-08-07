@@ -125,3 +125,33 @@ describe('the field is never empty with only a placeholder', () => {
     expect(screen.getAllByRole('button', { name: 'Pune' })).toHaveLength(1);
   });
 });
+
+/*
+ * Found on production, not by a test: the location field offered
+ * "north_america", "europe" and "unspecified" as places to work. Raw region
+ * bucket keys - the wrong granularity for a question asking about a city, and
+ * one of them not somewhere a person can want to work at all.
+ */
+describe('a suggestion is never a raw database token', () => {
+  const { humanise } = require('../lib/labels');
+
+  it('humanises a region key rather than showing it', () => {
+    expect(humanise('north_america')).toBe('North america');
+    expect(humanise('asia_pacific')).toBe('Asia pacific');
+  });
+
+  it('the onboarding page drops the unspecified bucket', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'pages', 'onboarding.js'), 'utf8'
+    );
+    expect(src).toMatch(/unspecified\|not\[ _-\]\?specified/);
+    expect(src).toMatch(/humanise\(r\.value\)/);
+  });
+
+  it('describes them as regions, because that is what they are', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'pages', 'onboarding.js'), 'utf8'
+    );
+    expect(src).toMatch(/Regions where the jobs in our index are/);
+  });
+});

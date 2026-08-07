@@ -9,6 +9,7 @@ import SuggestSelect from '../components/SuggestSelect';
 import FirstMatch from '../components/FirstMatch';
 import { EXPERIENCE_BANDS, bandForYears } from '../lib/experienceBands';
 import { NOTICE_PERIODS } from '../lib/noticePeriods';
+import { humanise } from '../lib/labels';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
@@ -121,10 +122,22 @@ export default function Onboarding() {
         const res = await fetch(`${base}/api/jobs/facets`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) return;               // status before body
         const data = await res.json();
+        /*
+         * These are REGIONS, not cities - it is the only place-facet the index
+         * has. Caught on production offering "north_america" and
+         * "unspecified" as places to work: raw bucket keys, the wrong
+         * granularity, and one of them meaningless to anyone.
+         *
+         * So: humanised through the shared helper rather than shown raw, the
+         * "unspecified" bucket dropped because it is not somewhere a person
+         * can want to work, and the field's own hint now says these are
+         * regions and that a city can be typed. Offering a region while
+         * calling it a city would be the label lying about the data again.
+         */
         setCitySuggestions((data.region || [])
-          .filter((r) => r.value && r.value !== 'Not specified')
+          .filter((r) => r.value && !/^(unspecified|not[ _-]?specified)$/i.test(r.value))
           .sort((a, b) => (b.count || 0) - (a.count || 0))
-          .map((r) => r.value));
+          .map((r) => humanise(r.value)));
       } catch (err) {
         // No suggestions is a smaller failure than a wrong suggestion.
       }
@@ -380,7 +393,9 @@ export default function Onboarding() {
                   onChange={(v) => setBasics((p) => ({ ...p, location: v }))}
                   suggestions={citySuggestions}
                   placeholder="e.g. Bengaluru"
-                  hint={citySuggestions.length ? 'Where the jobs in our index actually are.' : undefined}
+                  hint={citySuggestions.length
+                    ? 'Regions where the jobs in our index are — or type a city.'
+                    : undefined}
                 />
                 {/*
                   * Only once a LOCATION has actually been given.

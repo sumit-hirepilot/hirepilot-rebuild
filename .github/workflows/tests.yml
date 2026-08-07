@@ -71,7 +71,7 @@ jobs:
         working-directory: frontend
         run: npx next lint --dir pages --dir components --dir lib
       - name: Test
-        run: node tools/run-suite.js frontend 241
+        run: node tools/run-suite.js frontend 244
 
       # No mutation marker or audit artifact may reach a commit. Journalling,
       # self-heal and the dirty-tree check all run on a developer's machine and
