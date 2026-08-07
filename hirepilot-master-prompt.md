@@ -445,6 +445,19 @@ Blocked on: —
 ## Standing rules
 <rules learned from failures>
 
+- **A mock of the thing under test is not a test of it.** If the behaviour
+  being asserted lives inside a function, mocking that function leaves the
+  assertion true by construction and empty of meaning.
+
+  Feature 4a's SSRF suite mocked `fetchJobUrl` - the function the refusal
+  lives in - and every private-address test passed while proving nothing. It
+  only became a test when the mock defaulted to the real implementation and a
+  canned result was opted into per case.
+
+  Mock what the code under test TALKS TO (the database, the network, the
+  clock), never the code under test itself. `tools/check-mock-boundaries.js`
+  sweeps for the shape.
+
 - **Browser resize proves CSS, not mobile rendering.** Resizing sets a true
   viewport width, so media queries run and the page looks correct even with no
   viewport meta tag at all. That is exactly how a missing tag survived every

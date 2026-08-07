@@ -897,3 +897,49 @@ would have rendered at the ~980px fallback on an actual phone.
 A mobile claim is now verified against something a phone reads — the served
 HTML, the tag, or an emulator that honours it. Never against a resized window
 alone.
+
+## D47 — a mock of the thing under test is not a test of it
+
+Feature 4a's SSRF suite mocked `../services/jobUrlFetch` and replaced
+`fetchJobUrl` with `jest.fn()`. Every "refuses cloud metadata / loopback /
+private range" case then asserted a refusal produced by a mock that returned
+`undefined` — the refusals they exist to prove live INSIDE `fetchJobUrl`.
+
+They were green. They would have stayed green with the SSRF guard deleted.
+
+The fix was not to stop mocking: the module still needs a seam so a canned
+403 or timeout can be injected. The fix is the DEFAULT. The mock now delegates
+to `jest.requireActual` in `beforeEach`, and a canned result is opted into per
+test rather than inherited by every test in the file.
+
+The rule: mock what the code under test talks to — the database, the network,
+the clock — never the code under test itself. Where a module must be mocked for
+a seam, default it to the real implementation.
+
+## D48 — Instahyre is not integrated; a permissive robots.txt is not permission
+
+4b was an assessment, and the assessment says do not build.
+
+`robots.txt` returns 200 with `User-agent: *` and no Disallow lines — the most
+permissive file possible. Every actual page returns **403** behind a Cloudflare
+challenge (`Just a moment...`, `noindex,nofollow`), including `sitemap.xml`,
+which is the one URL that file advertises to crawlers. Confirmed from a
+residential IP and, through 4a's shipped user path, from Railway egress —
+which closes the question D19 left open about datacentre IPs.
+
+So the queue's premise, "Instahyre — the only permissive Indian source", is
+contradicted by the evidence. The permission file is permissive; the service is
+not. Where the two disagree, the server's behaviour is the answer.
+
+The coverage questions — job count, roles, seniority range, and whether
+posted_at is a publication date or a re-sync clock — are all unmeasurable
+without defeating the challenge, and defeating it is what D19 forbids. There is
+no number to report and no honest way to get one. Recording "unknown, and
+unknowable within our rules" is the finding, not a gap in it.
+
+No product surface ever claimed Instahyre as a source, so nothing had to be
+corrected — checked rather than assumed.
+
+The user need is already served: 4a routes an Instahyre link to a refusal that
+names the board and opens the paste box, reaching an identical tailored resume,
+score and queue entry with no ToS exposure.

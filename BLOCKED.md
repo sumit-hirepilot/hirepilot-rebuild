@@ -56,9 +56,51 @@ marketplace.
 | source | robots.txt | permission signal | verdict |
 |---|---|---|---|
 | Naukri | **403 Access Denied** (Akamai edge) | cannot even READ the permission file | **FAIL — do not integrate** |
-| Instahyre | 200, `User-agent: *`, no Disallow | permissive; but sitemap.xml 403 | conditional |
+| Instahyre | 200, `User-agent: *`, no Disallow | permissive file, but the SERVER 403s every page | **FAIL — resolved by 4b, see below** |
 | Wellfound | 200 | Disallows `/_jobs/` and every `?jobId=` / `?jobSlug=` / `?role=` pattern | **FAIL for job pages** |
 | Cutshort | 200 | Disallows `/view/j/`, `/vj/`, `/*?job_listing` — the job views themselves | **FAIL for job pages** |
+
+### 4b — the Instahyre "conditional" is resolved: FAIL, do not integrate
+
+A7.19 left this conditional because only `sitemap.xml` had been tested. 4b
+tested the pages themselves, and from the egress that matters.
+
+| probe | result |
+|---|---|
+| `robots.txt` | 200, `User-agent: *`, **no Disallow lines at all** |
+| `sitemap.xml` — the file robots.txt itself advertises to crawlers | **403** |
+| `/search-jobs/` — the listing page | **403** |
+| a job URL, from **Railway egress**, through the shipped 4a path | **403**, `blocked_by_site` |
+
+Every 403 is a Cloudflare interstitial: `<title>Just a moment...</title>`,
+`noindex,nofollow`, a JS challenge. The mechanism is named rather than guessed.
+
+**The permissive robots.txt is not permission.** It is the clearest case yet of
+the rule A5 wrote for Greenhouse: a status code is not permission, and here
+even the permission FILE says yes while the server says no on every path
+including the one that file points crawlers at. The server's behaviour is the
+answer.
+
+D19's open question is also closed. It said a 200 from a residential IP says
+nothing about a datacentre IP, and that testing it would mean probing their
+protection from the server. That did not have to be a special probe in the
+end: 4a's user path makes exactly one plain request, and it returns 403 from
+Railway. Residential and datacentre agree.
+
+**The coverage questions cannot be answered, and that IS the answer.** How many
+jobs, which roles, what seniority range, and whether `posted_at` is a real
+publication date or a re-sync clock are all unmeasurable without getting past
+the challenge — and getting past it is the thing D19 said we would not do. So
+there is no number to report, and no honest way to obtain one.
+
+**The need is already met.** 4a routes an Instahyre link to a refusal that
+names Instahyre, explains it, and opens the paste box — which produces an
+identical tailored resume, score and queue entry. Coverage of Instahyre comes
+from the user pasting one job they are looking at, which is not a crawl and
+raises no ToS question at all.
+
+Reopening this needs an operator decision, not a code change: an official
+Instahyre partner/API programme, or written permission. Same shape as Naukri.
 
 NAUKRI IS THE WEDGE AND IT IS BLOCKED. The site returns 403 to a plain
 robots.txt fetch, which is an active edge block on non-browser clients.

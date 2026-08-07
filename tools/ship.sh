@@ -69,6 +69,7 @@ node tools/run-suite.js frontend "$(floor_for frontend)"
 # guard's call removed; one that stays green proves only that the route replies.
 echo "== 8/10 endpoint guard tests go red when the guard is unwired =="
 node tools/prove-endpoint-guards-red.js
+node tools/check-mock-boundaries.js
 
 echo "== 9/10 commit =="
 git add -A
