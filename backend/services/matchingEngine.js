@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { extractSkills } = require('./resumeParser');
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -8,6 +9,34 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // loose-substring-matched against "Design Systems"), check directly which
 // of the user's own real skills are actually mentioned in the job text,
 // with word boundaries so "Go" doesn't match inside "Google".
+/*
+ * D49 — the denominator is the JOB's required skills, not the user's own.
+ *
+ * It used to be `matchedSkills.length / userSkills.length`: the share of the
+ * USER'S skills a job mentions. Measured on 220 live jobs against a real
+ * account, that meant:
+ *
+ *   - adding a genuine skill LOWERED the score on every job not mentioning it
+ *     (SQL -0.019, Accessibility -0.023)
+ *   - of 74 skills the user lacked, exactly ONE would have raised her score
+ *   - deleting six of her eleven real skills raised it; keeping only
+ *     "Leadership" was +166%
+ *   - 219 of 220 jobs scored between 50% and 69% overall - almost no signal
+ *
+ * The product rewarded telling it less about yourself, which undercut score
+ * coaching and every feature built on the number. Operator took Option B.
+ *
+ * THE FLOOR is 4, chosen from the measured distribution rather than picked:
+ * extracted-skills-per-job has p25 = 4 and median 5, and 15% of jobs carry
+ * only 2-3. Without a floor, matching both skills of a two-skill posting reads
+ * 100% - a perfect match against a posting we barely parsed. The floor moves
+ * the denominator on 15% of jobs and leaves the median case untouched.
+ *
+ * `matchedSkills` is unchanged: it is what the breakdown displays, and it is
+ * still the user's own skills that appear in the posting.
+ */
+const JOB_SKILLS_FLOOR = 4;
+
 const calculateSkillsScore = (userSkills, jobText) => {
   if (!userSkills.length || !jobText) return { score: 0, matchedSkills: [] };
 
@@ -16,7 +45,19 @@ const calculateSkillsScore = (userSkills, jobText) => {
     return pattern.test(jobText);
   });
 
-  return { score: matchedSkills.length / userSkills.length, matchedSkills };
+  /*
+   * The posting's own requirements, read with the same extractor the job card
+   * already shows - so the denominator is a number the user can see for
+   * themselves rather than one only the engine knows.
+   */
+  const jobSkills = extractSkills(jobText);
+  const denominator = Math.max(jobSkills.length, JOB_SKILLS_FLOOR);
+
+  return {
+    score: Math.min(1, matchedSkills.length / denominator),
+    matchedSkills,
+    jobSkillCount: jobSkills.length,
+  };
 };
 
 const EXPERIENCE_PATTERN = /(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)/i;

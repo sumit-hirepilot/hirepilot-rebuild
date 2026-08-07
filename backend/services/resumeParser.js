@@ -23,13 +23,74 @@ const SKILL_DICTIONARY = [
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/*
+ * Dictionary entries that are also ordinary English words.
+ *
+ * Word-boundary matching already stopped "Go" matching inside "Google". It
+ * does nothing about the standalone verb, and the match was case-INSENSITIVE,
+ * so "go" fired too. Measured on 220 live design jobs, "Go" matched 45 of
+ * them (20.5%) - including:
+ *
+ *     "Go beyond execution to a place of thought leadership"
+ *
+ * That is Tsenta's "Go-Carts" failure inside our own dictionary. It inflates
+ * the skills denominator on every formula, so it is fixed before the D49
+ * re-score rather than after.
+ *
+ * The rule for these, and only these: match the dictionary's own casing, and
+ * require a nearby signal that this is a technology being listed - a list
+ * delimiter with another skill beside it, or an explicit qualifier. Everything
+ * else in the dictionary is long enough to be unambiguous and is untouched.
+ */
+/*
+ * 'R' and 'C' are listed for the day they are added - neither is in
+ * SKILL_DICTIONARY today, so they are inert rather than doing anything. Said
+ * plainly so nobody reads this set as evidence they are handled.
+ */
+const AMBIGUOUS = new Set(['Go', 'R', 'C', 'Excel']);
+
+/** "Go, Rust, Python" / "Go/Kubernetes" / "· Go ·" - a list, not a sentence. */
+const LIST_NEIGHBOUR = /[,/|•·;\n\t]\s*$|^\s*[,/|•·;)]/;
+/** "Golang", "Go developer", "R programming", "proficient in Excel" */
+const EXPLICIT = {
+  Go: /\bGolang\b|\bGo\s+(?:developer|programming|programmer|engineer|lang|routines?|modules?)\b|\b(?:written|built|backend)\s+in\s+Go\b/i,
+  R: /\bR\s+(?:programming|language|studio|script)\b|\bRStudio\b/i,
+  C: /\bC\s+(?:programming|language|developer)\b/i,
+  Excel: /\b(?:Microsoft|MS)\s+Excel\b|\bExcel\s+(?:spreadsheets?|models?|macros?|formulas?|skills)\b|\b(?:advanced|proficient|strong)\s+(?:in\s+)?Excel\b/i,
+};
+
+/**
+ * Is this occurrence of an ambiguous term a technology, or just the word?
+ *
+ * Errs toward NOT counting it. A false negative loses one skill from one job's
+ * denominator; a false positive puts "Go" on a designer's match breakdown and
+ * inflates every score built on it.
+ */
+function ambiguousReallyMeansTheSkill(text, skill) {
+  if (EXPLICIT[skill] && EXPLICIT[skill].test(text)) return true;
+
+  // Case-SENSITIVE from here: the language is capitalised, the verb usually is
+  // not. Sentence-initial "Go" is the one case this still lets through, which
+  // is why the list check below has to agree as well.
+  const re = new RegExp(`(?<![a-zA-Z0-9])${escapeRegExp(skill)}(?![a-zA-Z0-9])`, 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const before = text.slice(Math.max(0, m.index - 30), m.index);
+    const after = text.slice(m.index + skill.length, m.index + skill.length + 30);
+    if (LIST_NEIGHBOUR.test(before) || LIST_NEIGHBOUR.test(after)) return true;
+  }
+  return false;
+}
+
 // Word-boundary match (not plain substring) so short/common skill names like
 // "Go" or "HR" don't false-positive inside unrelated words - "Go" was
 // matching inside "Google", "HR" inside "through".
 function extractSkills(text) {
+  const t = String(text || '');
   return SKILL_DICTIONARY.filter((skill) => {
+    if (AMBIGUOUS.has(skill)) return ambiguousReallyMeansTheSkill(t, skill);
     const pattern = new RegExp(`(?<![a-zA-Z0-9])${escapeRegExp(skill)}(?![a-zA-Z0-9])`, 'i');
-    return pattern.test(text);
+    return pattern.test(t);
   });
 }
 

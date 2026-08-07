@@ -2,44 +2,38 @@
  * "What would move you from 62% to 80%" — answered from the user's own feed,
  * with the same arithmetic the score itself uses.
  *
- * THE FORMULA MATTERS, and it is not the one people assume.
+ * THE FORMULA, after D49.
  *
- *   skillsScore = matchedSkills.length / userSkills.length
+ *   skillsScore = matched / max(jobRequiredSkills, 4)
  *
- * That is the fraction of the USER'S skills the job mentions — not the
- * fraction of the job's requirements the user meets. The consequence is sharp
- * and counterintuitive:
+ * The denominator belongs to the POSTING, not to the user. So adding a real
+ * skill raises the score on jobs that mention it and leaves every other job
+ * exactly where it was:
  *
- *   adding a skill RAISES the score on jobs that mention it
- *   and LOWERS it on every job that does not, because the denominator grows
+ *   adding a skill can RAISE the score and can never lower it
  *
- * So the obvious coaching — "here are the most common skills you are missing"
- * — can make a user's average score WORSE.
+ * BEFORE D49 this was not true, and the difference is the reason the formula
+ * changed. With `matched / userSkills.length` the denominator grew whenever a
+ * skill was added, so a genuine skill LOWERED the score on every job that did
+ * not mention it. On a real 220-job feed exactly 1 of 74 missing skills would
+ * have helped, and deleting six real skills raised the score. That history is
+ * kept in DECISIONS.md as D49.
  *
- * WHAT THE ARITHMETIC ACTUALLY SAYS, worked out rather than assumed.
+ * WHAT THE ARITHMETIC SAYS NOW.
  *
- * For a candidate skill appearing in `a` of `N` jobs, with the user holding
- * `n` skills and `M` = the total number of (job, user-skill) matches across
- * the feed, the change in summed skills score is:
+ * Adding a candidate contributes `1 / max(jobSkills_j, 4)` on each of the `a`
+ * jobs that mention it, and exactly 0 elsewhere. So:
  *
- *   sum_mentions (n - m_j)/(n(n+1))  -  sum_not_mentions m_j/(n(n+1))
- *     = (n*a - M) / (n(n+1))            <- the m_j terms cancel
+ *   netDelta = (1/N) * sum over mentioning jobs of  0.40 / denom_j
  *
- * That depends only on `a`. So **ranking by net delta is provably identical
- * to ranking by frequency** — the first cut of this file claimed otherwise,
- * and proving the test red is what exposed it. The claim was wrong and is
- * removed rather than defended.
+ * always >= 0, and larger when the skill appears in jobs that list FEW other
+ * requirements - being one of four things a posting asks for is worth more
+ * than being one of nine. That is a genuinely different order from frequency,
+ * and unlike the old formula the difference is real rather than claimed.
  *
- * What the delta adds is the part frequency cannot express: the SIGN. From
- * `n*a > M`, a missing skill raises the mean only if
- *
- *   a / N  >  the user's current mean skills score
- *
- * i.e. it must appear in a larger share of the feed than the share of the
- * user's own skills that jobs already mention. Below that line the most
- * common gap in the feed still makes the average worse, and a list ranked by
- * frequency would recommend it with no way to say so. `helpsAbove` reports
- * that threshold, and jobsHelped/jobsHurt report the split.
+ * `jobsHurt` is retained and should now always be 0. It stays because a
+ * non-zero value would mean the engine and this file have drifted apart, and
+ * a test asserts it.
  *
  * WHAT IT WILL NOT DO
  *
@@ -54,6 +48,9 @@
  */
 
 const { extractSkills } = require('./resumeParser');
+
+/** Must match matchingEngine.JOB_SKILLS_FLOOR - see D49. */
+const JOB_SKILLS_FLOOR = 4;
 
 /** The real weights. Imported as literals here only because matchingEngine
  *  inlines them; if they ever move to a constant, this must read that. */
@@ -79,8 +76,8 @@ function mentions(jobText, skill) {
  * weights are applied unchanged. That keeps this arithmetic identical to the
  * engine's rather than a parallel approximation of it.
  */
-function overallWith(job, userSkillCount, matchedCount) {
-  const skills = userSkillCount === 0 ? 0 : matchedCount / userSkillCount;
+function overallWith(job, denominator, matchedCount) {
+  const skills = denominator === 0 ? 0 : Math.min(1, matchedCount / denominator);
   return (
     skills * WEIGHTS.skills
     + Number(job.experience_match_score || 0) * WEIGHTS.experience
@@ -119,11 +116,18 @@ function coach(jobs, userSkills) {
    * reused for every candidate, because the alternative is
    * jobs x candidates x skills regex tests.
    */
+  /*
+   * D49: the denominator is the JOB's own required-skill count (floored),
+   * not the user's skill count. That is what makes adding a real skill
+   * monotonic - it can raise the score and can never lower it - and it is why
+   * this whole file's sign analysis changed.
+   */
   const baseline = sample.map((j) => {
     const text = j.text || '';
     let matched = 0;
     for (const s of skills) if (mentions(text, s)) matched += 1;
-    return { job: j, text, matched, overall: overallWith(j, n, matched) };
+    const denom = Math.max(extractSkills(text).length, JOB_SKILLS_FLOOR);
+    return { job: j, text, matched, denom, overall: overallWith(j, denom, matched) };
   });
 
   const meanBefore = baseline.reduce((a, b) => a + b.overall, 0) / baseline.length;
@@ -154,7 +158,9 @@ function coach(jobs, userSkills) {
 
     for (const b of baseline) {
       const hit = appears.has(b.job.job_id);
-      const o = overallWith(b.job, n + 1, b.matched + (hit ? 1 : 0));
+      // The denominator does NOT move: it belongs to the posting, not to the
+      // user. This is the whole difference D49 made.
+      const o = overallWith(b.job, b.denom, b.matched + (hit ? 1 : 0));
       after += o;
       if (o > b.overall + 1e-9) helped += 1;
       else if (o < b.overall - 1e-9) hurt += 1;
@@ -196,7 +202,7 @@ function coach(jobs, userSkills) {
    * "location is costing you 6 points".
    */
   const mean = (f) => baseline.reduce((a, b) => a + Number(b.job[f] || 0), 0) / baseline.length;
-  const meanSkills = baseline.reduce((a, b) => a + (n ? b.matched / n : 0), 0) / baseline.length;
+  const meanSkills = baseline.reduce((a, b) => a + Math.min(1, b.matched / b.denom), 0) / baseline.length;
   const components = [
     { id: 'skills', label: 'Skills overlap', score: meanSkills, weight: WEIGHTS.skills },
     { id: 'experience', label: 'Experience fit', score: mean('experience_match_score'), weight: WEIGHTS.experience },
@@ -225,15 +231,15 @@ function coach(jobs, userSkills) {
      * to know that before acting on a list.
      */
     /*
-     * The threshold, stated as a number the user can check against the list.
-     * A candidate helps only if it appears in a greater SHARE of the feed
-     * than this.
+     * Renamed from `helpsAbove` when D49 landed. Under the old denominator
+     * this WAS a threshold - a skill helped only above it. Under
+     * matched/jobSkills every candidate helps, so a field called "helpsAbove"
+     * would now be a name that disagrees with its data. It is just the mean.
      */
-    helpsAbove: Number(meanSkills.toFixed(4)),
-    howThisWorks: 'Your skills score is the share of YOUR listed skills that a job mentions, so adding a '
-      + 'skill raises the score on jobs that mention it and lowers it on every job that does not. A '
-      + 'missing skill only raises your average if it appears in more of your feed than your current '
-      + 'skills score - anything below that line makes the average worse, however common it is.',
+    meanSkillsScore: Number(meanSkills.toFixed(4)),
+    howThisWorks: 'Your skills score is the share of what a job asks for that you already have. Adding a '
+      + 'real skill can only raise it - never lower it. A skill is worth more when it appears in jobs '
+      + 'that ask for few other things, so the order here is not simply the most common gap first.',
     negativeCandidates: candidates.filter((c) => c.netDelta < 0).length,
   };
 }

@@ -151,6 +151,43 @@ language against the English verb, firing on 45 of 220 design jobs (*"Go beyond
 execution"*). Tsenta's "Go-Carts" failure in our own dictionary. It inflates
 every option's denominator and is filed as its own defect.
 
+### D49a — Option B implemented
+
+Operator took Option B. `skillsScore = matched / max(jobRequiredSkills, 4)`.
+
+**The Go fix landed first**, because it inflates every denominator: ambiguous
+short entries now need an explicit qualifier or a list neighbour and match
+case-sensitively. **45 of 220 jobs → 4.**
+
+**Floor = 4, from the distribution not from taste.** Extracted skills per job:
+p25 = 4, median 5, and 15% of jobs carry only 2–3. Floor 3 leaves two-skill
+postings reading 100%; floor 5 distorts 40% of jobs. A two-skill posting now
+reads 2/4 = 50%.
+
+**What moved, same 220 jobs:** mean 0.619 → **0.746**, spread 0.218 → **0.341
+(1.6× wider)**, and the band that held **180 of 220 jobs** broke up into five.
+It discriminates now.
+
+**Coaching re-run on the same sample:** negative candidates **all → 0**,
+`jobsHurt` **→ 0** everywhere, and of the 74 missing skills that once had one
+useful entry, all now help. The ordering also genuinely differs from frequency
+— Stakeholder Management (11 jobs) outranks React (17) because being one of
+four asks beats one of nine. That is the claim an earlier draft had to retract;
+it is true and tested now.
+
+`helpsAbove` → `meanSkillsScore`: it was a real threshold under the old
+denominator and would now be a name disagreeing with its data.
+
+**Re-score** is chunked by user, 500 rows at a time, stamped resumable, and
+reports `movedUp`/`movedDown`/`meanDelta`. A row scoring cannot produce is
+still stamped, or the pass loops for ever.
+
+**The UI notice is Lane B's and is filed as A → B · 4.** Shipping the formula
+without it would re-introduce, one level up, exactly the defect this decision
+removes. Nothing is deployed yet, so there is time to ship them together.
+
+Backend suite **422**.
+
 ## Next
 
 Feature 11

@@ -195,6 +195,21 @@ const STATEMENTS = [
    * insert still supplies it.
    */
   `ALTER TABLE jobs ALTER COLUMN company_name DROP NOT NULL`,
+
+  /*
+   * D49 — the skills denominator changed from the user's own skill count to
+   * the posting's requirement count. Every stored score in job_matches was
+   * computed with the old formula, so leaving them is a table full of numbers
+   * that no longer mean what the engine now produces.
+   *
+   * Marked rather than recomputed here: recomputing needs each user's skills
+   * and each job's text, which is application work, not a migration. This
+   * stamps the rows so the re-score pass knows what it has left to do and can
+   * resume after a restart - the ingest OOM lesson says never hold 25,000
+   * rows in memory to find out.
+   */
+  `ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS scored_formula VARCHAR(16) DEFAULT 'v1_user_denom'`,
+  `CREATE INDEX IF NOT EXISTS idx_job_matches_formula ON job_matches(scored_formula) WHERE scored_formula <> 'v2_job_denom'`,
   `ALTER TABLE tailored_resumes ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'indexed_job'`,
 
   /*

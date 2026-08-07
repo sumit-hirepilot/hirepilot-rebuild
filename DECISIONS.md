@@ -1074,3 +1074,89 @@ English verb. In this design feed it fired on 45 of 220 jobs (20.5%), e.g.
 and the proposed denominator. Short dictionary entries that are also common
 words (`Go`, `R`, `C`) need a context rule. Filed separately; it is a defect
 under any of the three options.
+
+## D49a — Option B implemented. The floor, the numbers, and what moved.
+
+Operator took Option B. `skillsScore = matched / max(jobRequiredSkills, 4)`.
+
+### The Go defect landed first, because it inflates every denominator
+
+`extractSkills` matched the language **Go** against the English verb. On the
+same 220 live jobs it fired on **45 (20.5%)**, including *"**Go** beyond
+execution to a place of thought leadership"*.
+
+Ambiguous short entries (`Go`, `R`, `C`, `Excel`) now need either an explicit
+qualifier (`Golang`, `Go developer`, `backend in Go`, `Microsoft Excel`) or a
+list neighbour (`Python, Go, Rust`), and match case-sensitively. Everything
+else in the dictionary is long enough to be unambiguous and is untouched.
+
+**45 → 4 of 220.** Mean extracted skills per job 5.7 → 5.41. `R` and `C` are
+listed for the day they are added; neither is in the dictionary today, and the
+code says so rather than implying they are handled.
+
+### The floor is 4, taken from the distribution rather than picked
+
+Extracted skills per job, after the Go fix (n=220): **p10 = 3, p25 = 4,
+median = 5, p75 = 6**. No job has fewer than 2.
+
+| floor | jobs whose denominator moves |
+|---|---|
+| 3 | 8 (3.6%) — leaves two-skill postings reading 100% |
+| **4** | **33 (15.0%)** — exactly the 2–3 skill tail |
+| 5 | 88 (40.0%) — distorts the median case |
+
+4 protects the thin tail and leaves the median untouched. A posting with two
+extracted skills now reads 2/4 = 50%, not 100%.
+
+### What moved, same 220 jobs, same account
+
+| | before | after |
+|---|---|---|
+| mean overall score | 0.619 | **0.746** |
+| median | 0.619 | 0.750 |
+| range | 0.583 – 0.801 | 0.569 – 0.910 |
+| spread | 0.218 | **0.341 (1.6× wider)** |
+| distribution | **180 of 220 in one band (60–69%)** | 5 / 46 / 90 / 71 / 8 across 50–99% |
+| jobs at 100% on skills | 0 | 8 (3.6%) |
+
+**It discriminates.** Before, 98% of jobs sat in two bands and the score told a
+user almost nothing. After, the same jobs spread across five.
+
+### Coaching re-run on the same production sample
+
+| | before | after |
+|---|---|---|
+| candidates with a negative delta | up to **all of them** | **0** |
+| jobs hurt by the top candidate | 4 of 10 in test, 17 of 20 in another | **0** |
+| of 74 missing skills, ones that help | **1** | **all of them** |
+
+Top candidates now: Marketing (75/220, +0.0254), Sales (48, +0.0150), Project
+Management (36, +0.0127), Product Management (29, +0.0090).
+
+One consequence worth naming: **the ordering now genuinely differs from
+frequency**, which under the old formula it provably did not. Stakeholder
+Management (11 jobs, +0.0040) outranks React (17 jobs, +0.0039), because being
+one of four things a posting asks for is worth more than being one of nine.
+The claim an earlier draft had to retract is now true and tested.
+
+`helpsAbove` was **renamed to `meanSkillsScore`**. Under the old denominator it
+was a real threshold — a skill helped only above it. Under the new one every
+candidate helps, so a field called "helpsAbove" would be a name that disagrees
+with its data.
+
+### The re-score
+
+`services/rescoreIndex.js`, chunked by user and 500 rows at a time, stamping
+`job_matches.scored_formula = 'v2_job_denom'` as it goes. Resumable after a
+restart, non-destructive, and it reports `movedUp`, `movedDown` and
+`meanDelta` — a re-score that cannot say how far the numbers moved is one
+nobody can check. A row scoring produces nothing for is still stamped, or the
+pass would loop on it for ever.
+
+`rescoreStatus()` reports what is left so the UI can say "recalculating"
+truthfully rather than as decoration.
+
+**Announcing it in the UI is Lane B's**, and is requested in HANDOFF.md as
+A → B · 4. Until that ships, the numbers move without explanation — which is
+the defect class this whole decision exists to avoid, and is why the request
+is filed rather than assumed.

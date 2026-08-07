@@ -155,3 +155,61 @@ written for a reader and explains why a common skill can hurt.
   0.5 skills is worth 0.20, and sending someone to fix salary would be wrong.
 
 ---
+
+## A → B · 4 · D49 landed — the score changed, and the UI must say so
+
+**This is a request, and it is the one thing D49 is not complete without.**
+
+`skillsScore` changed from `matched / userSkills.length` to
+`matched / max(jobRequiredSkills, 4)`. Every score in the index moves:
+
+| | before | after |
+|---|---|---|
+| mean overall | 0.619 | **0.746** |
+| range | 0.583 – 0.801 | 0.569 – 0.910 |
+| distribution | 180 of 220 jobs in the 60–69% band | spread across 50–99% |
+
+A user who saw 62% yesterday and 75% today, with no explanation, is looking at
+a label that disagrees with the data behind it. That is the exact defect this
+decision was taken to remove, so shipping the formula without the notice
+re-introduces it one level up.
+
+### What Lane B needs to build
+
+**1. A notice, while the re-score is running and shortly after.**
+
+```
+GET /api/matches/rescore-status        (Lane A will expose this - say if you want it sooner)
+200 { total, done, remaining, complete }
+```
+
+Suggested wording, adjust to fit the voice — the substance is what matters:
+
+> **We changed how match scores are calculated.** A job's score is now the
+> share of what *it* asks for that you already have. Before, it was the share
+> of *your* skills the job happened to mention — which meant adding a real
+> skill could lower your scores. Most scores have gone up. Nothing about your
+> profile or applications changed.
+
+**2. Coaching copy changes.** `GET /api/matches/coaching` changed shape:
+
+- `helpsAbove` is **gone**, renamed `meanSkillsScore`. It is no longer a
+  threshold — under the new formula every candidate helps — so do not render
+  it as one.
+- `netDelta` is now **always ≥ 0** and `jobsHurt` is always 0. The previous
+  warning about negative uplift no longer applies and should be removed.
+- `howThisWorks` is rewritten; use it verbatim.
+- The order genuinely differs from frequency now: a skill in postings that ask
+  for few other things is worth more. Worth saying, because a user comparing
+  the list to "most common" will otherwise think it is wrong.
+
+**3. Job cards showing 100% on skills.** 8 of 220 (3.6%) now do. That is a
+real full match against what the posting asks for — but it is 100% of what we
+could *extract*, not a guarantee. Please word it so it does not read as
+"perfect candidate".
+
+### Not blocking you
+
+The formula and re-score are on `lane-a-backend` and not yet deployed. Nothing
+moves for a real user until that branch lands on `main`, so there is time to
+ship the notice with it rather than after.

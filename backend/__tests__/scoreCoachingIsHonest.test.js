@@ -40,11 +40,16 @@ const job = (id, text) => ({
 
 beforeEach(() => query.mockReset());
 
-describe('the ranking is the real score change, not the frequency', () => {
-  it('reports a rare skill as NEGATIVE, because it lowers the mean', () => {
+describe('after D49, adding a real skill can never lower the score', () => {
+  it('a RARE skill is non-negative, which is the whole point of the change', () => {
     /*
-     * Rust is in 3 of 20 jobs. Frequency says "your third most common gap".
-     * The arithmetic says it helps 3 jobs and hurts 17.
+     * This test used to assert the opposite, and was right to: under
+     * `matched / userSkills.length` a skill in 3 of 20 jobs helped 3 and hurt
+     * 17, netting -0.018. The operator took Option B precisely because a
+     * product that penalises telling it the truth is broken.
+     *
+     * The denominator is now the POSTING's requirement count, so a job that
+     * does not mention the skill is untouched.
      */
     const jobs = [
       ...Array.from({ length: 3 }, (_, i) => job(i + 1, 'Figma and Rust systems programming.')),
@@ -54,65 +59,58 @@ describe('the ranking is the real score change, not the frequency', () => {
     const rust = out.candidates.find((c) => c.skill === 'Rust');
 
     expect(rust).toBeTruthy();
-    expect(rust.netDelta).toBeLessThan(0);
-    expect(rust.jobsHurt).toBeGreaterThan(rust.jobsHelped);
-    expect(out.negativeCandidates).toBeGreaterThan(0);
+    expect(rust.netDelta).toBeGreaterThan(0);
+    expect(rust.jobsHurt).toBe(0);
+    expect(out.negativeCandidates).toBe(0);
   });
 
-  it('a common skill still reports how many jobs it hurts', () => {
-    // 6 of 10 mention it. It is the best candidate AND it costs 4 jobs.
-    // Reporting only the win would be a half-truth.
+  it('no candidate anywhere hurts a single job', () => {
+    /*
+     * jobsHurt is kept precisely so this can be asserted. A non-zero value
+     * would mean this file and matchingEngine have drifted apart on the
+     * denominator, which is the failure that would silently undo D49.
+     */
     const jobs = [
       ...Array.from({ length: 6 }, (_, i) => job(i + 1, 'Figma and Kubernetes platform work.')),
       ...Array.from({ length: 4 }, (_, i) => job(i + 7, 'Figma and User Research.')),
     ];
     const out = coach(jobs, ['Figma', 'Prototyping']);
-    const k = out.candidates.find((c) => c.skill === 'Kubernetes');
 
-    expect(k.netDelta).toBeGreaterThan(0);
-    expect(k.jobsHurt).toBe(4);
-    expect(k.jobsHelped).toBe(6);
-  });
-
-  it('states the threshold a skill must beat, and it is exact', () => {
-    /*
-     * Replaces an ordering test that could NEVER have discriminated.
-     *
-     * Working the algebra: the change in summed skills score is
-     * (n*a - M)/(n(n+1)) — the per-job m terms cancel — so netDelta depends
-     * only on frequency, and ranking by delta is provably identical to
-     * ranking by frequency. The original test asserted a distinction that does
-     * not exist, and passed under both implementations. Proving it red is what
-     * exposed that.
-     *
-     * The real, checkable property is the SIGN: a skill helps only if it
-     * appears in a greater share of the feed than the user's current mean
-     * skills score. `helpsAbove` reports that line.
-     */
-    const jobs = [
-      ...Array.from({ length: 6 }, (_, i) => job(i + 1, 'Figma Sketch Kubernetes.')),
-      ...Array.from({ length: 4 }, (_, i) => job(i + 7, 'Rust only.')),
-    ];
-    const out = coach(jobs, ['Figma', 'Sketch']);
-
-    // mean skills score: 6 jobs match 2/2, 4 match 0/2 -> 0.6
-    expect(out.helpsAbove).toBeCloseTo(0.6, 4);
-
+    expect(out.candidates.length).toBeGreaterThan(0);
     for (const c of out.candidates) {
-      if (c.shareOfFeed > out.helpsAbove) expect(c.netDelta).toBeGreaterThan(0);
-      if (c.shareOfFeed < out.helpsAbove) expect(c.netDelta).toBeLessThan(0);
+      expect(c.jobsHurt).toBe(0);
+      expect(c.netDelta).toBeGreaterThanOrEqual(0);
+      expect(c.jobsHelped).toBe(c.appearsInJobs);
     }
   });
 
-  it('says so when the most common gap would still make things worse', () => {
-    // The case a frequency-ranked list cannot express at all.
+  it('is worth more in a job that asks for few other things', () => {
+    /*
+     * The ordering genuinely differs from frequency now, which it provably did
+     * NOT under the old formula - a claim an earlier draft made and had to
+     * retract. Being one of four things a posting wants beats being one of
+     * nine, so a rarer skill in lean postings can outrank a commoner one.
+     */
+    const lean = Array.from({ length: 4 }, (_, i) =>
+      job(i + 1, 'Figma. Rust.'));                                  // 2 skills -> floored to 4
+    const fat = Array.from({ length: 6 }, (_, i) =>
+      job(i + 5, 'Figma, Kubernetes, Docker, Terraform, AWS, Python, SQL, React, Vue.'));
+    const out = coach([...lean, ...fat], ['Figma', 'Sketch']);
+
+    const rust = out.candidates.find((c) => c.skill === 'Rust');
+    const k = out.candidates.find((c) => c.skill === 'Kubernetes');
+    expect(rust.appearsInJobs).toBeLessThan(k.appearsInJobs);       // rarer
+    expect(rust.netDelta).toBeGreaterThan(k.netDelta);              // and worth more
+  });
+
+  it('orders by netDelta', () => {
     const jobs = [
-      ...Array.from({ length: 3 }, (_, i) => job(i + 1, 'Figma Sketch Kubernetes.')),
-      ...Array.from({ length: 9 }, (_, i) => job(i + 4, 'Figma Sketch only.')),
+      ...Array.from({ length: 10 }, (_, i) => job(i + 1, 'Figma and Kubernetes.')),
+      ...Array.from({ length: 4 }, (_, i) => job(i + 11, 'Figma and Rust.')),
     ];
     const out = coach(jobs, ['Figma', 'Sketch']);
-    expect(out.candidates[0].netDelta).toBeLessThan(0);
-    expect(out.negativeCandidates).toBe(out.candidates.length);
+    const d = out.candidates.map((c) => c.netDelta);
+    expect(d).toEqual([...d].sort((a, b) => b - a));
   });
 });
 
