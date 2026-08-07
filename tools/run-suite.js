@@ -33,6 +33,7 @@ const cwd = path.resolve(__dirname, '..', dir);
  */
 const summaryFile = path.join(os.tmpdir(), `jest-summary-${process.pid}-${dir.replace(/\W/g, '')}.json`);
 let failed = false;
+let rawOutput = '';
 try {
   /*
    * --runInBand: serial, and it is FASTER here - 6s against 12s on the
@@ -51,11 +52,24 @@ try {
    * cause is not worker parallelism and the next suspect is whatever else was
    * running.
    */
-  execFileSync('npx', ['jest', '--ci', '--runInBand', '--json', `--outputFile=${summaryFile}`], {
-    cwd, stdio: 'inherit', maxBuffer: 64 * 1024 * 1024,
+  const out = execFileSync('npx', ['jest', '--ci', '--runInBand', '--json', `--outputFile=${summaryFile}`], {
+    cwd, stdio: ['inherit', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
   });
+  process.stdout.write(out);
+  rawOutput = out.toString();
 } catch (err) {
   failed = true;
+  /*
+   * KEEP THE EVIDENCE. Previously stdio was 'inherit', so a failing run left
+   * only the summary line - which is why three occurrences of a flake produced
+   * no request log, no stack, and no server state, and four hypotheses had to
+   * be eliminated by guesswork instead of by reading what happened.
+   *
+   * stdout and stderr are captured and echoed, so the terminal looks the same
+   * and the bytes survive.
+   */
+  rawOutput = `${(err.stdout || '').toString()}${(err.stderr || '').toString()}`;
+  process.stdout.write(rawOutput);
 }
 
 let raw = '';
@@ -86,14 +100,42 @@ if (numFailedTests > 0 || failed) {
    * never read.
    */
   console.error(`${dir}: FAILURES`);
+
+  /*
+   * The FULL failure, not its first line. A transport error like "socket hang
+   * up" carries its useful detail in the stack and in the console output
+   * around it, and truncating to one line is what made the last three
+   * occurrences undiagnosable.
+   */
   for (const suite of r.testResults || []) {
     for (const t of suite.assertionResults || []) {
       if (t.status !== 'failed') continue;
-      console.error(`  ${suite.name ? suite.name.split('/').pop() : '?'} :: ${t.fullName || t.title}`);
-      const first = (t.failureMessages || [])[0];
-      if (first) console.error(`    ${first.split('\n')[0].slice(0, 160)}`);
+      console.error(`\n  ${suite.name ? suite.name.split('/').pop() : '?'} :: ${t.fullName || t.title}`);
+      for (const m of t.failureMessages || []) {
+        console.error(String(m).split('\n').map((l) => `    ${l}`).join('\n'));
+      }
+    }
+    // Whatever the suite logged around the failure - often the real story.
+    if (suite.status === 'failed' && suite.message && !(suite.assertionResults || []).length) {
+      console.error(`\n  ${suite.name ? suite.name.split('/').pop() : '?'} — suite failed to run:`);
+      console.error(String(suite.message).split('\n').map((l) => `    ${l}`).join('\n'));
     }
   }
+
+  /*
+   * And keep the raw run on disk. A flake that appears once in hundreds of
+   * runs has to leave evidence behind the first time, because there may not be
+   * a second chance to watch it.
+   */
+  try {
+    const stamp = `${dir}-${process.pid}`;
+    const evidence = path.join(os.tmpdir(), `jest-failure-${stamp}.log`);
+    fs.writeFileSync(evidence, `${rawOutput}\n\n===== JSON SUMMARY =====\n${JSON.stringify(r, null, 1)}`);
+    console.error(`\n  full run saved: ${evidence}`);
+  } catch (e) {
+    console.error(`  could not save the run: ${e.message}`);
+  }
+
   process.exit(1);
 }
 if (numTotalTests < min) {
