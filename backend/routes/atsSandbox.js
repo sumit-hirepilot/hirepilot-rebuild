@@ -47,11 +47,37 @@ const makeConfirmationId = () => `GH-SANDBOX-${crypto.randomBytes(6).toString('h
  */
 const IDENTITY = ['first_name', 'last_name', 'email', 'phone'];
 
-const unwrap = (k) => {
-  // Legacy board names its fields job_application[first_name].
-  const m = /^job_application\[([^\]]+)\]$/.exec(k);
-  return m ? m[1] : k;
-};
+/*
+ * multer parses bracket names into NESTED OBJECTS, not flat keys.
+ *
+ * The legacy Greenhouse board names every field `job_application[first_name]`,
+ * and multer's append-field turns that into `body.job_application.first_name`.
+ * A first cut here read Object.entries(body) and called String() on each value,
+ * which threw "Cannot convert object to primitive value" on the single nested
+ * object - a 500 that said nothing about the real shape of the payload.
+ *
+ * Flattened back to leaf paths so the capture records the field names the form
+ * actually carries, which is the whole point of a target that reports what it
+ * received.
+ */
+function flatten(value, prefix, into) {
+  if (value === null || value === undefined) return into;
+  if (Array.isArray(value)) {
+    // Repeated fields (checkbox groups) arrive as arrays; join rather than
+    // index, because the form sent one question, not several.
+    into[prefix] = value.map((v) => String(v ?? '')).join(', ');
+    return into;
+  }
+  if (typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) flatten(v, prefix ? `${prefix}.${k}` : k, into);
+    return into;
+  }
+  into[prefix] = String(value);
+  return into;
+}
+
+/** `job_application.first_name` -> `first_name`; anything else is left alone. */
+const unwrap = (k) => k.replace(/^job_application\./, '');
 
 /**
  * POST /api/ats-sandbox/submit
@@ -64,12 +90,14 @@ router.post('/submit', upload.any(), async (req, res) => {
   try {
     const body = req.body || {};
 
+    const flat = flatten(body, '', {});
+
     const fields = {};
     const answers = {};
-    for (const [rawKey, value] of Object.entries(body)) {
+    for (const [rawKey, value] of Object.entries(flat)) {
       const key = unwrap(rawKey);
-      if (IDENTITY.includes(key) || key === 'cover_letter') fields[key] = String(value ?? '').slice(0, 4000);
-      else answers[key] = String(value ?? '').slice(0, 4000);
+      if (IDENTITY.includes(key) || key === 'cover_letter') fields[key] = value.slice(0, 4000);
+      else answers[key] = value.slice(0, 4000);
     }
 
     const file = (req.files || [])[0] || null;
