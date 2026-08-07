@@ -868,13 +868,27 @@ export default function Jobs() {
             usable by sight and unusable otherwise. The name is built from the
             same two strings the row shows, through the same parsedOr, so the
             spoken name and the visible one cannot drift. */}
-        <input
-          type="checkbox"
-          checked={selectedIds.has(job.id)}
-          onChange={() => toggleSelect(job.id)}
-          className={page.checkbox}
-          aria-label={`Select ${job.title} at ${parsedOr(job.company_name, 'Company not stated')}`}
-        />
+        {/*
+          * The label exists for the TARGET, not for a caption.
+          *
+          * Measured on production at 375: this checkbox was 13px, and after
+          * being grown to 22px it was still a 22px thing to hit with a thumb,
+          * because nothing around it forwarded the tap. Growing the box itself
+          * to 44px looks broken, so the label carries the target and the box
+          * stays the size it should look.
+          *
+          * The input keeps its own aria-label - the label element here has no
+          * text, so it must not become the accessible name.
+          */}
+        <label className={page.checkboxHit}>
+          <input
+            type="checkbox"
+            checked={selectedIds.has(job.id)}
+            onChange={() => toggleSelect(job.id)}
+            className={page.checkbox}
+            aria-label={`Select ${job.title} at ${parsedOr(job.company_name, 'Company not stated')}`}
+          />
+        </label>
         <div className={page.avatar}>{job.company_name?.charAt(0) || '?'}</div>
         <div className={page.jobInfo} onClick={() => setSelectedJob(job)}>
           <p className={page.jobTitle}>{job.title}</p>

@@ -914,3 +914,11 @@
   font-size: 0.9375rem;
   line-height: 1.55;
 }
+
+/* Feature 2 — the tap target around a job-card checkbox.
+   The box stays 22px because a 44px checkbox looks broken; this carries the
+   target instead. Desktop keeps the tight layout the audit passed at 1440. */
+.checkboxHit { display: inline-flex; align-items: center; justify-content: center; }
+@media (max-width: 767px), (pointer: coarse) {
+  .checkboxHit { min-width: 44px; min-height: 44px; margin: -11px 0; }
+}
