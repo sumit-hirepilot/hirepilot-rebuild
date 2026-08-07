@@ -1139,7 +1139,7 @@ export default function Jobs() {
                 setRankMode(next); setPage(1);
                 loadJobs(token, { page: 1, rankMode: next });
               }}
-              title="Every indexed job, not scored against your profile"
+              title="Every job we have, not scored against your profile"
             >
               {rankMode === 'ranked' ? 'Browse all jobs' : 'Back to my matches'}
             </button>
@@ -1165,7 +1165,7 @@ export default function Jobs() {
             </label>
           ) : (
             <span className={page.floorNote}>
-              Unranked. Every indexed job, newest first - not scored against your profile.
+              Not scored. Every job we have, newest first - not compared against your profile.
             </span>
           )}
           {/* A7.17 - before the ranking paths were collapsed, a date filter ran
@@ -1643,7 +1643,12 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
           </>
         )}
 
-        <h3 className={styles.drawerSectionTitle}>ATS keyword check</h3>
+        <h3 className={styles.drawerSectionTitle}>
+          ATS keyword check
+          <span className={styles.drawerSectionHint}>
+            {' '}— the words this posting uses, and whether your resume uses them too
+          </span>
+        </h3>
         {ats === null ? (
           <p className={styles.drawerText}>Checking your resume against this posting&hellip;</p>
         ) : ats.hasResume === false ? (

@@ -878,7 +878,7 @@ export default function Settings() {
                   );
                 }}
               >
-                Copy access token
+                Copy pairing code
               </button>
             </div>
             {/*

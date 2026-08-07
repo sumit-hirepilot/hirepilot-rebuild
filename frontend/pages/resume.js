@@ -552,7 +552,16 @@ function TailorForJob({ jobs, token, base, reload }) {
             </div>
           </div>
 
-          <p className={page.sectionLabel} style={{ marginTop: '1.25rem' }}>ATS Score</p>
+          {/* The acronym stays - "ATS score" is the phrase Indian job seekers
+              actually search for - but it never stands alone over a bare number.
+              Feature 2: plain words on the surface, the term kept where it is
+              the word people know. */}
+          <p className={page.sectionLabel} style={{ marginTop: '1.25rem' }}>
+            ATS score
+            <span className={page.sectionLabelHint}>
+              {' '}— how much of the job&apos;s own wording your resume already uses
+            </span>
+          </p>
           <div className={page.scoreTrackLarge}>
             <div className={page.scoreFillLarge} style={{ width: `${result.atsScore}%` }} />
           </div>

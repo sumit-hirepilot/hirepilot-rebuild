@@ -452,3 +452,6 @@
   color: var(--text-secondary);
   line-height: 1.6;
 }
+
+/* Feature 2 — an acronym never stands alone over a bare number. */
+.sectionLabelHint { font-weight: 400; color: var(--text-muted, #6b7280); font-size: 0.85em; }

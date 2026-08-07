@@ -238,7 +238,7 @@ export default function Home({ stats = null }) {
                     <span className={styles.terminalDot} />
                     <span className={styles.terminalDot} />
                     <span className={styles.terminalDot} />
-                    <span className={styles.terminalLabel}>live · synced every 6h</span>
+                    <span className={styles.terminalLabel}>live · updated every 6 hours</span>
                   </div>
                   <div className={styles.terminalBody}>
                     {activeTicker ? (
@@ -261,7 +261,7 @@ export default function Home({ stats = null }) {
                       <span className={styles.statNumber}>
                         {totalJobs ? formatNumber(totalJobs) : <span className={styles.statUnknown}>unavailable</span>}
                       </span>
-                      <span>active jobs indexed</span>
+                      <span>active jobs we track</span>
                     </div>
                     <div className={styles.statCell}>
                       <span className={styles.statNumber}>

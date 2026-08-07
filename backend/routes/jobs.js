@@ -43,11 +43,49 @@ const router = express.Router();
 
 let aggregationInFlight = false;
 
+/*
+ * ONE definition of an experience band, used by the filter AND the facet.
+ *
+ * There were two. The filter had four bands - the fourth, `mid`, being the
+ * negation of the other three - and the facet counted only three. So the chip
+ * reported experience for 9,709 of 25,431 jobs while selecting "Mid level"
+ * returned 16,129 of them. Same question, two answers, and the one a person
+ * reads before choosing was the wrong one.
+ *
+ * The bands are matched on the TITLE, so they overlap by construction: "Senior
+ * Staff Engineer" is both senior and staff. The counts therefore do not
+ * partition the index and must never be presented as if they do - the UI says
+ * "about" for that reason.
+ *
+ * Found in the feature audit; carried into feature 2 because the fix is what
+ * the chip can honestly say.
+ */
+const EXPERIENCE_TERMS = {
+  senior: 'senior|sr\\.?|lead|head of',
+  staff: 'staff|principal|distinguished',
+  entry: 'junior|jr\\.?|entry|intern|graduate',
+};
+const EXPERIENCE_SQL = {
+  senior: `title ~* '(${EXPERIENCE_TERMS.senior})'`,
+  staff: `title ~* '(${EXPERIENCE_TERMS.staff})'`,
+  entry: `title ~* '(${EXPERIENCE_TERMS.entry})'`,
+  // Everything none of the three name. A catch-all, and the largest band.
+  mid: `title !~* '(${Object.values(EXPERIENCE_TERMS).join('|')})'`,
+};
+
+/*
+ * The per-job label, from the SAME terms as the filter and the facet.
+ *
+ * This was a THIRD copy of the three regexes, so a card could be labelled
+ * "Senior" by one definition while the filter that produced it used another.
+ * Order matters and is kept: staff before senior, because "Senior Staff
+ * Engineer" is a staff role, and the SQL bands overlap where this one commits.
+ */
 function classifyExperience(title) {
   const t = (title || '').toLowerCase();
-  if (/(staff|principal|distinguished)/.test(t)) return 'staff';
-  if (/(senior|sr\.?|lead|head of)/.test(t)) return 'senior';
-  if (/(junior|jr\.?|entry|intern|graduate)/.test(t)) return 'entry';
+  if (new RegExp(`(${EXPERIENCE_TERMS.staff})`).test(t)) return 'staff';
+  if (new RegExp(`(${EXPERIENCE_TERMS.senior})`).test(t)) return 'senior';
+  if (new RegExp(`(${EXPERIENCE_TERMS.entry})`).test(t)) return 'entry';
   return 'mid';
 }
 
@@ -150,6 +188,7 @@ const JOB_TYPE_SQL = `CASE
     WHEN COALESCE(job_type,'') = '' THEN 'unspecified'
     ELSE 'other'
   END`;
+
 
 // Approximate FX to USD so salaries from mixed-currency sources can be
 // compared and bucketed. These are static reference rates, not live: they are
@@ -334,10 +373,13 @@ router.get('/facets', async (req, res) => {
                ${SALARY_BANDS.map((b) => `COUNT(*) FILTER (WHERE ${bandCondition(b.value)})::int AS "${b.value}"`).join(',\n               ')},
                COUNT(*) FILTER (WHERE salary_min IS NULL)::int AS not_listed
              FROM jobs WHERE is_active = true`),
+      // Same predicates the FILTER uses, mid included - two copies is how the
+      // facet came to report 9,709 while the filter returned 16,129 for mid.
       query(`SELECT
-               COUNT(*) FILTER (WHERE title ~* '(junior|jr\\.?|entry|intern|graduate)')::int AS entry,
-               COUNT(*) FILTER (WHERE title ~* '(senior|sr\\.?|lead|head of)')::int AS senior,
-               COUNT(*) FILTER (WHERE title ~* '(staff|principal|distinguished)')::int AS staff
+               COUNT(*) FILTER (WHERE ${EXPERIENCE_SQL.entry})::int AS entry,
+               COUNT(*) FILTER (WHERE ${EXPERIENCE_SQL.mid})::int AS mid,
+               COUNT(*) FILTER (WHERE ${EXPERIENCE_SQL.senior})::int AS senior,
+               COUNT(*) FILTER (WHERE ${EXPERIENCE_SQL.staff})::int AS staff
              FROM jobs WHERE is_active = true`),
       query(`SELECT ${REGION_SQL} AS value, COUNT(*)::int AS count
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
@@ -353,11 +395,23 @@ router.get('/facets', async (req, res) => {
         ...SALARY_BANDS.map((b) => ({ value: b.value, label: b.label, count: salary.rows[0][b.value] })),
         { value: 'not_listed', label: 'No salary published', count: salary.rows[0].not_listed },
       ],
+      /*
+       * `mid` is here because the FILTER has always had it. Leaving it out
+       * made the facet describe 9,709 jobs while selecting "Mid level"
+       * returned 16,129.
+       *
+       * `overlapping` is not decoration: the bands are matched on the title,
+       * so "Senior Staff Engineer" is counted in two of them and the counts
+       * do not sum to the index. The client needs to know that before it
+       * renders them as a breakdown of the whole.
+       */
       experience: [
         { value: 'entry', count: exp.entry },
+        { value: 'mid', count: exp.mid },
         { value: 'senior', count: exp.senior },
         { value: 'staff', count: exp.staff },
       ],
+      experienceOverlapping: true,
       region: region.rows.map((r) => ({
         value: r.value,
         label: REGION_LABELS[r.value] || r.value,
@@ -1065,12 +1119,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       addFilter('salary', `Salary: ${salaryBands.join(', ')}`, () => `(${salaryConds.join(' OR ')})`);
     }
 
-    const EXPERIENCE_SQL = {
-      senior: `title ~* '(senior|sr\\.?|lead|head of)'`,
-      staff: `title ~* '(staff|principal|distinguished)'`,
-      entry: `title ~* '(junior|jr\\.?|entry|intern|graduate)'`,
-      mid: `title !~* '(senior|sr\\.?|lead|head of|staff|principal|distinguished|junior|jr\\.?|entry|intern|graduate)'`,
-    };
+    // EXPERIENCE_SQL is module-scoped and shared with the facet query above.
     const EXPERIENCE_LABEL = {
       senior: 'Senior', staff: 'Staff+', entry: 'Entry level', mid: 'Mid level',
     };

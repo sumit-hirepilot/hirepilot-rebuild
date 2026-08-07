@@ -54,6 +54,7 @@ echo "== 5/10 user-visible claims still match the code =="
 node tools/check-landing-claims.js
 node tools/check-plan-names.js
 node tools/check-claim-tests.js
+node tools/check-plain-language.js
 echo
 
 echo "== 6/10 backend suite =="

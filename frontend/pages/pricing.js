@@ -41,9 +41,9 @@ const PLANS = [
     name: 'Free',
     inr: 0,
     usd: 0,
-    tagline: 'The whole index, scored.',
+    tagline: 'Every job we have, scored.',
     features: [
-      'Every indexed job, all sources',
+      'Every job we have, from every source',
       'Match scoring with the full four-weight breakdown',
       '600 applications a month',
       'Application tracker and status history',
@@ -77,7 +77,7 @@ const PLANS = [
       'Auto Apply — hands off, daily capped',
       'Recruiter and referral lookup per role',
       'ATS check against the exact posting',
-      'Priority on new-source indexing',
+      'New sources added for you first',
     ],
   },
 ];

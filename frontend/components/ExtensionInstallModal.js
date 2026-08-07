@@ -303,8 +303,8 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
               <p className={styles.stepTitle}>Connect it to your account</p>
               <p className={styles.hint}>
                 Open the extension, set the HirePilot URL to <code className={styles.codeInline}>{apiBase}</code>,
-                and paste this access token. It is a live session for your account &mdash;
-                treat it like your password.
+                and paste this pairing code. It signs the extension in as you &mdash;
+                treat it like your password, and do not share it.
               </p>
               <div className={styles.copyRow}>
                 <code className={styles.tokenBox}>{token ? `${token.slice(0, 28)}…` : 'signing in…'}</code>

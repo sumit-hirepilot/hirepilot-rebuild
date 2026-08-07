@@ -327,3 +327,42 @@ input:focus, textarea:focus, select:focus {
 .firstMatchTitle { font-weight: 600; color: #0f172a; }
 .firstMatchCompany { margin: 0.25rem 0 0; font-size: 0.8125rem; color: #475569; }
 .firstMatchNote { margin: 0.375rem 0 0; font-size: 0.75rem; color: #64748b; }
+
+/*
+ * Feature 2 — a control on a phone is big enough to hit.
+ *
+ * The audit measured, at 375px: checkboxes 13-16px tall and the "Original
+ * posting" link 19px. Anything under ~44px is a control you aim at rather than
+ * press, and this product's whole apply flow is thumbs on a phone.
+ *
+ * Scoped to coarse pointers and narrow widths so the desktop layout, which the
+ * audit passed at 1440 and 768, is untouched. The checkbox itself only grows
+ * to 22px - a 44px checkbox looks broken - and the LABEL carries the rest of
+ * the target, which is what a finger actually lands on.
+ */
+@media (max-width: 767px), (pointer: coarse) {
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+  }
+
+  /* The label is the real hit area: tapping the word must toggle the box. */
+  label:has(> input[type='checkbox']),
+  label:has(> input[type='radio']) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+  }
+
+  /* Inline links that act as actions, not prose - padded to a real target. */
+  a[target='_blank'],
+  a[class*='originalLink'] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

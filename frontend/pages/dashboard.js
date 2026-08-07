@@ -204,7 +204,7 @@ export default function Dashboard() {
               application" multiplier. Replaced with a count that comes
               straight from the indexed job pool. */}
           <div className={styles.statCard}>
-            <p className={styles.statLabel}>Jobs Indexed</p>
+            <p className={styles.statLabel}>Jobs we track</p>
             <p className={styles.statValue}>{formatNumber(scannedToday)}</p>
           </div>
         </div>

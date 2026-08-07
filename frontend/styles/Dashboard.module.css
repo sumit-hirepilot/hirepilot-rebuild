@@ -1381,3 +1381,8 @@
   font-size: 0.9375rem;
   line-height: 1.55;
 }
+
+/* Feature 2 — the acronym keeps a plain gloss beside it, never a bare label
+   over a bare number. Lives here because pages/jobs.js binds the drawer
+   classes to Dashboard.module.css, not Jobs.module.css. */
+.drawerSectionHint { font-weight: 400; color: var(--text-muted, #6b7280); font-size: 0.82em; }
