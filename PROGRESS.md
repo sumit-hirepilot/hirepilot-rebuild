@@ -812,6 +812,81 @@ That is a cheap, specific check and it has not been done.
 UNTIL THEN: a green gate is still weaker evidence than it looks, and the gate
 naming its failures is what made this diagnosable at all.
 
+## THE FLAKE — four hypotheses disproved. Not reproducible. Read this before
+## spending another session on it.
+
+Observed three times in a very long session, across hundreds of runs, in two
+distinct signatures:
+  frontend:  "Unable to find role=button"  (undatedReachable, filterControlsApply,
+             selectAllPendingReview - each passing 3/3 in isolation)
+  backend:   "socket hang up"              (jobsRanking, a supertest TRANSPORT
+             error, not an assertion failure)
+
+DISPROVED, each by experiment, not by argument:
+ 1. TIMEOUT BUDGETS. Raised Jest testTimeout to 20s and testing-library's
+    asyncUtilTimeout to 10s (they are independent - that part was a real find).
+    The flake persisted afterwards.
+ 2. WORKER PARALLELISM. Both suites now run --runInBand. I wrote in
+    run-suite.js that if the flake returned under serial execution the cause
+    lay elsewhere. It returned on the very next gate run.
+ 3. LEAKED SERVERS / OPEN HANDLES. `jest --runInBand --detectOpenHandles`
+    reports NOTHING: 317/317, exit 0, no "Jest did not exit" warning. Several
+    suites do build an express app per test without closing it, and it does not
+    leak a handle Jest can see.
+ 4. SOCKET EXHAUSTION. Both flakes happened shortly after a 1,000-connection
+    load test, so I ran the backend suite three times WHILE saturating sockets
+    (TIME_WAIT 18 -> 493). 317/317, three times.
+
+WHAT IS LEFT, untried:
+ - Capture the failing run's full output rather than the summary line. The gate
+   names the test now but not the surrounding context - no request log, no
+   server state at the moment of the hang up.
+ - A retry-once-on-TRANSPORT-error in run-suite.js that fails loudly and counts
+   occurrences, so infrastructure noise stops blocking correct commits while
+   the frequency stays visible. NOT implemented: it must never retry an
+   assertion failure, and I could not validate that distinction against a flake
+   I cannot reproduce. Shipping an unvalidated retry into the one mechanism
+   that gates everything is the wrong trade.
+
+STATUS: rare, unreproducible, two signatures, four causes eliminated. Treat a
+green gate as good but not conclusive, and do not re-run the four experiments
+above.
+
+## NEW GOAL — FULL FEATURE AUDIT (after feature 1, then every third feature)
+
+Walk EVERY feature end to end on production as a real user, at 375/768/1440,
+recording pass/fail plus a named defect and a screenshot for each: signup,
+onboarding, resume upload and parse, scoring, feed, filters, sort, score
+breakdown, job detail, tailoring, apply queue, Auto Apply, submission, receipt,
+tracker, applications board, search agents, network, inbox, notifications,
+analytics, resume versions, profile, settings, credits and tier limits,
+pricing, landing page, legal pages.
+Click every control - presence is not function. Assert the state change AND the
+network call. Any feature that fails is fixed before the next queue item.
+This is a walkthrough, not a code read: a feature is working only if it was
+OBSERVED working on production.
+
+## FEATURE 1 REMAINDER — still owed, spec is in hirepilot-master-prompt.md
+
+Live counts are IN and verified (screen said 253, API said 253). Still owed:
+ - Chips over typing wherever the answer set is known: experience level, work
+   type, role family, notice period. Big targets, all options visible. Typing
+   is the fallback, never the default.
+ - Where the set is too long for chips (city, specific role title): a
+   searchable select with values prefilled from the resume. Never an empty text
+   field with no guidance.
+ - Resume-parse-as-first-wow: skills, roles and years as REMOVABLE chips the
+   moment the resume is read, not behind Continue.
+ - Time-to-first-match at step 4 or 5: one real scored job before onboarding
+   ends, from the real query, never a sample.
+ - Abandonment recovery: return to the step left, nothing re-entered, no
+   percentage-complete pressure bar.
+ - Failed parse as a designed path: "fill it in" one tap away on the same
+   screen. Single most likely drop-off point in the flow.
+Acceptance unchanged: 375/768/1440 with screenshots, interaction tests that
+CLICK and assert both state and network call, per-assertion red-green, zero
+console errors, load test after deploy at steady state.
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
