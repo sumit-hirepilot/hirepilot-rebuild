@@ -75,9 +75,59 @@ query bounds and mock boundaries all clean.
 load test to record for it — the standing rule applies at deploy, and this has
 not deployed. It will run at steady state once the branch lands on `main`.
 
+### Feature 5 — score coaching (LANDED)
+
+`GET /api/matches/coaching`. Contract in HANDOFF.md as A → B · 3.
+
+**The finding that shaped it.** Skills score is `matched / userSkills.length`
+— the share of the USER'S skills a job mentions, not the share of the job's
+needs met. So adding a skill raises the score on jobs mentioning it and lowers
+it on every job that does not. The obvious coaching — rank the missing skills
+by frequency — therefore recommends things that make the average **worse**.
+
+**I was wrong about part of this and the tests caught it.** The first draft
+claimed the ranking differed from frequency ranking. Working the algebra out:
+
+```
+change in summed skills score = (n·a − M) / (n(n+1))
+```
+
+the per-job terms cancel, so it depends only on frequency `a`. **Ranking by
+net delta is provably identical to ranking by frequency.** The claim was
+false; it is removed rather than defended. What the delta genuinely adds is
+the **sign**: a skill helps only when
+
+```
+shareOfFeed > helpsAbove   (the user's current mean skills score)
+```
+
+`helpsAbove` is now returned so the threshold is checkable against the list.
+On a realistic feed every candidate can be negative — the most common gap
+still making the average worse — and a frequency-ranked list has no way to
+say so.
+
+Every claim traces to job ids from the user's own feed; nothing is suggested
+that is not written in a posting they were scored against. Cold start works:
+no applications, no outcomes.
+
+**A7.8 caught a real defect in my new query.** `ORDER BY overall_score DESC`
+had no unique tiebreaker, so the "top 400" sample was whatever the plan
+produced — the same user could get different coaching on two refreshes with
+nothing changed. Advice that moves for no reason is advice nobody can act on.
+Now `ORDER BY m.overall_score DESC, m.job_id ASC`.
+
+**Two of my tests could not have discriminated** and were replaced after
+proving red did nothing: the ordering test (asserting a distinction that does
+not exist) and the `biggestGap` test (built so lowest-score and
+most-points-available both answered "skills"). The rewritten one puts salary
+at 0.1 — the lowest score — while skills at 0.5 carries more points, so only
+the right rule passes.
+
+Backend suite **409**.
+
 ## Next
 
-Feature 5 — score coaching: the scoring math and endpoint. Then feature 11
+Feature 11
 (rejection intelligence), then feature 12 (recruiter email routing). Each API
 contract goes into HANDOFF.md the moment it lands, before Lane B needs it.
 

@@ -4,6 +4,7 @@ const { verifyToken } = require('../middleware/auth');
 const { calculateMatchesForUser } = require('../services/matchingEngine');
 const { boundPaging, boundFloat, clampReport } = require('../services/requestBounds');
 const { fixMojibake } = require('../services/apis/textSanitizer');
+const { coach, MAX_JOBS } = require('../services/scoreCoaching');
 
 const router = express.Router();
 
@@ -155,6 +156,60 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // Recalculate all matches for user
+/*
+ * Feature 5 — "what would move you from 62% to 80%", answered from this
+ * user's own feed with the arithmetic the score itself uses.
+ *
+ * Cold start is the normal case: this needs no applications, no outcomes and
+ * no history. It reads the jobs already scored against the profile and the
+ * skills the user has recorded, and nothing else.
+ *
+ * The ranking is by REAL net change in mean score, not by how common a skill
+ * is. With `skillsScore = matched / userSkills.length`, adding a skill lowers
+ * the score on every job that does not mention it - so the most frequent
+ * missing skill is regularly a bad recommendation, and this reports the ones
+ * that would make things worse rather than hiding them.
+ */
+router.get('/coaching', verifyToken, async (req, res) => {
+  try {
+    const [jobsRes, skillsRes] = await Promise.all([
+      /*
+       * Bounded, and ordered so the sample is the user's BEST matches rather
+       * than an arbitrary page - coaching against the tail of the feed would
+       * describe jobs they will never look at.
+       */
+      query(
+        `SELECT m.job_id, m.experience_match_score, m.location_match_score, m.salary_match_score,
+                j.title, j.company_name,
+                CONCAT_WS(' ', j.title, j.description, j.requirements) AS text
+           FROM job_matches m
+           JOIN jobs j ON j.id = m.job_id
+          WHERE m.user_id = $1
+          -- A7.8: a unique final key. Without one the "top 400" is whatever
+          -- the plan produced, so the same user could get different coaching
+          -- on two refreshes with nothing changed - advice that moves for no
+          -- reason is advice nobody can act on. Caught by candidateOrder.
+          ORDER BY m.overall_score DESC, m.job_id ASC
+          LIMIT $2`,
+        [req.user.id, MAX_JOBS]
+      ),
+      query('SELECT skill FROM user_skills WHERE user_id = $1 LIMIT 60', [req.user.id]),
+    ]);
+
+    const out = coach(
+      jobsRes.rows.map((r) => ({ ...r, company_name: r.company_name ? fixMojibake(r.company_name) : null })),
+      skillsRes.rows.map((r) => r.skill)
+    );
+
+    // 200 with ready:false, not an error: "nothing to say yet" is a real
+    // answer and the client should render the reason, not a failure.
+    res.json(out);
+  } catch (err) {
+    console.error('GET /matches/coaching failed:', err.message);
+    res.status(500).json({ error: 'Could not work out what would move your scores' });
+  }
+});
+
 router.post('/recalculate', verifyToken, async (req, res) => {
   try {
     const result = await calculateMatchesForUser(req.user.id);
