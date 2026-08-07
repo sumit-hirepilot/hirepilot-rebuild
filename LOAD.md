@@ -311,3 +311,19 @@ ordering is coherent again.
 Reported as a regression, that first reading would have been a 4.5x p95 blowup
 at exactly the concurrency the acceptance bar names, on a change that touched
 only copy, a viewport tag and CSS.
+
+## D46 (mobile claims) — load test after deploy
+
+Run at uptime 307s. `e6bd0a4`. Frontend-only change; measured anyway.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 200 | 600 | **600** | **0** | **2,631 / 2,634 ms** (two runs) | 303–310 MB |
+| 500 | 1,500 | 1,500 | 0 | 7,165 ms | 351 MB |
+
+Against 2,538–3,025 ms at 200 last run: no regression, zero failures.
+
+A first pass ran at uptime **205s** and returned a clean, coherent curve
+(1,102 / 2,533 / 7,072 ms). It is discarded anyway — it was inside the
+5-minute window, and a rule that only applies when the numbers look wrong is
+not a rule. Re-measured above at 307s.
