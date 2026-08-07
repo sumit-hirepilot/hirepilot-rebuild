@@ -1263,8 +1263,12 @@
  * perfectly ordinary desktop window, not just phones. A CTA nobody can identify
  * is the same as no CTA.
  */
+/* The short form is the one that survives a narrow header. */
+.extensionCtaLabelShort { display: none; }
+
 @media (max-width: 900px) {
   .extensionCtaLabelLong { display: none; }
+  .extensionCtaLabelShort { display: inline; }
   .extensionCta { padding: 8px 12px; }
 }
 

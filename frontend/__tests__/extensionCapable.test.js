@@ -96,3 +96,29 @@ describe('it explains rather than going silent', () => {
     expect(src).toMatch(/if \(!canInstall\) return;/);
   });
 });
+
+describe('the desktop-only label fits a phone header', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const layout = fs.readFileSync(path.join(__dirname, '..', 'components', 'DashboardLayout.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles', 'Dashboard.module.css'), 'utf8');
+
+  it('offers a short form, because the long one clipped the credits pill', () => {
+    /*
+     * At 375 "Applying needs desktop" made the header 530px wide inside a
+     * 375px viewport and clipped the credits value to "45". Page-level
+     * overflow read 0 throughout - the header clips internally rather than
+     * scrolling the page - so only the screenshot showed it.
+     */
+    expect(layout).toMatch(/extensionCtaLabelShort/);
+    expect(layout).toMatch(/Desktop only/);
+  });
+
+  it('shows exactly one of the two forms at any width', () => {
+    // Both visible at once would be worse than either alone.
+    expect(css).toMatch(/\.extensionCtaLabelShort \{ display: none; \}/);
+    const narrow = css.slice(css.indexOf('@media (max-width: 900px)'));
+    expect(narrow).toMatch(/\.extensionCtaLabelLong \{ display: none; \}/);
+    expect(narrow).toMatch(/\.extensionCtaLabelShort \{ display: inline; \}/);
+  });
+});

@@ -383,7 +383,24 @@ export default function DashboardLayout({ children, title, user }) {
                 {canInstall ? (
                   <><span className={styles.extensionCtaLabelLong}>Download </span>Extension</>
                 ) : (
-                  <>Applying needs<span className={styles.extensionCtaLabelLong}> a</span> desktop</>
+                  /*
+                   * Two whole labels, not one with a hidden word.
+                   *
+                   * "Applying needs a desktop" minus its hidden span is still
+                   * "Applying needs desktop" - 22 characters - and at 375 that
+                   * pushed the header 155px wide and CLIPPED the credits pill
+                   * to "45". Page overflow read 0 the whole time, because the
+                   * header clips internally rather than scrolling the page.
+                   * Only the screenshot showed it.
+                   *
+                   * The short form still says the thing that matters; the
+                   * modal carries the full sentence, which is where there is
+                   * room to read it.
+                   */
+                  <>
+                    <span className={styles.extensionCtaLabelLong}>Applying needs a desktop</span>
+                    <span className={styles.extensionCtaLabelShort}>Desktop only</span>
+                  </>
                 )}
               </span>
             </button>
