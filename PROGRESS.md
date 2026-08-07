@@ -5,7 +5,7 @@ New Railway account is production. Old account abandoned by operator decision.
 - **App** https://frontend-production-0d14b.up.railway.app
 - **API** https://backend-production-e6a8.up.railway.app
 
-Suites: **backend 472**, **frontend 267**. Gate stages 1–9 pass.
+Suites: **backend 472**, **frontend 281**. Gate stages 1–9 pass.
 
 ## Now
 
@@ -145,12 +145,33 @@ it, and that is the run the Greenhouse User Agreement question gates.
 
 Lever and Ashby stay disabled and their terms remain unread.
 
+## Feature 6 — the apply pipeline (DONE)
+
+The backend already prepared five at a time and returned `preparationFailed`.
+**The Jobs page read none of it**: a batch of fifteen where three failed said
+"Prepared 12 applications" and stopped — the D52 shape one layer out, where the
+server is honest and the honesty stops at the boundary. Failures are now named
+with their reason, and preparing shows itself rather than leaving a live button
+through a slow synchronous prepare.
+
+Found while checking it: **/resume's Tailor tab discarded `needsConfirmation`
+entirely**, rendering only matched skills and the score. That is the guard's
+design defeated on that path — a withheld skill is meant to become a question,
+not a silent drop — and it mattered much more after D51 began withholding
+things like "Marketing". Both tailoring pages now show them, with the reason,
+as a question rather than an error.
+
+`tools/check-failure-fields-are-read.js` is gate stage 5 (D52c). It took four
+rounds to make honest, each recorded in the tool.
+
+Load after deploy: **1,000 concurrent, 3,000/3,000 ok, 0 failed**, idle 263 MB,
+peak 281 MB — all three budgets met.
+
 ## Next
 
-The feature queue, not yet started:
-
-1. Features 6, 8, 9, 10, 11, 12, 13, 14, 15, audit after every third.
-2. Load test 50/200/500/1000 at steady state after each deploy.
+1. Features 8, 9, 10, 11, 12, 13, 14, 15. Audit after every third (the first
+   falls after 9).
+2. Load test at 1,000 after each deploy.
 3. Final audit at 375/768/1440 and on an emulated phone.
 
 Seeded account `autoapply-proof@hirepilot.local` and the operator account

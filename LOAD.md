@@ -422,3 +422,14 @@ should read 34s as comfortable.
 **Memory held.** The point of D53 was headroom, and the load test is where it
 shows: RSS at 1,000 concurrent tops out at 304 MB against a 1 GB ceiling, where
 the pre-fix boot alone reached 687 MB.
+
+
+## After feature 6
+
+| concurrent | requests | ok | failed | p95 | RSS |
+|---|---|---|---|---|---|
+| 1,000 | 3,000 | 3,000 | **0** | 12,900 ms | 301 → 301 MB |
+
+Idle 263 MB (budget 300), peak since boot 281 MB (budget 500). p95 is better
+than the previous run's 34 s on a warmer cache; the earlier figure stands as
+the honest cold number rather than being replaced by the flattering one.
