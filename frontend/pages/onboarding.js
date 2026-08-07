@@ -5,6 +5,8 @@ import page from '../styles/Onboarding.module.css';
 import { API_BASE } from '../lib/apiBase';
 import LiveIndexCount from '../components/LiveIndexCount';
 import ChipSelect from '../components/ChipSelect';
+import SuggestSelect from '../components/SuggestSelect';
+import FirstMatch from '../components/FirstMatch';
 import { EXPERIENCE_BANDS, bandForYears } from '../lib/experienceBands';
 import { NOTICE_PERIODS } from '../lib/noticePeriods';
 
@@ -65,6 +67,17 @@ export default function Onboarding() {
   const [parsedRoles, setParsedRoles] = useState([]);
   const [parsedYears, setParsedYears] = useState(null);
   const [parseFailed, setParseFailed] = useState(false);
+  // Real values from the index, so a suggestion is never one the feed cannot
+  // then match. /api/jobs/facets already returns per-value counts for region.
+  const [citySuggestions, setCitySuggestions] = useState([]);
+  /*
+   * ABANDONMENT RECOVERY. Answers already save server-side per step in
+   * goNext; only the step itself was lost on reload, which sent people back
+   * to the beginning of something they had half finished. Restored below, and
+   * deliberately without a percentage-complete bar - that is pressure, not
+   * help.
+   */
+  const [restoredStep, setRestoredStep] = useState(false);
   const [preferences, setPreferences] = useState({
     defaultRoles: [], preferredLocations: [], workArrangements: ['remote'],
   });
@@ -81,7 +94,42 @@ export default function Onboarding() {
     }
     setUser(JSON.parse(storedUser));
     setToken(authToken);
+
+    /*
+     * Return the user to the step they left. Nothing is re-entered: the
+     * answers were already written server-side by goNext at each step, so all
+     * that was ever lost was WHERE they were - which is enough to make someone
+     * abandon a flow they had half finished.
+     */
+    const saved = Number(localStorage.getItem('onboardingStep'));
+    if (Number.isFinite(saved) && saved > 0 && saved < STEPS.length) {
+      setStep(saved);
+      setRestoredStep(true);
+    }
   }, [router]);
+
+  /*
+   * City suggestions from the index itself, so the field is never empty with
+   * only a placeholder. A suggested city the feed cannot match would be a
+   * promise the next screen breaks, which is why these are read rather than
+   * hand-listed.
+   */
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch(`${base}/api/jobs/facets`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;               // status before body
+        const data = await res.json();
+        setCitySuggestions((data.region || [])
+          .filter((r) => r.value && r.value !== 'Not specified')
+          .sort((a, b) => (b.count || 0) - (a.count || 0))
+          .map((r) => r.value));
+      } catch (err) {
+        // No suggestions is a smaller failure than a wrong suggestion.
+      }
+    })();
+  }, [token, base]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -142,6 +190,10 @@ export default function Onboarding() {
       setUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (step > 0) localStorage.setItem('onboardingStep', String(step));
+  }, [step]);
 
   const goNext = async () => {
     if (step === 0) {
@@ -214,6 +266,8 @@ export default function Onboarding() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
+      // Finished: nothing left to return to.
+      localStorage.removeItem('onboardingStep');
       await fetch(`${base}/api/profile/complete-onboarding`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -227,6 +281,8 @@ export default function Onboarding() {
   const handleSkip = async () => {
     setSaving(true);
     try {
+      // Finished: nothing left to return to.
+      localStorage.removeItem('onboardingStep');
       await fetch(`${base}/api/profile/complete-onboarding`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -269,18 +325,27 @@ export default function Onboarding() {
         </div>
 
         <div className={page.card}>
+          {restoredStep && (
+            <p className={page.parsedSummary} role="status">
+              Picking up where you left off — everything you had already entered is saved.
+            </p>
+          )}
+
           {step === 0 && (
             <>
               <h1 className={page.stepTitle}>Welcome, {(user.fullName || user.email).split(' ')[0]}</h1>
               <p className={page.stepSubtitle}>Let&apos;s set up your profile so Auto-Pilot can start finding and scoring jobs for you. This takes about a minute.</p>
 
               <div className={page.formGroup}>
-                <label>Current or target job title</label>
-                <input
-                  className={page.input}
+                <SuggestSelect
+                  label="What kind of role are you looking for?"
                   value={basics.title}
-                  onChange={(e) => setBasics((p) => ({ ...p, title: e.target.value }))}
+                  onChange={(v) => setBasics((p) => ({ ...p, title: v }))}
+                  /* Real roles off the user's own resume - the best guess
+                     available, and never invented. */
+                  suggestions={parsedRoles}
                   placeholder="e.g. Senior Product Designer"
+                  hint={parsedRoles.length ? 'From your resume — tap one or type your own.' : undefined}
                 />
                 {/*
                   * C1a — a real query behind the number. Asked of the same
@@ -309,12 +374,13 @@ export default function Onboarding() {
                 onChange={setExperienceBand}
               />
               <div className={page.formGroup}>
-                <label>Location</label>
-                <input
-                  className={page.input}
+                <SuggestSelect
+                  label="Where do you want to work?"
                   value={basics.location}
-                  onChange={(e) => setBasics((p) => ({ ...p, location: e.target.value }))}
-                  placeholder="e.g. Austin, TX"
+                  onChange={(v) => setBasics((p) => ({ ...p, location: v }))}
+                  suggestions={citySuggestions}
+                  placeholder="e.g. Bengaluru"
+                  hint={citySuggestions.length ? 'Where the jobs in our index actually are.' : undefined}
                 />
                 {/*
                   * Only once a LOCATION has actually been given.
@@ -403,6 +469,14 @@ export default function Onboarding() {
                 <label>Preferred locations</label>
                 <ChipInput values={preferences.preferredLocations} onChange={(v) => setPreferences((p) => ({ ...p, preferredLocations: v }))} placeholder="e.g. Remote, New York" />
               </div>
+              {/*
+                * C1b — one REAL scored job before onboarding ends, from the
+                * same query the feed runs. Placed here, at the third screen,
+                * so it lands while the user is still deciding whether to
+                * finish. Never a sample: if nothing matches yet it says so.
+                */}
+              <FirstMatch title={basics.title} location={basics.location} />
+
               {/*
                 * Tap, do not type. The answer set is short and known, and it
                 * is the question every Indian application form asks.
