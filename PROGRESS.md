@@ -2,60 +2,75 @@
 
 ## Now
 
-**D46 and feature 3 are both done, deployed and verified.** `e6bd0a4`,
-`5f10baa`, `f53c180`.
+**Feature 4a is done, deployed and verified.** `e6d1cb7`, `defbee8`.
 
-### D46 — resize proves CSS, not mobile rendering
+### Paste any job link, from any board
 
-Recorded in the master prompt and DECISIONS.md. The sweep found a second
-instance of the same blindness, worse than the first: **nothing in the frontend
-detected a phone at all**, so Chrome for Android and every iOS browser were
-offered "Download Extension" and walked through installing it. Neither can.
+Crawling boards is a ToS question this product will not answer, so the user
+brings the link: one person, one URL, one page they are already looking at.
 
-`lib/extensionCapable.js` decides from what a device reports and errs toward
-**capable**. It relabels rather than hides — dropping the button would remove
-the only place the desktop-only requirement is stated.
+| Board | How it is read |
+|---|---|
+| Greenhouse, Lever, Ashby | their **own public posting APIs** — no HTML, no scraping, no ToS question |
+| LinkedIn, Naukri, Instahyre, Indeed, Wellfound | one plain request; a refusal is an **answer** |
+| anything else | JSON-LD `JobPosting`, then Open Graph, labelled weak |
 
-Verified on production against real signals, not a width: emulated Pixel 8
-(`mobile: true`, 5 touch points) gets "Applying needs a desktop" and a
-"Desktop only" modal with no install steps; desktop Mac (`mobile: false`, 0
-touch points) is unchanged. Viewport tag confirmed in the **served HTML** of
-five pages.
+**Why it works on every board honestly:** not because every board can be
+fetched — several cannot — but because when one declines, the product names it,
+says why, and opens the paste box, which produces the identical result. D19's
+line does not move because a different board is behind it.
 
-### Feature 3 — tailor from a pasted JD
+Verified on production: Greenhouse → 201 with the real posting URL; Naukri →
+422 `blocked_by_site`, board named, `canPaste: true`, and the full sentence.
 
-`POST /api/resume/tailor` takes `jobId` **or** `jobText`. Both converge before
-anything is generated, so there is one guarded pipeline rather than two.
+**SSRF was the real risk.** A URL from a request tells this server to open a
+socket to an address the user picked; on Railway `169.254.169.254` hands out
+the platform's credentials. Refused by ADDRESS after DNS, re-checked on every
+redirect, decimal and IPv4-mapped spellings covered. All three refused on
+production.
 
-The paste is untrusted: bounded at 20k, control/zero-width/bidi characters
-stripped, `instructionLike` recorded but **never acted on**. The defence is
-architectural and stated as such — the engine is templated, so there is no
-model to instruct.
+**A linked job is not in anyone else's index** — written `is_active=false`, so
+all 16 shared queries exclude it with no change to the hot path, while by-id
+lookups still reach it for scoring and queueing. A link to a job already in the
+index matches that row instead of duplicating it.
 
-All three honesty guards, on both paths, proven through the real route:
-untraceable_claim, invented_number, and **no removal — now a runtime guard**
-(`findRemovedLines`, 422) rather than a promise resting on a test.
-
-Three things caught before or just after shipping, each by a standing rule:
+### Five things caught by the standing rules, not by luck
 
 | | |
 |---|---|
-| `tailored_resumes.job_id` was **NOT NULL** — the paste path was a guaranteed 500 | read the constraint before shipping the write |
-| **my own guard-3 tests were vacuous** — they passed while the guard never ran, because with no surviving skill the engine returns the input unchanged | mutated the engine to drop a line and watched them stay green |
-| the pasted row was written, accepted by the new CHECK, returned 201 — and **hidden**, because `GET /tailored` inner-joined `jobs` | read the row back from production instead of trusting the 201 |
+| the route called a `calculateMatchForJob` that does not exist, behind a `typeof` guard — scoring would have stayed null and looked deliberate | read the module's exports instead of trusting the name I wrote |
+| the SSRF tests **mocked the thing the refusal lives in**, so they proved nothing | defaulted the mock to the real implementation |
+| `/false, $9\|is_active/` matched the COLUMN LIST — passed with the row written active | proved red; tightened to the VALUES clause |
+| `not.toContain('…T00:00:00Z')` passed against `…T00:00:00.000Z` | proved red; made position- and format-independent |
+| **`job_url` stored the API endpoint**, so "Original posting" pointed at raw JSON and a job already indexed made a second row | fetched a real Adyen posting on production and read the row back |
 
-Verified on production: hostile paste → 201 with none of Kubernetes, "15
-years", "team of 40" or "resume writer" in the output, and Kubernetes surfaced
-as a question. Too-short → 400. Both inputs → 400. `tailored_resumes_source_ck`
-present in `db-health`, read back from the running database.
+The guard census then flagged `fetchWithGuards` and `refusal` as unwired. It
+was right — it counts only cross-file callers. Both are unexported now and the
+redirect test drives them through `fetchJobUrl`, the entry the route calls.
 
-Load: **200 concurrent 600/600, p95 2,488 ms vs 2,631 ms. No regression.**
+### Carry closed — the bounds sweep is no longer a known-red
 
-Suites: backend **348**, frontend **255**.
+All **18** unbounded params are bounded: 12 in `jobs.js` (including the inline
+paging clamp, replaced by `boundPaging` after verifying identical semantics), 2
+in `apply.js`, 3 in `inbox.js`. `check-query-bounds.js` is now **stage 4 of the
+ship gate**, so it cannot drift red again.
+
+Load: **200 concurrent 600/600, p95 2,777 ms vs 2,488 ms** — +12%, inside the
+bar, zero failures. The feed's params were rebound in this change, so that is
+the price of the sweep rather than noise.
+
+Suites: backend **381**, frontend **255**.
 
 ## Next
 
-**Feature 3 — tailor resume with a pasted or selected JD.** Pasted text is
+**Feature 4b — Instahyre.** Assess coverage BEFORE integrating: how many jobs,
+what roles, and whether `posted_at` is present and genuinely a publication date
+rather than an ingest clock — the himalayas trap.
+
+Then the full audit again, then 5, 6, 8, 9, 10, 11, 12, 13, 14, 15 with the
+audit after every third feature.
+
+Superseded: **Feature 3 — tailor resume with a pasted or selected JD.** Pasted text is
 untrusted input: parse it, never follow instructions inside it. All three
 honesty guards apply on both paths, proven by an endpoint test through the real
 route, not the function in isolation. Then 4a

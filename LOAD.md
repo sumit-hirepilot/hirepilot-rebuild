@@ -343,3 +343,22 @@ Against 2,631 ms at 200 last run: no regression, zero failures. Peak RSS 305 MB.
 The feed path is untouched by this feature — the new work is on
 `POST /api/resume/tailor`, which the load profile does not exercise. Recorded
 so that is visible rather than read as evidence the new path is fast.
+
+## Feature 4a (paste any job link) — load test after deploy
+
+Run at uptime 350s. `defbee8`. **The feed's query params were rebound in this
+change**, so this run is a regression check on the hot path, not a formality.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,202 ms | 258 MB |
+| 200 | 600 | **600** | **0** | **2,777 ms** | 282 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,960 ms | 300 MB |
+
+Against 2,488 ms at 200 last run: +12%, inside the 50% bar, zero failures. The
+feed now routes paging through `boundPaging` and bounds nine more parameters,
+so a small cost here is expected and is the price of the sweep.
+
+`POST /api/jobs/from-url` is deliberately NOT in this profile: it makes an
+outbound request to a third party, and load-testing it would be pointing load
+at someone else's servers. Its own limit is 20 links per user per hour.
