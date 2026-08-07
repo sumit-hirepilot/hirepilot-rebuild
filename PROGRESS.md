@@ -2,64 +2,63 @@
 
 ## Now
 
-**Feature 4a is done, deployed and verified.** `e6d1cb7`, `defbee8`.
+**D47 recorded and swept, and 4b assessed.** `fb2596f`. No feature code
+shipped for 4b — the assessment is the deliverable, and it says do not build.
 
-### Paste any job link, from any board
+### D47 — a mock of the thing under test is not a test of it
 
-Crawling boards is a ToS question this product will not answer, so the user
-brings the link: one person, one URL, one page they are already looking at.
+4a's SSRF suite mocked `jobUrlFetch` and replaced `fetchJobUrl` with a bare
+`jest.fn()`. Every private-address case then asserted a refusal produced by a
+mock returning `undefined`. Green, and would have stayed green **with the SSRF
+guard deleted**.
 
-| Board | How it is read |
+The fix is not to stop mocking — the seam is needed to inject a canned 403. The
+fix is the *default*: delegate to `requireActual`, opt into a canned result per
+test.
+
+**Sweep: all 25 suites that mock a module they also use were read.** 23 mock
+`../db`, which is what the code *talks to* — correct. `scoreOnDemand` and
+`scoreOnRead` mock `matchingEngine` to assert a **route** called it — also
+correct. One instance, already fixed. `tools/check-mock-boundaries.js` catches
+the exact shape and is gate stage 8.
+
+### 4b — Instahyre: assessed, not integrated
+
+| probe | result |
 |---|---|
-| Greenhouse, Lever, Ashby | their **own public posting APIs** — no HTML, no scraping, no ToS question |
-| LinkedIn, Naukri, Instahyre, Indeed, Wellfound | one plain request; a refusal is an **answer** |
-| anything else | JSON-LD `JobPosting`, then Open Graph, labelled weak |
+| `robots.txt` | 200, `User-agent: *`, **no Disallow at all** |
+| `sitemap.xml` — the file robots.txt advertises to crawlers | **403** |
+| `/search-jobs/` | **403** |
+| a job URL from **Railway egress**, via 4a's shipped path | **403** `blocked_by_site` |
 
-**Why it works on every board honestly:** not because every board can be
-fetched — several cannot — but because when one declines, the product names it,
-says why, and opens the paste box, which produces the identical result. D19's
-line does not move because a different board is behind it.
+Every 403 is a Cloudflare interstitial — "Just a moment…", `noindex,nofollow`,
+JS challenge. Named, not guessed.
 
-Verified on production: Greenhouse → 201 with the real posting URL; Naukri →
-422 `blocked_by_site`, board named, `canPaste: true`, and the full sentence.
+**A permissive robots.txt is not permission.** The permission *file* says yes
+while the server says no on every path — including the one that file points
+crawlers at. Where they disagree, the server's behaviour is the answer.
 
-**SSRF was the real risk.** A URL from a request tells this server to open a
-socket to an address the user picked; on Railway `169.254.169.254` hands out
-the platform's credentials. Refused by ADDRESS after DNS, re-checked on every
-redirect, decimal and IPv4-mapped spellings covered. All three refused on
-production.
+This closes D19's open question too. It said a residential 200 says nothing
+about a datacentre IP, and that testing it meant probing their protection from
+the server. No special probe was needed: 4a's user path makes exactly one plain
+request and returns 403 from Railway.
 
-**A linked job is not in anyone else's index** — written `is_active=false`, so
-all 16 shared queries exclude it with no change to the hot path, while by-id
-lookups still reach it for scoring and queueing. A link to a job already in the
-index matches that row instead of duplicating it.
+**The coverage questions cannot be answered, and that is the answer.** Job
+count, roles, seniority range, and whether `posted_at` is a publication date or
+a re-sync clock are all unmeasurable without defeating the challenge — which
+D19 forbids. No number to report, and no honest way to get one.
 
-### Five things caught by the standing rules, not by luck
+So the queue's premise, *"Instahyre — the only permissive Indian source"*, is
+contradicted by the evidence, and A7.19's "conditional" is resolved to **FAIL**.
+Checked rather than assumed: no product surface ever claimed Instahyre, so
+nothing needed correcting.
 
-| | |
-|---|---|
-| the route called a `calculateMatchForJob` that does not exist, behind a `typeof` guard — scoring would have stayed null and looked deliberate | read the module's exports instead of trusting the name I wrote |
-| the SSRF tests **mocked the thing the refusal lives in**, so they proved nothing | defaulted the mock to the real implementation |
-| `/false, $9\|is_active/` matched the COLUMN LIST — passed with the row written active | proved red; tightened to the VALUES clause |
-| `not.toContain('…T00:00:00Z')` passed against `…T00:00:00.000Z` | proved red; made position- and format-independent |
-| **`job_url` stored the API endpoint**, so "Original posting" pointed at raw JSON and a job already indexed made a second row | fetched a real Adyen posting on production and read the row back |
+**The need is already served** — 4a routes an Instahyre link to a refusal that
+names the board and opens the paste box, reaching an identical tailored resume,
+score and queue entry with no ToS exposure.
 
-The guard census then flagged `fetchWithGuards` and `refusal` as unwired. It
-was right — it counts only cross-file callers. Both are unexported now and the
-redirect test drives them through `fetchJobUrl`, the entry the route calls.
-
-### Carry closed — the bounds sweep is no longer a known-red
-
-All **18** unbounded params are bounded: 12 in `jobs.js` (including the inline
-paging clamp, replaced by `boundPaging` after verifying identical semantics), 2
-in `apply.js`, 3 in `inbox.js`. `check-query-bounds.js` is now **stage 4 of the
-ship gate**, so it cannot drift red again.
-
-Load: **200 concurrent 600/600, p95 2,777 ms vs 2,488 ms** — +12%, inside the
-bar, zero failures. The feed's params were rebound in this change, so that is
-the price of the sweep rather than noise.
-
-Suites: backend **381**, frontend **255**.
+No load test: no runtime code changed. Suites: backend **381**, frontend
+**255**.
 
 ## Next
 
