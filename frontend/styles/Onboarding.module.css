@@ -294,3 +294,23 @@
   font-weight: 500;
   cursor: pointer;
 }
+
+/*
+ * The failed-parse fallback. A tap on the same screen, sized like the primary
+ * actions - this is the single most likely drop-off point in the flow, and a
+ * link buried in a sentence is not a path.
+ */
+.secondaryAction {
+  display: inline-block;
+  margin-top: 0.75rem;
+  min-height: 44px;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #4c1d95;
+  cursor: pointer;
+}
+.secondaryAction:hover { border-color: #c4b5fd; background: #faf5ff; }

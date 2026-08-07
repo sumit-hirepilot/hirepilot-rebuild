@@ -6,6 +6,7 @@ import { API_BASE } from '../lib/apiBase';
 import LiveIndexCount from '../components/LiveIndexCount';
 import ChipSelect from '../components/ChipSelect';
 import { EXPERIENCE_BANDS, bandForYears } from '../lib/experienceBands';
+import { NOTICE_PERIODS } from '../lib/noticePeriods';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
@@ -46,9 +47,24 @@ export default function Onboarding() {
   const [basics, setBasics] = useState({ title: '', location: '' });
   // The band the user tapped. Stored as years on save - see lib/experienceBands.
   const [experienceBand, setExperienceBand] = useState(null);
+  /*
+   * Notice period. Asked here because nearly every Indian application form
+   * asks it, and answering once is the point - it prefills the screening
+   * question later rather than being asked again per application.
+   */
+  const [noticePeriod, setNoticePeriod] = useState(null);
   const [skills, setSkills] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
+  /*
+   * C1b — the parse is the first time the product proves it did work, so what
+   * it found is shown as removable chips rather than announced in a sentence.
+   * Roles and years sit beside the skills: all three are things a parse gets
+   * wrong sometimes, and all three must be correctable in one tap.
+   */
+  const [parsedRoles, setParsedRoles] = useState([]);
+  const [parsedYears, setParsedYears] = useState(null);
+  const [parseFailed, setParseFailed] = useState(false);
   const [preferences, setPreferences] = useState({
     defaultRoles: [], preferredLocations: [], workArrangements: ['remote'],
   });
@@ -85,6 +101,9 @@ export default function Onboarding() {
       const data = await res.json();
       if (!res.ok) {
         setUploadMessage(data.error || 'Failed to process resume file');
+        // A failed parse is a designed path, not an error: the fallback is on
+        // this screen, one tap away, and never a restart.
+        setParseFailed(true);
         return;
       }
       /*
@@ -93,11 +112,18 @@ export default function Onboarding() {
        * changes it. Only set when nothing has been chosen yet, so a parse can
        * never overwrite the user's own answer.
        */
-      const parsedYears = data.parsed.yearsExperience ?? data.parsed.years_experience;
-      if (parsedYears !== undefined && parsedYears !== null && !experienceBand) {
-        const suggested = bandForYears(parsedYears);
-        if (suggested) setExperienceBand(suggested.id);
+      const years = data.parsed.yearsExperience ?? data.parsed.years_experience;
+      if (years !== undefined && years !== null) {
+        setParsedYears(years);
+        if (!experienceBand) {
+          const suggested = bandForYears(years);
+          if (suggested) setExperienceBand(suggested.id);
+        }
       }
+      setParsedRoles((data.parsed.experience || [])
+        .map((e) => e.jobTitle || e.job_title)
+        .filter(Boolean));
+      setParseFailed(false);
 
       const newSkills = (data.parsed.skills || []).filter((s) => !skills.includes(s));
       setSkills((prev) => [...prev, ...newSkills]);
@@ -110,7 +136,8 @@ export default function Onboarding() {
       }
       setUploadMessage(`Resume uploaded - added ${newSkills.length} skills and ${data.parsed.experience?.length || 0} work history entries.`);
     } catch (err) {
-      setUploadMessage('Failed to upload resume. You can skip this and add skills manually below.');
+      setUploadMessage('We could not read that file.');
+      setParseFailed(true);
     } finally {
       setUploading(false);
     }
@@ -135,6 +162,22 @@ export default function Onboarding() {
       }
     }
     if (step === 2) {
+      /*
+       * Notice period lives on the screening profile, not on preferences -
+       * that is the record the extension prefills an employer form from. Sent
+       * as the plain string the field already holds, so a screening question
+       * asking the same thing reuses this answer rather than asking again.
+       */
+      if (noticePeriod) {
+        const chosen = NOTICE_PERIODS.find((n) => n.id === noticePeriod);
+        if (chosen) {
+          await fetch(`${base}/api/apply/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ notice_period: chosen.value }),
+          });
+        }
+      }
       await fetch(`${base}/api/profile/preferences`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -305,6 +348,39 @@ export default function Onboarding() {
                   {uploading ? 'Uploading & parsing…' : 'Click to choose a file (.pdf, .docx, .txt)'}
                 </label>
                 {uploadMessage && <p className={page.parsedSummary}>{uploadMessage}</p>}
+
+                {/*
+                  * C1b — what the parse found, as removable chips, the moment
+                  * it is read. Not behind Continue: this is the first time the
+                  * product proves it did work, and anything it got wrong has to
+                  * be correctable in one tap rather than argued with later.
+                  */}
+                {parsedRoles.length > 0 && (
+                  <div className={page.formGroup}>
+                    <label>Roles we found</label>
+                    <ChipInput values={parsedRoles} onChange={setParsedRoles} placeholder="Add a role" />
+                  </div>
+                )}
+                {parsedYears !== null && (
+                  <p className={page.parsedSummary}>
+                    Looks like about {parsedYears} years of experience — we have selected a level for you, change it any time.
+                  </p>
+                )}
+
+                {/*
+                  * The single most likely drop-off point in the flow, so the
+                  * fallback is a TAP on this screen rather than a sentence
+                  * telling the user to scroll and figure it out.
+                  */}
+                {parseFailed && (
+                  <button
+                    type="button"
+                    className={page.secondaryAction}
+                    onClick={() => { setParseFailed(false); setUploadMessage('No problem — add your skills below and carry on.'); }}
+                  >
+                    Fill it in myself instead
+                  </button>
+                )}
               </div>
 
               <div className={page.formGroup}>
@@ -327,6 +403,17 @@ export default function Onboarding() {
                 <label>Preferred locations</label>
                 <ChipInput values={preferences.preferredLocations} onChange={(v) => setPreferences((p) => ({ ...p, preferredLocations: v }))} placeholder="e.g. Remote, New York" />
               </div>
+              {/*
+                * Tap, do not type. The answer set is short and known, and it
+                * is the question every Indian application form asks.
+                */}
+              <ChipSelect
+                legend="What is your notice period?"
+                options={NOTICE_PERIODS}
+                value={noticePeriod}
+                onChange={setNoticePeriod}
+              />
+
               <div className={page.formGroup}>
                 <label>Work arrangement</label>
                 <div className={page.chipRow}>
