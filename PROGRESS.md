@@ -2,32 +2,47 @@
 
 ## Now
 
-**Full feature audit — DONE.** Four defects found, all fixed, all verified on
-production, each given a ship-gate check proved red on the real defect first.
-Written up in AUDIT.md. Commits `f3e4b74`, `f71f566`.
+**D45 — a test asserts behaviour, never the claim that describes it.** New
+standing rule, recorded in the master prompt and DECISIONS.md, and swept.
+`944cd3d`.
 
-The class was the one feature 1 surfaced: **the label disagreeing with the
-data**. All four were found by reading a live surface against what produced it.
-None was reachable from a code read, and both suites were green throughout —
-and in one case a test was actively *pinning the false claim in place*.
+The rule came from the audit: `landingTruth` required the pricing page to say
+"never per application" while `submissionGate` refuses to submit at
+`remaining <= 0`. Green throughout, defending a sentence the product
+contradicts — the correction would have read as a regression.
 
-| # | Defect | State |
+The sweep found three more of the same shape, and each had a real defect under
+it:
+
+| Claim the test pinned | What was actually true | Fix |
 |---|---|---|
-| D1 | landing page named `no_deletion`, a guard rule removed as unreachable, under a heading reading "these three checks" when there are two | fixed, count now derived |
-| D2 | backend tiers Starter/Pro/Power vs `/pricing` Free/Pilot/Copilot — no overlap; the pill said "on Power", a plan never sold | fixed, ids untouched |
-| D3 | `/pricing` said applications "are not metered on any plan" in four places while `submissionGate` refuses to submit at `remaining <= 0` | fixed, allowance kept |
-| D4 | employment-type chip published raw source tokens — `Clt`, `Hybrid`, `Remote` — via `ELSE lower(job_type)` | fixed, vocabulary closed |
+| "Cancel in one click", routed to Settings → Plans → Cancel | no Cancel control, no cancel path anywhere | **built the control** — cancelling is returning to Free, which `/api/plans/select` already did |
+| "Runs in your mobile browser — the whole product" | `<meta name="viewport">` was on the landing page **only**; every other page laid out at the ~980px fallback on a real phone | moved to `_app.js` |
+| "Nothing reached the employer" on a failed application | `apply.js` sets `failed` only where it *could not verify* — the form may have gone through | "Not confirmed", with an honest hint |
 
-D3's test, `landingTruth`, asserted the page *must* say "never per
-application" — green the whole time, defending the lie. Fixing the page would
-have looked like breaking the suite. Coverage pointing the wrong way is worse
-than no coverage.
+The mobile one is the sharpest: the 375px audit pass could not see it, because
+resizing sets a true viewport width so the media queries ran and every page
+looked correct. Only a real mobile browser reads that tag. The instrument could
+not see the defect it was pointed at.
 
-Load test after deploy, at uptime 363s: **200 concurrent 600/600, p95 2,767 ms
-vs 2,822 ms baseline — no regression, zero failures.** Peak RSS 424 MB against
-the 800 MB abort. Full numbers in LOAD.md.
+The "nothing reached the employer" wording was also a duplicate-application
+risk: it told people to retry something that may already have been submitted.
 
-Suites: backend **327**, frontend **244**.
+`tools/check-claim-tests.js` sweeps for the shape; REVIEWED records each judged
+block **with its reason**. Its first cut counted "calls something with a string"
+as grounding, which matched the `read('pages', ...)` call that fetches the copy
+— so every claim test grounded itself and it reported **green on both defects it
+was written from**. Caught only by proving it on a known positive, the same way
+the guard-wiring census went wrong twice.
+
+Verified on production: viewport present on all six pages checked, Cancel
+control renders at 44px and **was clicked** — Copilot → Free, 600 credits,
+"No payment was taken" — then the tier restored.
+
+Load test at uptime 352s: **200 concurrent 600/600, p95 2,669 ms vs 2,767 ms.
+No regression, zero failures.** Peak RSS 338 MB.
+
+Suites: backend **327**, frontend **245**.
 
 ## Next
 

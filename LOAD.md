@@ -263,3 +263,21 @@ times the stated bar; recorded, not chased.
 The audit's four fixes were all display-layer or query-time, so no latency
 change was expected and none appeared. That is the point of recording it: a
 change believed to be cosmetic is still measured.
+
+## D45 claim-test sweep — load test after deploy
+
+Run at uptime 352s. `944cd3d`.
+
+| Users | Requests | OK | Failed | p95 | RSS after |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | 0 | 1,269 ms | 303 MB |
+| 200 | 600 | **600** | **0** | **2,669 ms** | 324 MB |
+| 500 | 1,500 | 1,500 | 0 | 6,067 ms | 330 MB |
+| 1,000 | 3,000 | 2,987 | 13 (TimeoutError) | 12,296 ms | 338 MB |
+
+200 concurrent: 2,669 ms against 2,767 ms last run. No regression, zero
+failures. Peak RSS 338 MB.
+
+No backend source changed in this deploy — the fixes were frontend copy, a
+viewport tag, a settings control, tests and tools. Measured anyway, because
+"believed to be cosmetic" is not evidence.
