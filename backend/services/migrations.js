@@ -562,6 +562,37 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_ats_sandbox_received ON ats_sandbox_submissions(received_at)`,
 
+  /*
+   * Feature 8 — a saved resume version per company.
+   *
+   * Stores a REFERENCE to an existing tailored_resumes row, never a copy of the
+   * text. The 500MB volume filled once and killed Postgres; duplicating resume
+   * bodies per company is exactly how that happens again.
+   *
+   * `company_key` is the normalised name and carries the uniqueness, so
+   * "Discord", "discord" and "Discord " are one company rather than three.
+   * `company_name` keeps the form the posting actually used, because that is
+   * what the user recognises.
+   *
+   * ON DELETE CASCADE from tailored_resumes: a saved version whose resume has
+   * been deleted is not a version, it is a dangling promise. Better to lose the
+   * pointer than to offer a reuse that resolves to nothing.
+   */
+  `CREATE TABLE IF NOT EXISTS company_resume_versions (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     company_key VARCHAR(120) NOT NULL,
+     company_name VARCHAR(255) NOT NULL,
+     tailored_resume_id INTEGER NOT NULL REFERENCES tailored_resumes(id) ON DELETE CASCADE,
+     label VARCHAR(120),
+     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_company_resume_versions_unique
+     ON company_resume_versions(user_id, company_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_company_resume_versions_user
+     ON company_resume_versions(user_id, updated_at DESC)`,
+
   `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(user_id, status)`,
 
   /*

@@ -21,6 +21,27 @@
 const fs = require('fs');
 const path = require('path');
 
+
+/*
+ * The rule's own body, by braces - not a fixed character window.
+ *
+ * The first version of this took `slice(indexOf('.holdList'), indexOf('.holdNote') + 200)`
+ * and matched /red/i over it. That window ran past the rule into the next
+ * comment, and "red" matched inside "tailo(red)". A colour assertion that
+ * fires on ordinary prose is a test that will be deleted the first time it
+ * cries wolf.
+ */
+function ruleBody(css, selector) {
+  const at = css.indexOf(selector);
+  if (at < 0) return '';
+  const open = css.indexOf('{', at);
+  const close = css.indexOf('}', open);
+  return css.slice(open + 1, close);
+}
+
+/* Colour DECLARATIONS, not words that happen to contain a colour name. */
+const ALARMING = /(?:color|background|background-color|border(?:-[a-z]+)?)\s*:\s*[^;]*(?:--error|--danger|--red|#ef4444|#f87171|#dc2626|\bred\b|crimson)/i;
+
 const pages = {
   'resume.js': fs.readFileSync(path.join(__dirname, '..', 'pages', 'resume.js'), 'utf8'),
   'resume-editor.js': fs.readFileSync(path.join(__dirname, '..', 'pages', 'resume-editor.js'), 'utf8'),
@@ -48,8 +69,9 @@ describe('every page that tailors shows what was withheld', () => {
      * broken when the product is simply refusing to speak for them.
      */
     const css = fs.readFileSync(path.join(__dirname, '..', 'styles', 'Resume.module.css'), 'utf8');
-    const block = css.slice(css.indexOf('.holdList'), css.indexOf('.holdNote') + 200);
-    expect(block).not.toMatch(/--error|--danger|#ef4444|red/i);
+    for (const sel of ['.holdList', '.holdWhy', '.holdNote']) {
+      expect(ruleBody(css, sel)).not.toMatch(ALARMING);
+    }
   });
 
   it('tells the user what to do about it', () => {

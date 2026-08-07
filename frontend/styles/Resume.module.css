@@ -496,3 +496,34 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/*
+ * Feature 8 — saving a tailored version against an employer.
+ *
+ * The refusal is styled as information, not as an error. Nothing has gone
+ * wrong when a pasted job description has no verified employer behind it -
+ * that is the product declining to invent one, which is the behaviour, not a
+ * fault the user caused.
+ */
+.versionSaveRow {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.versionSaved {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--success);
+  line-height: 1.5;
+}
+
+.versionRefused {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 46ch;
+}

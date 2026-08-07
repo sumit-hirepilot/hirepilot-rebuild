@@ -491,6 +491,12 @@ function TailorForJob({ jobs, token, base, reload }) {
   const [rejectedIndices, setRejectedIndices] = useState(new Set());
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(null);
+  // Feature 8. `saveVersionState` holds the outcome of the last save attempt,
+  // including a REFUSAL - the endpoint answers 422 with a reason when the job
+  // has no company to file under, and a refusal the UI drops is a refusal the
+  // user never hears.
+  const [savingVersion, setSavingVersion] = useState(false);
+  const [saveVersionState, setSaveVersionState] = useState(null);
 
   const usingPaste = mode === 'paste';
   const canTailor = usingPaste ? jobText.trim().length >= 40 : Boolean(jobId);
@@ -535,6 +541,47 @@ function TailorForJob({ jobs, token, base, reload }) {
 
   const addedParts = (result?.diff || []).filter((p) => p.added);
   const acceptedCount = addedParts.length - rejectedIndices.size;
+
+  /*
+   * Feature 8 — keep this version against the employer, to reuse for the next
+   * role there.
+   *
+   * The 422 path is the one that matters: a pasted JD has no verified employer
+   * and a linked job whose page never named one is stored without it, so the
+   * server refuses rather than filing the resume under a company that does not
+   * exist. That reason is rendered.
+   */
+  const handleSaveVersion = async () => {
+    if (savingVersion || !result?.id) return;
+    setSavingVersion(true);
+    setSaveVersionState(null);
+    try {
+      const res = await fetch(`${base}/api/resume/company-versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tailoredResumeId: result.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSaveVersionState({
+          ok: true,
+          companyName: data.companyName,
+          replaced: data.replaced === true,
+        });
+      } else {
+        setSaveVersionState({
+          ok: false,
+          // Prefer the sentence written for a reader; fall back to the status
+          // so a failure never renders as an empty box.
+          detail: data.detail || data.error || `Could not save that version (${res.status}).`,
+        });
+      }
+    } catch (err) {
+      setSaveVersionState({ ok: false, detail: 'Could not save that version. Please try again.' });
+    } finally {
+      setSavingVersion(false);
+    }
+  };
 
   const handleConfirm = async () => {
     setConfirming(true);
@@ -710,6 +757,32 @@ function TailorForJob({ jobs, token, base, reload }) {
             <div className={page.scoreFillLarge} style={{ width: `${result.atsScore}%` }} />
           </div>
           <p className={page.scoreNumLarge}>{result.atsScore}</p>
+
+          {/* Feature 8: keep this version for the employer. Offered whatever
+              the company situation is - the server decides, and explains. */}
+          <div className={page.versionSaveRow}>
+            <button
+              className={page.secondaryButton}
+              onClick={handleSaveVersion}
+              disabled={savingVersion}
+              aria-busy={savingVersion}
+            >
+              {savingVersion
+                ? 'Saving…'
+                : `Save this version${result.companyName ? ` for ${result.companyName}` : ''}`}
+            </button>
+            {saveVersionState?.ok && (
+              <p className={page.versionSaved}>
+                Saved for {saveVersionState.companyName}.
+                {saveVersionState.replaced
+                  ? ' This replaced the version you had saved for them.'
+                  : ' You can reuse it for the next role there.'}
+              </p>
+            )}
+            {saveVersionState && !saveVersionState.ok && (
+              <p className={page.versionRefused} role="status">{saveVersionState.detail}</p>
+            )}
+          </div>
 
           {!confirmed ? (
             <button className={page.saveButton} onClick={handleConfirm} disabled={confirming} style={{ marginTop: '1rem' }}>

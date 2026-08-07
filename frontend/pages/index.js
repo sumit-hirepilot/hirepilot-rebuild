@@ -65,6 +65,9 @@ const SCORE_WEIGHTS = [
 const GUARD_RULES = [
   { rule: 'invented_number', plain: 'A figure not already in your material is rejected outright.' },
   { rule: 'untraceable_claim', plain: 'Every word must trace to your resume, skills or work history.' },
+  // D51. A skill is a claim, so it has to trace as a whole phrase - its words
+  // turning up separately somewhere is not the same thing.
+  { rule: 'untraceable_skill', plain: 'A skill must appear as itself, not be assembled from words used elsewhere.' },
 ];
 
 /* Derived, never typed: a hardcoded count is what drifted the first time. */

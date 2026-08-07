@@ -12,6 +12,8 @@ const { buildTailoredText, diffTailoring, applyAcceptedChanges } = require('../s
 const docModel = require('../services/resumeDocument');
 const { renderHtml, templateList, FONTS, DEFAULT_STYLE } = require('../services/resumeTemplate');
 const { buildCorpus, verifyAdditions, findRemovedLines } = require('../services/resumeGuard');
+const { companyKeyFor } = require('../services/companyKey');
+const { boundPaging } = require('../services/requestBounds');
 const { parsePastedJobText, MIN_JOB_TEXT } = require('../services/pastedJobText');
 
 const router = express.Router();
@@ -1251,6 +1253,171 @@ router.post('/:id/duplicate', async (req, res) => {
   } catch (err) {
     console.error('POST duplicate failed:', err.message);
     res.status(500).json({ error: 'Could not duplicate that resume' });
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Feature 8 — saved resume versions per company
+ *
+ * A user tailors for one role at a company and wants that version back when
+ * the next role there opens. Stored as a REFERENCE to the tailored_resumes row
+ * rather than a copy of the text: duplicating resume bodies per company is how
+ * a 500MB volume fills.
+ *
+ * Every refusal carries a machine-readable `reason` AND a sentence, because a
+ * failure the UI cannot render is a failure the user is never told about -
+ * which this codebase has now shipped twice.
+ * ------------------------------------------------------------------ */
+
+router.get('/company-versions', async (req, res) => {
+  try {
+    /*
+     * Through services/requestBounds, not clamped inline. The ceiling lives in
+     * one place precisely so a new endpoint cannot quietly pick its own - an
+     * unbounded parameter took production down for eight minutes, and the fix
+     * was the class, not the instance.
+     */
+    const bounded = boundPaging(req.query.page, req.query.limit, { defLimit: 50 });
+    const { limit, page, offset } = bounded;
+    const r = await query(
+      `SELECT v.id, v.company_key, v.company_name, v.label, v.created_at, v.updated_at,
+              v.tailored_resume_id,
+              t.ats_score, t.job_id, t.source, t.confirmed_at,
+              j.title AS job_title
+         FROM company_resume_versions v
+         JOIN tailored_resumes t ON t.id = v.tailored_resume_id
+         LEFT JOIN jobs j ON j.id = t.job_id
+        WHERE v.user_id = $1
+        ORDER BY v.updated_at DESC, v.id DESC
+        LIMIT $2 OFFSET $3`,
+      [req.user.id, limit, offset]
+    );
+    res.json({
+      page,
+      limit,
+      /*
+       * States the clamp. A silently shortened page is indistinguishable from
+       * a user who genuinely has that few saved versions, and a client would
+       * page forever into rows it will never be given.
+       */
+      paging: {
+        page, limit, maxPage: bounded.maxPage,
+        requestedPage: bounded.requestedPage,
+        clamped: bounded.clamped,
+        limitClamped: bounded.limitClamped,
+      },
+      versions: r.rows.map((v) => ({
+        id: v.id,
+        companyName: v.company_name,
+        companyKey: v.company_key,
+        label: v.label,
+        tailoredResumeId: v.tailored_resume_id,
+        atsScore: v.ats_score,
+        jobId: v.job_id,
+        // Null rather than guessed: a pasted JD has no verified posting behind
+        // it and the tracker refuses to invent one here too.
+        jobTitle: v.job_title,
+        jobTitleKnown: v.job_title != null,
+        source: v.source,
+        confirmed: v.confirmed_at != null,
+        createdAt: v.created_at,
+        updatedAt: v.updated_at,
+      })),
+    });
+  } catch (err) {
+    console.error('List company versions error:', err);
+    res.status(500).json({ error: 'Could not load your saved versions' });
+  }
+});
+
+router.post('/company-versions', async (req, res) => {
+  try {
+    const tailoredResumeId = parseInt(req.body.tailoredResumeId, 10);
+    if (!Number.isInteger(tailoredResumeId) || tailoredResumeId < 1) {
+      return res.status(400).json({
+        error: 'Which version?',
+        reason: 'missing_tailored_resume',
+        detail: 'Send the id of the tailored resume you want to save.',
+      });
+    }
+    const label = req.body.label == null ? null : String(req.body.label).trim().slice(0, 120) || null;
+
+    const owned = await query(
+      `SELECT t.id, t.job_id, t.source, j.company_name
+         FROM tailored_resumes t
+         LEFT JOIN jobs j ON j.id = t.job_id
+        WHERE t.id = $1 AND t.user_id = $2`,
+      [tailoredResumeId, req.user.id]
+    );
+    if (!owned.rows.length) {
+      return res.status(404).json({
+        error: 'No such tailored resume',
+        reason: 'not_found',
+        detail: 'That version does not exist, or it belongs to another account.',
+      });
+    }
+
+    const row = owned.rows[0];
+    const key = companyKeyFor(row.company_name);
+    if (!key.ok) {
+      /*
+       * 422, not 400: the request is well formed and the user did nothing
+       * wrong - the company simply is not known, and inventing one to make the
+       * save succeed is the fabrication this product refuses everywhere else.
+       */
+      return res.status(422).json({
+        error: 'This version cannot be saved against a company',
+        reason: key.reason,
+        detail: key.detail,
+      });
+    }
+
+    const saved = await query(
+      `INSERT INTO company_resume_versions
+         (user_id, company_key, company_name, tailored_resume_id, label)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, company_key) DO UPDATE
+         SET tailored_resume_id = EXCLUDED.tailored_resume_id,
+             company_name = EXCLUDED.company_name,
+             label = EXCLUDED.label,
+             updated_at = CURRENT_TIMESTAMP
+       RETURNING id, company_name, label, created_at, updated_at,
+                 (xmax <> 0) AS replaced`,
+      [req.user.id, key.key, key.name, tailoredResumeId, label]
+    );
+
+    const v = saved.rows[0];
+    res.status(201).json({
+      id: v.id,
+      companyName: v.company_name,
+      label: v.label,
+      // Said plainly, because the user had one and now does not. A silent
+      // overwrite of their own earlier work is the thing to avoid.
+      replaced: v.replaced === true,
+      createdAt: v.created_at,
+      updatedAt: v.updated_at,
+    });
+  } catch (err) {
+    console.error('Save company version error:', err);
+    res.status(500).json({ error: 'Could not save that version' });
+  }
+});
+
+router.delete('/company-versions/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(404).json({ error: 'No such saved version' });
+  }
+  try {
+    const r = await query(
+      'DELETE FROM company_resume_versions WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, req.user.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'No such saved version' });
+    res.json({ deleted: r.rows[0].id });
+  } catch (err) {
+    console.error('Delete company version error:', err);
+    res.status(500).json({ error: 'Could not delete that version' });
   }
 });
 
