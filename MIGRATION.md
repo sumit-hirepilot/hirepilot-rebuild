@@ -150,3 +150,28 @@ restore push-to-deploy, one of:
 - The new account is a **Limited Trial, 30 days / $5.00**. The old account's
   trial exhaustion is BLOCKED.md's best explanation for five outages; this one
   will hit the same wall.
+
+## The submission halt is operable again — on the new environment
+
+Close-out step 2 has been blocked since the supplied admin token expired
+(`exp 2026-08-06T20:05:31Z`), because `ADMIN_HALT_SECRET` lives in the old
+Railway project and could not be read or set from here.
+
+On the new account I set it at service-creation time, so the operator's lever
+exists again. Exercised on the running service, both directions, and both
+refusals — a switch is not proven by flipping it one way:
+
+| | result |
+|---|---|
+| `GET /api/apply/admin/halt` | `{"halted":false}` |
+| POST with a **wrong** secret | **403 Forbidden** |
+| POST with **no** secret | **403 Forbidden** |
+| POST with the correct secret, `halted:true` | 200, reads back `true` |
+| POST with the correct secret, `halted:false` | 200, reads back `false` |
+
+Left resumed (`halted:false`), which is the state it started in.
+
+The secret is held only in Railway's variable store for the `backend` service.
+It is not in this repo, in any progress file, or in any commit, and it is read
+back from `railway variable list` at the moment it is needed rather than kept
+anywhere.
