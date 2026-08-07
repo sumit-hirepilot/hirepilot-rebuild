@@ -1325,10 +1325,29 @@ router.post('/queue/:id/evidence', verifyToken, async (req, res) => {
         // Hashed in Node, not via pgcrypto: digest() needs an extension that
         // may not be installed, and a missing extension must not be the reason
         // a submission has no receipt.
-        `SELECT a.screening_answers, a.resume_id, a.ats, a.target_form_url,
+        /*
+         * These columns are read from the tables they actually live on.
+         *
+         * This query used to select `a.resume_id` and `a.ats`, which are
+         * columns of submission_receipts - the DESTINATION - and have never
+         * existed on `applications`. Postgres threw `column a.resume_id does
+         * not exist` every single time, the catch below turned it into
+         * `{frozen: false, reason: 'receipt could not be written'}`, and the
+         * evidence endpoint went on to answer 200 with the application marked
+         * submitted. So A4's frozen receipt had never once been written, on any
+         * environment, while every submission reported success.
+         *
+         * That is why the old production held 0 submission_receipts.
+         *
+         * The application points at a TAILORED resume; the underlying file
+         * hangs off that. `ats` is the submission_channel the queue recorded.
+         */
+        `SELECT a.screening_answers, a.submission_channel AS ats, a.target_form_url,
+                tr.resume_id,
                 r.original_filename, r.file_data
            FROM applications a
-           LEFT JOIN resumes r ON r.id = a.resume_id
+           LEFT JOIN tailored_resumes tr ON tr.id = a.tailored_resume_id
+           LEFT JOIN resumes r ON r.id = tr.resume_id
           WHERE a.id = $1 AND a.user_id = $2`,
         [id, req.user.id]
       );
