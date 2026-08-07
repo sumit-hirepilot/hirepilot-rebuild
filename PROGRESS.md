@@ -952,6 +952,38 @@ STILL LEFT on feature 1, in build order:
 
 THEN: the FULL FEATURE AUDIT before feature 2, per the standing goal.
 
+## FEATURE 1 — COMPLETE. All six items shipped and verified on production.
+
+ 1. Live counts — screen said 253, API said 253.
+ 2. Experience as named bands, stored as a numeric range (full slice:
+    migration, clamped endpoint, one declaration, chips, parse pre-answer).
+ 3. Notice period chips, stored as the plain string the screening profile
+    already holds.
+ 4. Parse-as-first-wow — roles as REMOVABLE chips, years stated beside the
+    level they selected.
+ 5. Failed parse as a designed path — a real 44px control on the same screen.
+ 6. Searchable selects replacing both bare inputs; time-to-first-match on the
+    third screen from the real query; abandonment recovery returning the user
+    to the step they left, with no percentage-complete bar.
+
+THREE DEFECTS FOUND BY LOOKING AT IT, none by a test:
+ - "253 of those are near you" with the Location field empty - a true number
+   in a false sentence.
+ - Two filter controls both called "Location" on the jobs page (one was the
+   region facet).
+ - The location field offering "north_america" and "unspecified" as places to
+   work - raw bucket keys, wrong granularity.
+All three are the same class: the label disagreeing with the data. Worth
+remembering that the tests were green through all three.
+
+NEXT: THE FULL FEATURE AUDIT, before feature 2. Spec is above. Fold in the
+known work-type chip inconsistency (step 2's work arrangement uses its own
+toggleChip markup rather than the shared ChipSelect - it works, it just does
+not match) as an audit FINDING rather than fixing it separately.
+
+Load test after the last feature-1 deploy is still owed - run it at steady
+state (check /api/health uptimeSeconds >= 330 first).
+
 ## Status
 
 Wave A CLOSED. A7.2, A7.3, A7.4, A7.12 CLOSED. A7.15 DIAGNOSED (no fix).
