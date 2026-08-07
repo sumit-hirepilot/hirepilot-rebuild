@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import styles from '../styles/ExtensionModal.module.css';
+import { DESKTOP_ONLY_NOTE } from '../lib/extensionCapable';
 
 /*
  * Prompts the user to install the browser extension.
@@ -193,7 +194,7 @@ export { DISMISS_KEY };
  * top bar. `onDismiss` is what the CTA path skips - reopening from the nav should
  * not un-dismiss the automatic prompt, and closing it there should not re-arm it.
  */
-export default function ExtensionInstallModal({ token, apiBase, open, onClose, onDismiss }) {
+export default function ExtensionInstallModal({ token, apiBase, open, onClose, onDismiss, canInstall = true }) {
   const [copied, setCopied] = useState(null);
 
   useEffect(() => {
@@ -222,6 +223,32 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
       <div className={styles.modal}>
         <button className={styles.close} onClick={dismiss} aria-label="Close">&times;</button>
 
+        {/*
+          * On a browser that cannot install a Chrome extension - Chrome on
+          * Android, every iOS browser - this says so and stops. Walking someone
+          * through steps their device cannot perform is an instruction that
+          * cannot be followed, and it was being shown to exactly the users the
+          * landing page invites with "runs in your mobile browser".
+          *
+          * Invisible to a resized desktop window (D46): the steps lay out
+          * perfectly at 375px. Only what the phone itself reports answers this.
+          */}
+        {!canInstall ? (
+          <>
+            <span className={styles.badge}>Desktop only</span>
+            <h2 id="extTitle" className={styles.title}>Applying needs a desktop browser</h2>
+            <p className={styles.lead}>{DESKTOP_ONLY_NOTE}</p>
+            <p className={styles.lead}>
+              You can do everything else here on your phone &mdash; search, scoring,
+              tailoring, the tracker. When you are next at a computer, open this
+              page again and the setup will be waiting.
+            </p>
+            <button type="button" className={styles.downloadBtn} onClick={dismiss}>
+              Got it
+            </button>
+          </>
+        ) : (
+        <>
         <span className={styles.badge}>One-time setup</span>
         <h2 id="extTitle" className={styles.title}>Install the HirePilot Apply extension</h2>
         <p className={styles.lead}>
@@ -335,6 +362,8 @@ export default function ExtensionInstallModal({ token, apiBase, open, onClose, o
           screen, and nothing is marked as applied until the employer&apos;s
           confirmation is captured.
         </p>
+        </>
+        )}
       </div>
     </div>
   );

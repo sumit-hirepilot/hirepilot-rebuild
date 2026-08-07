@@ -445,6 +445,16 @@ Blocked on: —
 ## Standing rules
 <rules learned from failures>
 
+- **Browser resize proves CSS, not mobile rendering.** Resizing sets a true
+  viewport width, so media queries run and the page looks correct even with no
+  viewport meta tag at all. That is exactly how a missing tag survived every
+  375px audit pass while every authenticated page laid out at the ~980px
+  fallback on a real phone.
+
+  Any claim about mobile behaviour must be verified by something a real phone
+  would read: the tag itself, the served HTML, or a device emulator that
+  honours it. `tools/check-mobile-claims.js` enforces it.
+
 - **A test must assert the behaviour a claim describes, never that the claim
   exists.** A test asserting on copy pins that copy in place after the
   behaviour changes, and turns the correction into a red suite. Coverage

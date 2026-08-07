@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import styles from '../styles/Dashboard.module.css';
 import NotificationBell from './NotificationBell';
 import ExtensionInstallModal, { useExtensionDetected, extensionPrompt, DISMISS_KEY } from './ExtensionInstallModal';
+import { canInstallExtension, DESKTOP_ONLY_NOTE } from '../lib/extensionCapable';
 import { API_BASE } from '../lib/apiBase';
 
 /*
@@ -192,6 +193,13 @@ export default function DashboardLayout({ children, title, user }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [extModalOpen, setExtModalOpen] = useState(false);
+  /*
+   * Whether this browser can install the extension at all. Read after mount,
+   * never during render: navigator does not exist on the server, and a value
+   * that differs between the two renders is a hydration mismatch. Starts true
+   * so the first client render matches the server's, then narrows.
+   */
+  const [canInstall, setCanInstall] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const base = API_BASE;
@@ -229,15 +237,24 @@ export default function DashboardLayout({ children, title, user }) {
       .catch(() => {});
   }, [token, base]);
 
+  useEffect(() => { setCanInstall(canInstallExtension()); }, []);
+
   useEffect(() => {
     // Only once detection has concluded (false, not null). The once-per-session
     // guard lives in extensionPrompt rather than component state, because this
     // layout remounts on every route change.
     if (extensionDetected !== false) return;
+    /*
+     * Never prompt a phone to install a Chrome extension. Chrome on Android
+     * and every iOS browser simply cannot, so the prompt was an instruction
+     * that could not be followed - shown to exactly the users the landing page
+     * invites with "runs in your mobile browser".
+     */
+    if (!canInstall) return;
     if (!extensionPrompt.shouldShow()) return;
     extensionPrompt.markShown();
     setExtModalOpen(true);
-  }, [extensionDetected]);
+  }, [extensionDetected, canInstall]);
 
   const handleToggleAutoPilot = async () => {
     if (!token || toggling) return;
@@ -341,12 +358,21 @@ export default function DashboardLayout({ children, title, user }) {
           {/* Hidden once the extension is present - it would be dead weight in
               the bar. Also hidden while detection is still pending (null) so it
               does not flash in and out on every page load. */}
+          {/*
+            * On a phone this is NOT hidden - it is relabelled. Removing it
+            * would silently drop the only place the desktop-only requirement
+            * is stated, and a user who never learns why applying does nothing
+            * is worse off than one told plainly. The modal carries the full
+            * sentence, because the header has no room for it.
+            */}
           {extensionDetected === false && (
             <button
               type="button"
               className={styles.extensionCta}
               onClick={() => setExtModalOpen(true)}
-              title="Install the browser extension that submits your applications"
+              title={canInstall
+                ? 'Install the browser extension that submits your applications'
+                : DESKTOP_ONLY_NOTE}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M12 3v12" />
@@ -354,7 +380,11 @@ export default function DashboardLayout({ children, title, user }) {
                 <path d="M4 19h16" />
               </svg>
               <span className={styles.extensionCtaLabel}>
-                <span className={styles.extensionCtaLabelLong}>Download </span>Extension
+                {canInstall ? (
+                  <><span className={styles.extensionCtaLabelLong}>Download </span>Extension</>
+                ) : (
+                  <>Applying needs<span className={styles.extensionCtaLabelLong}> a</span> desktop</>
+                )}
               </span>
             </button>
           )}
@@ -384,6 +414,7 @@ export default function DashboardLayout({ children, title, user }) {
           token={token}
           apiBase={base}
           open={extModalOpen}
+          canInstall={canInstall}
           onClose={() => setExtModalOpen(false)}
           onDismiss={() => localStorage.setItem(DISMISS_KEY, '1')}
         />

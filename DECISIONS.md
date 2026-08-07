@@ -881,3 +881,19 @@ defect underneath:
 fetches the copy — so every claim test grounded itself and the checker reported
 green on the two defects it was written from. Caught only by proving it on a
 known positive, the same way the guard-wiring census went wrong twice.
+
+## D46 — browser resize proves CSS, not mobile rendering
+
+`resize_window` sets a true viewport width. Media queries therefore run, the
+responsive CSS applies, and the page looks correct — with or without a viewport
+meta tag. The tag is the one thing resize cannot test, because only a real
+mobile browser reads it.
+
+That is how the D45 viewport defect survived: three separate 375px audit passes
+reported zero overflow and correct layout on `/jobs`, `/dashboard` and the rest,
+while every one of those pages shipped without `<meta name="viewport">` and
+would have rendered at the ~980px fallback on an actual phone.
+
+A mobile claim is now verified against something a phone reads — the served
+HTML, the tag, or an emulator that honours it. Never against a resized window
+alone.

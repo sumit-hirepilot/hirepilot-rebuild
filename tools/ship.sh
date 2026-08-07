@@ -55,6 +55,7 @@ node tools/check-landing-claims.js
 node tools/check-plan-names.js
 node tools/check-claim-tests.js
 node tools/check-plain-language.js
+node tools/check-mobile-claims.js
 echo
 
 echo "== 6/10 backend suite =="
