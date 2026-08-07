@@ -454,6 +454,32 @@ router.post('/ats-batch', verifyToken, async (req, res) => {
 });
 
 // Full ATS breakdown plus guidance for one job.
+/*
+ * A non-numeric :id is a 404, not a 500.
+ *
+ * GET /api/jobs/mine and /api/jobs/linked both returned 500 on production.
+ * There is no such route, so they fell into `/:id`, and `WHERE id = 'mine'`
+ * makes Postgres throw `invalid input syntax for type integer`. A 500 says
+ * this server is broken when the truth is that there is no such job - and it
+ * puts a fabricated-looking fault in the crash log, which is exactly the noise
+ * the crash logging exists to keep out.
+ *
+ * router.param rather than a check inside one handler: every `/:id` route in
+ * this router has the same hole, and fixing the instance would leave three.
+ * Raised by Lane B as HANDOFF B -> A 2.
+ */
+router.param('id', (req, res, next, value) => {
+  if (!/^\d+$/.test(String(value))) {
+    return res.status(404).json({ error: 'No job with that id.' });
+  }
+  const n = Number(value);
+  // Beyond a signed 32-bit int Postgres throws on the cast, not on the lookup.
+  if (!Number.isSafeInteger(n) || n < 1 || n > 2147483647) {
+    return res.status(404).json({ error: 'No job with that id.' });
+  }
+  return next();
+});
+
 router.get('/:id/ats', verifyToken, async (req, res) => {
   try {
     const jobRes = await query(
@@ -1799,6 +1825,81 @@ router.get('/', attachUserIfPresent, async (req, res) => {
 });
 
 // --- Saved Jobs ---
+
+/*
+ * The jobs this user added by link.
+ *
+ * Feature 4a stores a linked job with `is_active = false`, which keeps one
+ * person's link out of the index served to everyone else - 16 shared queries
+ * filter on it, with no change to the hot feed path. That was right and
+ * stays. What it also did, and should not have, was hide the job from its
+ * OWNER: nothing listed these rows, so the flow ended at "Added ... Scored
+ * 55%" and the job could never be opened, tailored against or queued.
+ *
+ * Same class as the pasted-JD row an inner join dropped: work the product
+ * performs and then hides. Raised by Lane B as HANDOFF B -> A 1.
+ *
+ * NOT a second door into the shared index. Scoped to added_by_user_id, and
+ * every row it returns is still is_active = false.
+ *
+ * NULL IS AN ANSWER HERE, in three places, and each is passed through as
+ * absence rather than filled in:
+ *   company_name  a page that did not state one is stored absent, not guessed
+ *   posted_at     only a real publication date is ever stored - never
+ *                 Greenhouse's updated_at, which moves on every edit
+ *   score         scoring may fail; the job is kept regardless, and "not
+ *                 scored yet" is not 0%
+ * The booleans alongside them exist so the client renders absence without
+ * having to infer it from a falsy value.
+ */
+router.get('/linked', verifyToken, async (req, res) => {
+  try {
+    const { page, limit, offset } = boundPaging(req.query.page, req.query.limit, {
+      defLimit: 20, maxLimit: 100, maxOffset: 5000,
+    });
+
+    const [rows, count] = await Promise.all([
+      query(
+        `SELECT j.id, j.title, j.company_name, j.location, j.job_url, j.posted_at,
+                j.source, j.created_at,
+                m.overall_score, m.breakdown
+           FROM jobs j
+           LEFT JOIN job_matches m ON m.job_id = j.id AND m.user_id = $1
+          WHERE j.added_by_user_id = $1
+          ORDER BY j.created_at DESC
+          LIMIT $2 OFFSET $3`,
+        [req.user.id, limit, offset]
+      ),
+      query('SELECT COUNT(*)::int AS n FROM jobs WHERE added_by_user_id = $1', [req.user.id]),
+    ]);
+
+    res.json({
+      total: count.rows[0]?.n || 0,
+      page,
+      limit,
+      jobs: rows.rows.map((j) => ({
+        id: j.id,
+        title: fixMojibake(j.title),
+        company_name: j.company_name ? fixMojibake(j.company_name) : null,
+        location: j.location || null,
+        job_url: j.job_url,
+        posted_at: j.posted_at,
+        source: j.source,
+        created_at: j.created_at,
+        // Stated rather than inferred: a client should not have to decide what
+        // an empty string means.
+        companyStated: Boolean(j.company_name),
+        postedAtKnown: Boolean(j.posted_at),
+        score: j.overall_score === null || j.overall_score === undefined
+          ? null
+          : { overall_score: j.overall_score, breakdown: j.breakdown || null },
+      })),
+    });
+  } catch (err) {
+    console.error('GET /jobs/linked failed:', err.message);
+    res.status(500).json({ error: 'Could not load the jobs you added' });
+  }
+});
 
 router.get('/saved/list', verifyToken, async (req, res) => {
   try {

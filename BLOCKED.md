@@ -2,6 +2,33 @@
 
 Goals that failed five attempts, with full diagnosis. Retried at end of wave.
 
+
+## OPERATOR DECISION — the skills-score denominator (D49)
+
+**Not blocked on code. Blocked on a decision only the operator can make**,
+because the number is on every job card and in every breakdown a user has
+already seen.
+
+Measured on 220 live jobs against the real account:
+
+- Adding a **genuine** skill lowers the match score on every job that does not
+  mention it. SQL: −0.019. Wireframing: −0.021. Accessibility: −0.023.
+- Of **74** skills this user lacks, exactly **1** would raise her score, and it
+  is "marketing" — for a product designer.
+- Deleting six of her eleven real skills raises her scores. Keeping only
+  "Leadership" and removing the other ten is **+166%**.
+- 219 of 220 jobs score between 50% and 69% overall. The score barely
+  discriminates.
+
+The full analysis, the three options and their consequences are in DECISIONS.md
+as **D49**. The recommendation is option B (`matched/jobRequiredSkills`) with a
+denominator floor and a one-pass re-score that is announced in the UI.
+
+**What the operator needs to decide:** whether every existing score may move.
+That is the whole cost, and it is not a technical question. Until then the
+formula is unchanged and feature 5 keeps reporting the negative results
+honestly.
+
 ## The app's Railway project is not reachable from this machine — and this is
 ## now the blocker on diagnosing five outages
 
