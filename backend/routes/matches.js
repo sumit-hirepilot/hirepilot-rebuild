@@ -5,6 +5,8 @@ const { calculateMatchesForUser } = require('../services/matchingEngine');
 const { boundPaging, boundFloat, clampReport } = require('../services/requestBounds');
 const { fixMojibake } = require('../services/apis/textSanitizer');
 const { coach, MAX_JOBS } = require('../services/scoreCoaching');
+const { rescore, rescoreStatus } = require('../services/rescoreIndex');
+const { scoreJobsForUser } = require('../services/matchingEngine');
 
 const router = express.Router();
 
@@ -207,6 +209,36 @@ router.get('/coaching', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('GET /matches/coaching failed:', err.message);
     res.status(500).json({ error: 'Could not work out what would move your scores' });
+  }
+});
+
+/*
+ * D49 — how much of the index is still on the old formula.
+ *
+ * The UI uses this to say "we changed how scores are calculated" while it is
+ * true and to stop saying it once it is not. A notice that outlives the change
+ * is its own small lie.
+ */
+router.get('/rescore-status', verifyToken, async (_req, res) => {
+  try {
+    res.json({ ...(await rescoreStatus(query)), formula: 'v2_job_denom' });
+  } catch (err) {
+    console.error('GET /matches/rescore-status failed:', err.message);
+    res.status(500).json({ error: 'Could not read the re-score status' });
+  }
+});
+
+/*
+ * Runs the pass. Bounded per call so one request cannot hold the process for
+ * the length of the whole table - the caller repeats until `complete`.
+ */
+router.post('/rescore', verifyToken, async (req, res) => {
+  try {
+    const out = await rescore(query, scoreJobsForUser, { maxRows: 2000 });
+    res.json({ ...out, status: await rescoreStatus(query) });
+  } catch (err) {
+    console.error('POST /matches/rescore failed:', err.message);
+    res.status(500).json({ error: 'Re-score failed' });
   }
 });
 

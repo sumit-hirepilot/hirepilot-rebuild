@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { scoreLabel, bandFor } from '../lib/scoreBands';
 import { useRouter } from 'next/router';
 import AddJobByLink from '../components/AddJobByLink';
+import ScoreChangeNotice from '../components/ScoreChangeNotice';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
@@ -1263,6 +1264,7 @@ export default function Jobs() {
           * A job added here is the user's own: it is written inactive, so it
           * never appears in anyone else's feed, counts or facets.
           */}
+        <ScoreChangeNotice token={token} base={base} />
         <AddJobByLink token={token} base={base} onAdded={() => loadJobs(token)} />
 
         <div className={page.sourcesBanner}>

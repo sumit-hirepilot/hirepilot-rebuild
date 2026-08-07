@@ -1,0 +1,13 @@
+/* D49 — the score-change notice. Informational, not an error or a promotion. */
+.notice {
+  border: 1px solid #c7d2fe; background: #eef2ff; border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.title { margin: 0; font-weight: 600; font-size: 14.5px; color: #312e81; }
+.body { margin: 6px 0 0; font-size: 13.5px; line-height: 1.55; color: #3730a3; }
+.progress { margin: 8px 0 0; font-size: 12.5px; color: #4338ca; }
+.ok {
+  margin-top: 10px; min-height: 44px; padding: 8px 16px; border-radius: 10px;
+  border: 1px solid #a5b4fc; background: #fff; color: #3730a3;
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
