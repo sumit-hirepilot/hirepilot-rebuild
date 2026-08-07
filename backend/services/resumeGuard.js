@@ -122,7 +122,75 @@ function buildCorpus({ resumeText = '', skills = [], experience = [], profile = 
     if (/\d/.test(tok)) numbers.add(trimToken(tok.replace(/[^\d%.+-]/g, '')));
     words.add(stem(tok));
   }
-  return { text, words, numbers };
+  // Built once here so phraseTraceable does not re-normalise the whole corpus
+  // for every candidate skill.
+  const claimText = text.split(/\s+/).map((t) => lightStem(trimToken(t))).filter(Boolean).join(' ');
+  return { text, words, numbers, claimText };
+}
+
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/*
+ * A SKILL is an atomic claim, and must trace as a WHOLE PHRASE.
+ *
+ * The word-by-word rule below is right for prose. A rewritten bullet
+ * legitimately recombines the user's own vocabulary, and demanding that whole
+ * sentences appear verbatim would mean the editor could only reorder text.
+ *
+ * Applied to a skill it fails badly, because a skill is not prose - it is a
+ * claim about what someone can do, and it passed whenever its individual words
+ * turned up ANYWHERE, in any context. Caught on a real resume:
+ *
+ *   "Marketing"   accepted. stem("marketing") strips -ing to "market", and the
+ *                 resume says "aligning product experience with market
+ *                 positioning". The word "marketing" appears nowhere in this
+ *                 person's resume, skills or work history.
+ *   "UI Design"   accepted, from "UX/UI redesign" in one job and "design"
+ *                 in another - two unrelated places, assembled into a claim
+ *                 neither of them makes.
+ *
+ * "Marketing" is the exact example written into the comment on the tailor
+ * route as the thing this guard exists to stop, so it had regressed to the
+ * original defect while reading as protected.
+ *
+ * Blocking is not censorship here: an untraceable skill becomes a QUESTION the
+ * user answers, not a silent removal. Better to ask about "UI Design" than to
+ * assert it for them.
+ */
+/*
+ * Plurals only. NOT the stem() used for prose, and that difference is the fix.
+ *
+ * stem() also strips -ed and -ing, which is what makes rephrasing work
+ * ("designing" should match "design"). Applied to a claim it merges words that
+ * are not the same word: "marketing" becomes "market", so a resume saying
+ * "market positioning" vouches for the skill "Marketing". That is how the
+ * defect survived a phrase-level check on the first attempt - both sides
+ * collapsed together, and the phrase matched.
+ *
+ * A skill needs the conservative form: "Design System" may match "Design
+ * Systems", and "Marketing" may not match "market".
+ */
+function lightStem(word) {
+  return word
+    .replace(/(ies)$/, 'y')
+    .replace(/(sses|shes|ches|xes)$/, '')
+    .replace(/([^s])s$/, '$1');
+}
+
+function claimPhrase(text) {
+  return normalise(text)
+    .split(/\s+/)
+    .map(trimToken)
+    .filter(Boolean)
+    .map(lightStem)
+    .join(' ');
+}
+
+function phraseTraceable(text, corpus) {
+  const needle = claimPhrase(text);
+  if (!needle) return false;
+  const hay = corpus.claimText || claimPhrase(corpus.text || '');
+  return new RegExp(`(?:^|\\s)${escapeRegExp(needle)}(?:\\s|$)`).test(hay);
 }
 
 function traceable(token, corpus) {
@@ -236,13 +304,29 @@ function verify(currentText, candidateText, corpus) {
 function verifyAdditions(items, corpus) {
   return (items || []).map((item) => {
     const text = typeof item === 'string' ? item : item.text;
+    const kind = typeof item === 'object' ? item.kind : undefined;
     // An addition is checked against empty current text: everything in it is
     // new by definition, so every content word must trace.
     const res = verify('', text, corpus);
+
+    /*
+     * A skill has to trace as a whole phrase as well. Word-by-word is the
+     * right rule for prose and the wrong one for a claim - see phraseTraceable.
+     */
+    const violations = [...res.violations];
+    if (kind === 'skill' && !phraseTraceable(text, corpus)) {
+      violations.push({
+        rule: 'untraceable_skill',
+        text: String(text).slice(0, 160),
+        token: String(text),
+        why: `"${text}" does not appear in your resume, skills or work history as a skill. Its individual words may appear elsewhere, but that is not the same claim.`,
+      });
+    }
+
     return {
       text,
-      ok: res.ok,
-      violations: res.violations,
+      ok: violations.length === 0,
+      violations,
       ...(typeof item === 'object' ? { target: item.target, kind: item.kind } : {}),
     };
   });

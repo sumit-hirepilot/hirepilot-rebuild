@@ -163,6 +163,27 @@ router.post('/apply-parsed', async (req, res) => {
   try {
     const { skills = [], experience = [] } = req.body;
 
+    /*
+     * Nothing to apply is not an update, and must not be reported as one.
+     *
+     * This endpoint reads the skills and experience out of the REQUEST, not
+     * out of the stored resume - the client posts back what the user
+     * confirmed. Called with neither (say, with just a resumeId, which it
+     * ignores) it used to insert nothing, score nothing, and answer 200
+     * "Profile updated from resume" with skillsAdded: 0. The caller is then
+     * told the profile was built from the resume while the profile is empty,
+     * and the next screen shows no skills with no explanation.
+     *
+     * 400 with the reason, so a wrong call says so instead of looking like a
+     * parser that found nothing.
+     */
+    if (!skills.length && !experience.length) {
+      return res.status(400).json({
+        error: 'Nothing to apply',
+        detail: 'Send the skills and experience to add. This endpoint applies what the user confirmed from the parse; it does not re-read a stored resume, so a resumeId on its own applies nothing.',
+      });
+    }
+
     for (const skill of skills) {
       if (!skill || typeof skill !== 'string') continue;
       await query(
