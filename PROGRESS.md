@@ -5,7 +5,7 @@ New Railway account is production. Old account abandoned by operator decision.
 - **App** https://frontend-production-0d14b.up.railway.app
 - **API** https://backend-production-e6a8.up.railway.app
 
-Suites: **backend 441**, **frontend 267**. Gate stages 1–9 pass.
+Suites: **backend 461**, **frontend 267**. Gate stages 1–9 pass.
 
 ## Now
 
@@ -81,43 +81,55 @@ wrong secret 403, absent secret 403, correct secret halts and reads back
 
 ## Measured
 
-**Memory, production, across a full ingest** (`/api/health`, 20s sampling):
+**Memory, production** (`/api/health`):
 
 | | measured | budget | |
 |---|---|---|---|
-| steady state | **277 MB** | under 300 MB | pass |
-| peak during initial ingest | **687 MB** | under 500 MB | **FAIL** |
+| steady state, 90 samples over 12 min | **207–208 MB** (heap 72 MB) | under 300 MB | pass |
+| peak seen at ~22s uptime after a deploy | **687 MB** (heap 458 MB) | under 500 MB | **FAIL** |
 
-The peak is the first aggregation cycle after a deploy, at ~22s uptime, across
-12 sources. It falls back to 277 MB and stays there. This is the next thing to
-fix and it gates the feature queue, per the standing budget.
+Steady state is comfortably inside budget and has come down as the corpus
+settled. The peak is a single early-boot spike and is **not yet characterised**:
+the aggregator already runs one source at a time (GOAL 1d), so the obvious
+cause is ruled out, and a 458 MB heap that early points somewhere else. It
+needs a sampled boot to locate, which is the next task and gates the feature
+queue.
+
+## Auto Apply — proven end to end, WEAKENED
+
+Full stage-by-stage evidence in SUBMISSION_PROOF.md. Every stage on production
+against the operator's own resume, against a controlled target that replaces
+only the employer's form. Two defects found by running it, both invisible to a
+green suite:
+
+- **the submission receipt had never once been written** — the freeze query read
+  `a.resume_id` and `a.ats`, columns of the table it inserts INTO, which have
+  never existed on `applications`. It threw on every submission ever made and
+  the catch downgraded it to a soft reason field while the endpoint answered
+  200. The old production's 0 receipts had been read as "nobody has submitted".
+- the controlled target 500'd on the real bracket-named payload — my own new
+  code, found by running it rather than by tests written from the same wrong
+  assumption.
+
+The delta is recorded, not glossed: a target built to the adapter's own
+selectors can never catch selector drift on live Greenhouse, and MV3
+orchestration is not exercised. A5 stays open for that run alone.
 
 ## Blocked — operator dependency
 
-**A5 — counsel before any further submission work.** Unchanged and still the
-reason Auto Apply is not proven end to end. The Greenhouse User Agreement
-restricts automated access and binds job seekers, the party HirePilot acts for.
-Proving the submitting half means putting a real application into a real
-employer's ATS under the operator's own name, by automation, and that is the
-question A5 defers to counsel rather than to an engineering pass.
+**A5 — WEAKENED by operator decision; one thing still open.** The pipeline is
+proved against a controlled target. What remains uncovered is **selector drift
+on the live Greenhouse boards**: a target built to the adapter's selectors
+cannot catch the adapter going stale. Only a run against a live board closes
+it, and that is the run the Greenhouse User Agreement question gates.
 
-What is proven without it, on the new production:
-
-| stage | state |
-|---|---|
-| candidate selection, real feed | proven |
-| resume upload + parse, real PDF | proven — 10 skills, 6 roles |
-| tailoring honesty guards | **proven, and one was failing** — D51 |
-| kill switch halts and resumes | proven both ways, plus both refusals |
-| Lever and Ashby disabled | unchanged |
-| nothing reaches applied without a submission record | proven at the database — D50 |
-| queue, submit, confirm, receipt, tracker | **not proven — A5** |
+Lever and Ashby stay disabled and their terms remain unread.
 
 ## Next
 
-1. The 687 MB ingest peak, before any feature work.
+1. Characterise and fix the early-boot memory peak, before any feature work.
 2. Features 6, 8, 9, 10, 11, 12, 13, 14, 15, audit after every third.
-3. Load test 50/200/500/1000 at steady state.
+3. Load test 50/200/500/1000 at steady state, after each feature.
 4. Final audit at 375/768/1440 and on an emulated phone.
 
 Seeded account `autoapply-proof@hirepilot.local` and the operator account
