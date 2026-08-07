@@ -1236,3 +1236,63 @@ INSERT … status='applied', submitted_at=now() -> accepted, id 2
 
 The accepted row was deleted afterwards; a fabricated application must not
 survive in a database that is about to become production.
+
+## D51 — a skill has to trace as a claim, not as a bag of words
+
+Found by tailoring a real resume against real Greenhouse postings on the new
+production, which is the only reason it was found at all: every test was green.
+
+Two skills were written into the document:
+
+| skill | how it got in |
+|---|---|
+| **Marketing** | `stem()` strips `-ing`, so "marketing" became "market", and the resume says *"aligning product experience with market positioning"*. The word "marketing" is absent from the resume, the recorded skills and the work history. |
+| **UI Design** | assembled from *"UX/UI redesign"* in one role and *"design"* in another — two unrelated places, neither making that claim. |
+
+"Marketing" is the **literal example** written into the comment on the tailor
+route describing the thing this guard exists to prevent. It had come all the
+way back round, and the suite could not see it.
+
+### Why the tests could not catch it
+
+They checked that an obviously invented skill was rejected — "Kubernetes"
+against a design resume. None checked a skill whose **words** were present but
+whose **claim** was not. That is the gap: the guard's rule was "every content
+word in an addition must appear in the user's material", and a two-word skill
+satisfies it whenever its two words appear anywhere, in any context.
+
+### The fix, and the distinction it rests on
+
+A skill is an atomic claim. Prose is not.
+
+`kind: 'skill'` now has to trace as a **whole phrase**. Prose is unchanged and
+still judged word by word, because a rewritten bullet legitimately recombines
+the user's own vocabulary and demanding verbatim sentences would leave no
+editor at all.
+
+**My first attempt failed, and the failure was the useful part.** I reused
+`stem()` for the phrase check; the test still passed the fabricated skill,
+because both sides collapsed to "market" and the phrase then matched. The
+phrase check needs plurals-only normalisation: `-ed`/`-ing` stripping is
+exactly what makes rephrasing work and exactly what makes a claim check wrong.
+So there are two normalisers now, and the comment says which is for what.
+
+A blocked skill becomes a **question**, not a silent removal — the user is
+asked about "UI Design" rather than having it asserted for them.
+
+### Proved on production, against the same postings
+
+| | before | after |
+|---|---|---|
+| Gusto — Product Designer, Contractors | `addedSkills: ["Marketing"]` | `[]`, Marketing → needsConfirmation |
+| Netlify — Staff Product Designer | `addedSkills: ["UI Design","Marketing"]` | `[]`, both → needsConfirmation |
+
+`containsMarketing: false` in the returned document on both.
+
+### Residual, recorded rather than quietly left
+
+The word-level rule still stems `-ing`, so prose could in principle introduce
+"marketing" off "market". That looseness is deliberate for rephrasing and is
+not demonstrated to be exploitable on the shipped paths, so it is not being
+changed on a hunch. It is written down here so the next person does not have to
+rediscover the asymmetry.
