@@ -287,3 +287,34 @@ describe('the paste is parsed, never obeyed', () => {
     expect(res.body.tailoredText).not.toContain(bidi);
   });
 });
+
+describe('a pasted-JD resume is visible after it is written', () => {
+  it('lists rows that have no job, and says what they came from', async () => {
+    /*
+     * Feature 3 wrote the row, the CHECK constraint accepted it and the
+     * endpoint returned 201 - and GET /tailored dropped it, because the query
+     * INNER JOINed jobs. Work the product performs and then hides is the same
+     * defect class as a computed value nothing reads.
+     *
+     * Found on production by reading the row back after writing it, rather
+     * than trusting the 201.
+     */
+    query.mockImplementation((sql) => {
+      if (/FROM tailored_resumes/.test(sql)) {
+        // The assertion that matters is on the SQL, because the join type is
+        // the whole defect - a mocked row would pass either way.
+        expect(sql).toMatch(/LEFT JOIN\s+jobs/i);
+        expect(sql).toMatch(/tr\.source/);
+        return Promise.resolve({
+          rows: [{ id: 166, source: 'pasted_jd', job_title: null, company_name: null }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app()).get('/api/resume/tailored');
+    expect(res.status).toBe(200);
+    expect(res.body.tailored).toHaveLength(1);
+    expect(res.body.tailored[0].source).toBe('pasted_jd');
+  });
+});

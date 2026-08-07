@@ -394,8 +394,19 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
       <div className={page.tailoredGrid}>
         {tailoredHistory.map((t) => (
           <div key={t.id} className={styles.card} style={{ marginBottom: 0 }}>
-            <p className={page.tailoredTitle}>{t.job_title}</p>
-            <p className={page.tailoredCompany}>{parsedOr(t.company_name, 'Company not stated')}</p>
+            {/*
+              * A resume tailored from a PASTED job description has no employer
+              * behind it that this product can vouch for. It says so, rather
+              * than rendering an empty company that reads like data we lost.
+              */}
+            <p className={page.tailoredTitle}>
+              {t.source === 'pasted_jd' ? 'Pasted job description' : t.job_title}
+            </p>
+            <p className={page.tailoredCompany}>
+              {t.source === 'pasted_jd'
+                ? 'You pasted this one — no company on file'
+                : parsedOr(t.company_name, 'Company not stated')}
+            </p>
             <span className={t.confirmed_at ? page.defaultBadge : page.draftBadge}>
               {t.confirmed_at ? 'Confirmed' : 'Draft'}
             </span>
@@ -408,7 +419,7 @@ function ResumeManager({ resumes, tailoredHistory, token, base, reload, setMessa
               {t.confirmed_at && (
                 <button
                   className={page.secondaryButton}
-                  onClick={() => downloadText(t.tailored_summary, `tailored-${t.job_title || 'resume'}.txt`)}
+                  onClick={() => downloadText(t.tailored_summary, `tailored-${t.job_title || 'pasted-jd'}.txt`)}
                 >
                   Download text
                 </button>

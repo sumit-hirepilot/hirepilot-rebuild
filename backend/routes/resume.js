@@ -228,11 +228,28 @@ function parseFuzzyDate(raw) {
 router.get('/tailored', async (req, res) => {
   try {
     const result = await query(
+      /*
+       * LEFT JOIN, because a resume tailored from a PASTED job description has
+       * no row in `jobs` and never will.
+       *
+       * This was an inner join. Feature 3 wrote the row, the CHECK constraint
+       * accepted it, the endpoint returned 201 - and the user could never see
+       * it, because this query silently dropped every job-less row. Work the
+       * product performs and then hides is the same defect class as a computed
+       * value nothing reads.
+       *
+       * Found by reading the row back from production after writing it, rather
+       * than trusting the 201.
+       *
+       * `source` is returned so the UI can say what it was tailored against
+       * instead of showing a blank company as though one were missing.
+       */
       `SELECT tr.id, tr.tailored_summary, tr.highlighted_skills, tr.ats_score, tr.created_at,
               tr.confirmed_at, tr.diff_json, tr.original_snapshot, tr.final_text,
+              tr.source,
               j.title as job_title, j.company_name
        FROM tailored_resumes tr
-       JOIN jobs j ON tr.job_id = j.id
+       LEFT JOIN jobs j ON tr.job_id = j.id
        WHERE tr.user_id = $1
        ORDER BY tr.created_at DESC`,
       [req.user.id]
