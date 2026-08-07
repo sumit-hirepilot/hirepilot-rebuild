@@ -395,3 +395,30 @@ Run at uptime 593s. `4291a74`.
 Zero failures at 200 concurrent, p95 2,656 ms against 2,593 ms last run. The
 scoring formula changed underneath this and the feed is unaffected — the
 denominator is computed from text already loaded, so no extra query.
+
+
+---
+
+# 2026-08-07 — new production, after the D53 streaming fix
+
+Backend `backend-production-e6a8`, single replica, Railway Limited Trial.
+Run at steady state, uptime 329s, well clear of the deploy.
+
+| concurrent | requests | ok | failed | p95 | RSS before → after |
+|---|---|---|---|---|---|
+| 200 | 600 | 600 | **0** | — (median 2,723 ms) | 264 → 292 MB |
+| 500 | 1,500 | 1,500 | **0** | 14,129 ms | 292 → 303 MB |
+| 1,000 | 3,000 | 3,000 | **0** | 34,169 ms | 303 → 304 MB |
+
+**Zero failures at 1,000 concurrent**, which is the bar. No failure modes
+recorded at any step.
+
+**p95 is the honest caveat.** 34 seconds at 1,000 concurrent is a queue, not a
+crash: every request is served, none is dropped, and RSS moves 1 MB across the
+whole step. This is one replica on a trial plan doing three requests per user
+against a 17k-row index. The bar asked for zero failures and it is met; nobody
+should read 34s as comfortable.
+
+**Memory held.** The point of D53 was headroom, and the load test is where it
+shows: RSS at 1,000 concurrent tops out at 304 MB against a 1 GB ceiling, where
+the pre-fix boot alone reached 687 MB.
