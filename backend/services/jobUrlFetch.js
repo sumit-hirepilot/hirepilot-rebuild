@@ -23,9 +23,10 @@
 
 const axios = require('axios');
 const { classifyJobUrl, assertPublicHost, isBlockedAddress } = require('./jobUrlParse');
+const { PUBLIC_APP_URL } = require('./publicUrl');
 
 /** Names the product and points at it. A bot that hides is a bot that is lying. */
-const USER_AGENT = 'HirePilotBot/1.0 (+https://hirepilot-rebuild-production.up.railway.app/about-bot; job link opened by a signed-in user)';
+const USER_AGENT = `HirePilotBot/1.0 (+${PUBLIC_APP_URL}/about-bot; job link opened by a signed-in user)`;
 
 const TIMEOUT_MS = 12000;
 const MAX_BYTES = 2 * 1024 * 1024;   // a job page that needs more than 2MB is not a job page

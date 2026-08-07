@@ -40,7 +40,7 @@
     {
       "matches": [
         "http://localhost:3000/*",
-        "https://hirepilot-rebuild-production.up.railway.app/*"
+        "https://frontend-production-0d14b.up.railway.app/*"
       ],
       "js": [
         "content/announce.js"

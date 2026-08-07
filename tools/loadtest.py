@@ -21,7 +21,7 @@ import sys
 import time
 from urllib.parse import urlparse
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "https://hirepilot-production-e70d.up.railway.app"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "https://backend-production-e6a8.up.railway.app"
 TOKEN = sys.argv[2] if len(sys.argv) > 2 else ""
 STEPS = [int(x) for x in (__import__('os').environ.get('STEPS') or '50,200,500,1000').split(',')]
 ABORT_RSS_MB = 800

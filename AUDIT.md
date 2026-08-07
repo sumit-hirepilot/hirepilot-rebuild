@@ -1,5 +1,10 @@
 # Full feature audit — round 2, before feature 5
 
+> **Production moved on 2026-08-07.** The hostnames named below were
+> correct when these numbers were taken and are kept for that reason.
+> Current production is `backend-production-e6a8.up.railway.app` (API)
+> and `frontend-production-0d14b.up.railway.app` (app). See MIGRATION.md.
+
 Run on production as a signed-in user at 1440 / 768 / 375, plus an **emulated
 phone reporting real device signals** (`userAgentData.mobile: true`,
 `maxTouchPoints: 5`, Android UA) — because resize proves CSS, not mobile

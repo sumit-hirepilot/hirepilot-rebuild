@@ -21,7 +21,11 @@
       Open HirePilot, go to <strong>Settings &rarr; Browser Extension</strong>, and copy the token.
     </p>
     <label class="lbl" for="apiBase">HirePilot URL</label>
-    <input id="apiBase" type="text" placeholder="https://hirepilot-production.up.railway.app" />
+    <!-- The placeholder is an EXAMPLE the user may well copy, so it has to be
+         the real API host. It used to show an assumed hostname that has never
+         existed and answers 502, i.e. the field's own worked example connected
+         the extension to nothing. -->
+    <input id="apiBase" type="text" placeholder="https://backend-production-e6a8.up.railway.app" />
     <label class="lbl" for="token">Access token</label>
     <textarea id="token" rows="3" placeholder="eyJhbGciOi..."></textarea>
     <button id="connectBtn" class="btn btn-primary">Connect</button>

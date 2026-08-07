@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { XMLParser } = require('fast-xml-parser');
 const crypto = require('crypto');
+const { PUBLIC_APP_URL } = require('../publicUrl');
 
 const BASE_URL = 'https://www.jobindex.dk/jobsoegning.rss';
 
@@ -43,7 +44,7 @@ const fetchJobs = async () => {
       headers: {
         Accept: 'application/rss+xml, application/xml, text/xml',
         'Accept-Language': 'en,da;q=0.8',
-        'User-Agent': 'HirePilot/1.0 (job aggregator; +https://hirepilot-rebuild-production.up.railway.app)',
+        'User-Agent': `HirePilot/1.0 (job aggregator; +${PUBLIC_APP_URL})`,
       },
     });
 

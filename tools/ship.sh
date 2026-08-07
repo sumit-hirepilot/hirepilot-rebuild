@@ -57,6 +57,9 @@ node tools/check-plan-names.js
 node tools/check-claim-tests.js
 node tools/check-plain-language.js
 node tools/check-mobile-claims.js
+# Production moved accounts; a hostname is correct on exactly one deployment and
+# silently wrong everywhere else. Covers the marketing-site tree too.
+node tools/check-stale-origins.js
 echo
 
 echo "== 6/11 backend suite =="

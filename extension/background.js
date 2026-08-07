@@ -18,10 +18,18 @@
  */
 
 const DEFAULTS = {
-  // The API and the frontend are separate Railway services on separate domains.
-  // This must be the API one - hirepilot-production.up.railway.app was an
-  // assumed hostname that does not exist and returns 502.
-  apiBase: 'https://hirepilot-production-e70d.up.railway.app',
+  // The API and the frontend are separate Railway services on separate domains,
+  // so BOTH are recorded here. This must be the API one: a shortened,
+  // guessed-at variant of the app's hostname was used once and no service owns
+  // it, so it answers 502 with x-railway-fallback rather than failing in a way
+  // that names the mistake.
+  apiBase: 'https://backend-production-e6a8.up.railway.app',
+  // The app origin, stored rather than derived. It used to be worked out by
+  // asking whether apiBase contained a particular deployment's hostname, which
+  // meant the extension opened the right page on exactly one deployment and
+  // silently fell through to a wrong guess everywhere else. Two addresses that
+  // move together belong side by side.
+  appBase: 'https://frontend-production-0d14b.up.railway.app',
 };
 
 /*
@@ -53,8 +61,12 @@ const state = {
  * ------------------------------------------------------------------ */
 
 async function config() {
-  const s = await chrome.storage.local.get(['apiBase', 'token']);
-  return { apiBase: s.apiBase || DEFAULTS.apiBase, token: s.token || null };
+  const s = await chrome.storage.local.get(['apiBase', 'appBase', 'token']);
+  return {
+    apiBase: s.apiBase || DEFAULTS.apiBase,
+    appBase: s.appBase || DEFAULTS.appBase,
+    token: s.token || null,
+  };
 }
 
 async function api(path, opts = {}) {
@@ -953,13 +965,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
           return respond({ ok: true, saved: r.saved, totalSavedAnswers: r.totalSavedAnswers });
         }
         case 'HP_DRAWER_OPEN_APP': {
-          const { apiBase } = await config();
-          // The app and the API are separate services; derive the app origin
-          // rather than sending the user to the API host.
-          const appUrl = apiBase.includes('hirepilot-production-e70d')
-            ? 'https://hirepilot-rebuild-production.up.railway.app/apply-queue'
-            : `${apiBase.replace(':3001', ':3000')}/apply-queue`;
-          await chrome.tabs.create({ url: appUrl });
+          const { appBase } = await config();
+          // The app origin is configured, not sniffed out of the API's
+          // hostname. The previous version asked whether apiBase contained one
+          // particular deployment's name, so it opened the right page on that
+          // deployment and guessed - wrongly - on every other one.
+          await chrome.tabs.create({ url: `${appBase}/apply-queue` });
           return respond({ ok: true });
         }
         case 'HP_GET_STATE': {

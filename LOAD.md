@@ -1,5 +1,10 @@
 # HirePilot — load and memory, measured
 
+> **Production moved on 2026-08-07.** The hostnames named below were
+> correct when these numbers were taken and are kept for that reason.
+> Current production is `backend-production-e6a8.up.railway.app` (API)
+> and `frontend-production-0d14b.up.railway.app` (app). See MIGRATION.md.
+
 Ceiling: **1 GB**. Not an estimate — Railway's Replica Limit for the backend
 service reads `Memory: 1 GB / Plan limit: 1 GB` on the Limited Trial, and the
 process was killed five times for crossing it.

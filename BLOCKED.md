@@ -168,35 +168,14 @@ service, and a restart policy of ON_FAILURE. Belt and braces with the watchdog,
 and it covers the case where the process is alive but never reaches the
 watchdog at all.
 
-## LIVE PRODUCTION STATE — SUBMISSIONS ARE HALTED, and I cannot lift it
+## RESOLVED 2026-08-07 — the submission halt is liftable again
 
-Confirmed on production today, not assumed: POST /api/apply/queue/<id>/start
-returns 429 `{"reason":"halted"}`. The gate runs before the row is touched, so
-the probe used an id that cannot exist and could not have submitted anything.
+Superseded by the account move. The halt could not be lifted because the admin
+token had expired (`exp 2026-08-06T20:05:31Z`) and `ADMIN_HALT_SECRET` lived in
+a Railway project this machine cannot reach.
 
-**Nothing can submit for any account until this is lifted.** It was set
-deliberately, to walk a fresh account through signup without letting it apply
-to a real employer. Lifting it needs a lever I do not have:
-
-* `ADMIN_HALT_SECRET` is still unset on the API service (see below), so the
-  `x-admin-secret` lever does not exist.
-* The admin-account lever needs users.is_admin, seeded to the LOWEST user id.
-  That is not the walkthrough account (id 5), and I do not have the id-1
-  account's password.
-
-What the operator should do, either one:
-
-1. Sign in as the earliest-registered account and
-   `POST /api/apply/admin/halt` with `{"halted": false}`.
-2. Set `ADMIN_HALT_SECRET` on the API service, then the same call with an
-   `x-admin-secret` header. This is worth doing anyway - it is the lever that
-   works when the account system is the thing that is wrong.
-
-Deliberately NOT fixed from here: the honest fix is an operator credential, and
-any new way to switch a safety halt back on from code would be a second door
-into the kill switch. A halt that is hard to lift is the correct failure
-direction; the defect is that it has only one usable lever, which is exactly
-what item 2 above fixes.
+On the new production the secret is ours, the lever is proved in both
+directions, and the flag currently reads `halted: false`.
 
 ## Carried in from prior work (not yet counted against the 5-attempt rule)
 
@@ -218,8 +197,13 @@ Verifying production behaviour needs a bearer token, and the scratchpad copy is
 gone on a cold start. ASSESS will hit this. Re-obtain with:
 
     curl -s -X POST -H 'Content-Type: application/json' \
-      -d '{"email":"sumituxui@gmail.com","password":"1_Railway"}' \
-      https://hirepilot-production-e70d.up.railway.app/api/auth/login
+      -d "{\"email\":\"$HP_EMAIL\",\"password\":\"$HP_PASSWORD\"}" \
+      https://backend-production-e6a8.up.railway.app/api/auth/login
+
+The password used to be written out in full on this line. A working credential
+in a tracked file is a credential in the history of every clone, and this file
+is the one place that says secrets do not belong in the repo. Export the two
+variables in the shell instead.
 
 Also: run jest from inside backend/ or frontend/. `npx --prefix backend jest`
 silently produces no output rather than failing, which reads as a passing test
@@ -263,40 +247,36 @@ stay disabled; Lever/Ashby terms unresearched and must be read before either is
 re-enabled. Full findings in SUBMISSION_AUDIT.md.
 
 
-## ADMIN_HALT_SECRET cannot be set from this machine — operator action
+## RESOLVED 2026-08-07 — ADMIN_HALT_SECRET, by moving accounts
 
-The kill switch has three levers. Two of them need an environment variable on
-the API service (ADMIN_HALT_SECRET, or SUBMISSIONS_HALTED=1), and the app's
-Railway project is not under the account this machine is logged into - `railway
-list` shows only hirepilot-site and regintel-ai.
+It could not be set on the old project because that project belongs to another
+Railway account. On the new one it was set when the backend service was
+created, so the operator's lever exists again.
 
-Owning goal: Item 0. Not stalling on it - the admin-account lever works today
-and is proven on production, so the switch is usable.
+Proved on the running service in both directions, and both refusals: wrong
+secret 403, absent secret 403, correct secret halts and reads back `true`,
+correct secret resumes and reads back `false`. A switch flipped one way is not
+a switch that works.
 
-What the operator should do: set ADMIN_HALT_SECRET on the API service. That
-restores a lever that works even if the login system is the thing that has
-failed, which is the scenario the account-based lever cannot cover.
+The value lives only in Railway's variable store for the `backend` service. Not
+in this repo, not in a progress file, not in a commit.
 
-## The data half of the migration — one credential, and only one
+## CLOSED 2026-08-07 — the migration, by operator decision
 
-The new Railway account is fully built and running: project `hirepilot`,
-backend + frontend + Postgres, 9/9 schema claims on a database re-migrated from
-empty, landing counter matching the database exactly. Details in MIGRATION.md.
+The new Railway account IS production now. The old database was never copied
+and will not be: the operator abandoned the data migration rather than supply
+the one credential it needed (`DATABASE_URL` for project `tranquil-solace`,
+under a different Railway account).
 
-**No data has been copied from the old database**, and it cannot be from here.
+That is a decision, not a blocker, so this stops being a BLOCKED entry. What
+follows from it:
 
-The old app is Railway project `tranquil-solace` under
-`sumit.designwork@gmail.com`. Its `DATABASE_URL` exists only in that project's
-variables. Checked rather than assumed: the CLI and the browser are both signed
-in as `sumit.uxai@gmail.com`, which cannot see that project; there is no `.env`
-in the tree; the only Postgres URL in shell history is localhost; and the
-running API correctly leaks no environment.
-
-Getting into that account means typing its password, which is the one action
-that stays off-limits however the request is framed. Everything else in the
-migration is done.
-
-**Unblocks with either:** the old `DATABASE_URL` pasted here, or that account
-signed in in a browser so it can be read from the dashboard. The remaining work
-is then a single `pg_dump | psql` — command, ordering constraints and the
-inventory to verify against are all written out in MIGRATION.md.
+- The new database starts from its own aggregation. ~17k jobs and climbing from
+  the same 12 sources; the corpus converges on a fresher equivalent of the old
+  one rather than a copy of it.
+- No user account, application, tailored resume or receipt carries over. There
+  were 87 tailored resumes and 0 receipts on the old instance.
+- The old project is untouched. Nothing was deleted there, and nothing needs to
+  be.
+- Every config, the Chrome extension, the marketing site and every tool now
+  point at the new backend. MIGRATION.md records what moved and what did not.
