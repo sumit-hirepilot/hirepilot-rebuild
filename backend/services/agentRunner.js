@@ -17,28 +17,58 @@ const runAgent = async (agent) => {
 
   const remoteClause = remoteOk ? '' : `AND work_arrangement != 'remote'`;
 
-  const jobsResult = await query(
-    `SELECT id, title, description, work_arrangement FROM jobs
-     WHERE is_active = true AND (${keywordConditions}) ${remoteClause}`,
-    keywordParams
-  );
+  /*
+   * Paged by id, because this selects DESCRIPTIONS and a broad keyword matches
+   * most of the index.
+   *
+   * It was one unbounded SELECT: every active job whose title or description
+   * matched, with its full description, in a single resident array. The active
+   * corpus is ~17,500 postings carrying ~53MB of description text, so a single
+   * agent with a keyword like "design" could pull a large fraction of that into
+   * memory at once - and runAllActiveAgents does this once per agent, in a
+   * cycle that already peaks.
+   *
+   * It has never fired in anger only because no account has created a search
+   * agent yet, which is not a bound - it is an absence of users. Same shape as
+   * the ATS sources: the cost scales with the corpus, not with usage.
+   */
+  const PAGE = Number(process.env.AGENT_SCAN_PAGE) || 1000;
 
   let newMatches = 0;
-  for (const job of jobsResult.rows) {
-    const text = `${job.title} ${job.description || ''}`.toLowerCase();
-    const isExcluded = excludeKeywords.some((k) => text.includes(k.toLowerCase()));
-    if (isExcluded) continue;
+  let scanned = 0;
+  let afterId = 0;
 
-    const matchedKeywordCount = keywords.filter((k) => text.includes(k.toLowerCase())).length;
-    const score = keywords.length ? matchedKeywordCount / keywords.length : 0;
-    if (score < minMatchScore) continue;
-
-    const inserted = await query(
-      `INSERT INTO agent_matches (agent_id, job_id) VALUES ($1, $2)
-       ON CONFLICT (agent_id, job_id) DO NOTHING RETURNING id`,
-      [agent.id, job.id]
+  for (;;) {
+    const jobsResult = await query(
+      `SELECT id, title, description, work_arrangement FROM jobs
+        WHERE is_active = true AND id > $${keywordParams.length + 1}
+          AND (${keywordConditions}) ${remoteClause}
+        ORDER BY id
+        LIMIT $${keywordParams.length + 2}`,
+      [...keywordParams, afterId, PAGE]
     );
-    if (inserted.rows.length) newMatches++;
+    if (!jobsResult.rows.length) break;
+
+    for (const job of jobsResult.rows) {
+      afterId = job.id;
+      scanned += 1;
+      const text = `${job.title} ${job.description || ''}`.toLowerCase();
+      const isExcluded = excludeKeywords.some((k) => text.includes(k.toLowerCase()));
+      if (isExcluded) continue;
+
+      const matchedKeywordCount = keywords.filter((k) => text.includes(k.toLowerCase())).length;
+      const score = keywords.length ? matchedKeywordCount / keywords.length : 0;
+      if (score < minMatchScore) continue;
+
+      const inserted = await query(
+        `INSERT INTO agent_matches (agent_id, job_id) VALUES ($1, $2)
+         ON CONFLICT (agent_id, job_id) DO NOTHING RETURNING id`,
+        [agent.id, job.id]
+      );
+      if (inserted.rows.length) newMatches++;
+    }
+
+    if (jobsResult.rows.length < PAGE) break;
   }
 
   await query(
@@ -55,7 +85,9 @@ const runAgent = async (agent) => {
     );
   }
 
-  return { jobsScanned: jobsResult.rows.length, newMatches };
+  // `scanned` across every page, not the last page's length - which is what
+  // `jobsResult.rows.length` would now be, and would under-report by design.
+  return { jobsScanned: scanned, newMatches };
 };
 
 const runAllActiveAgents = async () => {

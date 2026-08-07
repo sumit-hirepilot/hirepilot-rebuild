@@ -185,8 +185,29 @@ const fetchAshbyCompany = async (slug) => {
  */
 const FETCH_WINDOW = Number(process.env.ATS_FETCH_WINDOW) || 4;
 
-const fetchAllForPlatform = async (companies, fetchOne, platformLabel) => {
-  const all = [];
+/*
+ * GOAL 1d bounded how many companies are IN FLIGHT. It did not bound how many
+ * postings are RESIDENT, and that is where the remaining peak was.
+ *
+ * Measured on a real boot with per-source instrumentation: greenhouse alone
+ * took RSS from 243MB to 377MB and heap from 25MB to 158MB while adding 10,179
+ * postings, because every window's rows were pushed into one array and the
+ * whole array returned to the caller, which then held it while writing. ashby
+ * did the same at 4,419. Peak 377MB against a 500MB budget, on an environment
+ * with two users - it scales with the SOURCE, not with usage, so it only gets
+ * worse.
+ *
+ * With an onBatch consumer nothing accumulates: each window's rows are handed
+ * over, written, and unreachable before the next fetch begins. At most
+ * FETCH_WINDOW companies' postings exist at once.
+ *
+ * The array-returning form is kept for callers that genuinely want everything
+ * (and for the tests), so this is a widening rather than a breaking change.
+ */
+const fetchAllForPlatform = async (companies, fetchOne, platformLabel, onBatch) => {
+  const all = onBatch ? null : [];
+  let fetched = 0;
+
   for (let i = 0; i < companies.length; i += FETCH_WINDOW) {
     const window = companies.slice(i, i + FETCH_WINDOW);
     const results = await Promise.all(
@@ -199,13 +220,26 @@ const fetchAllForPlatform = async (companies, fetchOne, platformLabel) => {
         }
       })
     );
-    for (const rows of results) all.push(...rows);
+
+    if (onBatch) {
+      // Flattened per window, not per platform. `batch` goes out of scope at
+      // the end of this iteration; nothing above holds a reference to it.
+      const batch = [];
+      for (const rows of results) batch.push(...rows);
+      fetched += batch.length;
+      // Sequential await, so the next window is not fetched while this one is
+      // still being written - otherwise two windows are resident after all.
+      await onBatch(batch);
+    } else {
+      for (const rows of results) all.push(...rows);
+    }
   }
-  return all;
+
+  return onBatch ? { fetched } : all;
 };
 
-const fetchGreenhouseJobs = () => fetchAllForPlatform(GREENHOUSE_COMPANIES, fetchGreenhouseCompany, 'Greenhouse');
-const fetchLeverJobs = () => fetchAllForPlatform(LEVER_COMPANIES, fetchLeverCompany, 'Lever');
-const fetchAshbyJobs = () => fetchAllForPlatform(ASHBY_COMPANIES, fetchAshbyCompany, 'Ashby');
+const fetchGreenhouseJobs = (onBatch) => fetchAllForPlatform(GREENHOUSE_COMPANIES, fetchGreenhouseCompany, 'Greenhouse', onBatch);
+const fetchLeverJobs = (onBatch) => fetchAllForPlatform(LEVER_COMPANIES, fetchLeverCompany, 'Lever', onBatch);
+const fetchAshbyJobs = (onBatch) => fetchAllForPlatform(ASHBY_COMPANIES, fetchAshbyCompany, 'Ashby', onBatch);
 
-module.exports = { fetchGreenhouseJobs, fetchLeverJobs, fetchAshbyJobs };
+module.exports = { fetchGreenhouseJobs, fetchLeverJobs, fetchAshbyJobs, FETCH_WINDOW };

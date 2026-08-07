@@ -28,9 +28,15 @@ const SOURCES = [
   { key: 'workingnomads', fetchJobs: workingnomadsClient.fetchJobs },
   { key: 'jobicy', fetchJobs: jobicyClient.fetchJobs },
   { key: 'jobindex', fetchJobs: jobindexClient.fetchJobs },
-  { key: 'greenhouse', fetchJobs: atsClient.fetchGreenhouseJobs },
-  { key: 'lever', fetchJobs: atsClient.fetchLeverJobs },
-  { key: 'ashby', fetchJobs: atsClient.fetchAshbyJobs },
+  /*
+   * `streams: true` - these three return their catalogue in windows rather
+   * than as one array. Greenhouse alone is 10,179 postings with descriptions;
+   * holding them all before writing was the boot peak (377MB against a 500MB
+   * budget), and it grows with the source rather than with usage.
+   */
+  { key: 'greenhouse', fetchJobs: atsClient.fetchGreenhouseJobs, streams: true },
+  { key: 'lever', fetchJobs: atsClient.fetchLeverJobs, streams: true },
+  { key: 'ashby', fetchJobs: atsClient.fetchAshbyJobs, streams: true },
   // Note: We Work Remotely is intentionally not fetched - their site is
   // behind Cloudflare bot protection and cannot be accessed server-side
   // without circumventing it, which we won't do.
@@ -318,11 +324,32 @@ const recordIngestionRun = async (run) => {
 // Fetches + stores one source, retrying once immediately on failure before
 // giving up for this cycle (it'll also be retried naturally on the next
 // scheduled cycle regardless).
-const runSource = async ({ key, fetchJobs }, results, attempt = 1) => {
+const runSource = async ({ key, fetchJobs, streams }, results, attempt = 1) => {
   const startedAt = new Date();
   try {
-    const rawJobs = await fetchJobs();
-    const stats = await storeJobsFromSource(rawJobs, key, results);
+    /*
+     * A streaming source writes each window as it arrives and never holds the
+     * whole catalogue. Stats are summed across batches so the log line and the
+     * ingestion record say the same thing they always did.
+     */
+    let stats;
+    if (streams) {
+      stats = { fetched: 0, new: 0, updated: 0, merged: 0 };
+      await fetchJobs(async (batch) => {
+        const s = await storeJobsFromSource(batch, key, results);
+        stats.fetched += s.fetched;
+        stats.new += s.new;
+        stats.updated += s.updated;
+        stats.merged += s.merged;
+        for (const [k, v] of Object.entries(s.notAJob || {})) {
+          stats.notAJob = stats.notAJob || {};
+          stats.notAJob[k] = (stats.notAJob[k] || 0) + v;
+        }
+      });
+    } else {
+      const rawJobs = await fetchJobs();
+      stats = await storeJobsFromSource(rawJobs, key, results);
+    }
     const finishedAt = new Date();
     await recordIngestionRun({
       source: key,
