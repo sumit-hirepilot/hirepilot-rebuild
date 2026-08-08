@@ -544,3 +544,40 @@ unauthenticated instrument measures something else.
 **The second replica is no longer needed for this bar.** It remains the lever
 if throughput has to rise further — 40 slots at ~0.3 s is ~133 req/s, and the
 pool was deliberately sized so two replicas still fit under 100 connections.
+
+## 2026-08-08 (autonomous session) — the 1,000 bar did NOT hold on two runs; no capacity regression
+
+Run after the step-2 deploy (tracker writes, inbox honesty, ATS vocabulary,
+stage-driven Progress board), from this machine, fresh token, both runs past
+the 5-minute post-deploy rule, second run after "Aggregation complete" with
+`errors: []`.
+
+| concurrent | requests | ok | failed | p95 | wall | RSS |
+|---|---|---|---|---|---|---|
+| 50 | 150 | 150 | **0** | 4,577 ms | 8.0 s | 184 → 205 MB |
+| 200 | 600 | 600 | **0** | 3,116 ms | 5.2 s | 205 → 235 MB |
+| 500 | 1,500 | 1,500 | **0** | 9,199 ms | 13.5 s | 183 → 282 MB |
+| **1,000** | **3,000** | 2,929 | **71** | 14,708 ms | 22.2 s | 182 → 332 MB |
+
+Both runs failed with EXACTLY 71 × 500 — the same count twice, and one
+distinct message in the whole log, the same one as every prior failure:
+`timeout exceeded when trying to connect` (pg-pool, routes/jobs.js:1550).
+
+**No capacity regression, measured not assumed.** Idle per-path times are
+0.33–0.48 s — identical to the arithmetic behind the recorded pass (~0.3 s a
+request, ~133 req/s on 40 slots). 3,000 requests need ~22.5 s to drain and my
+walls were 22–23 s: this service is performing exactly at its recorded
+capacity. The step-2 changes are not in the failing path's cost (the failing
+route is unmodified /api/jobs).
+
+**Why the recorded pass and these failures can both be true.** Whether 0 or
+71 requests cross the 10 s acquire bound at identical capacity depends on the
+client's arrival shape. The passing run's wall was 30 s — arrivals spread
+enough that no request waited past the bound. Mine drain faster and the tail
+crosses it. The bar as instrumented is arrival-shape sensitive at exactly
+1,000 on one replica; 500 is clean under every shape observed.
+
+**Levers, all previously named:** a second replica (operator cost decision,
+pool already sized for two), or raising the acquire bound (rejected — it
+makes the number look met without adding capacity). Recorded in BLOCKED.md;
+the failing runs stand as they happened.

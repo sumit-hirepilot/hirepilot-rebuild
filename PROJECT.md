@@ -366,3 +366,26 @@ Method: authenticated API calls against the new production
 - **Render-side judgement of all seven pages** (layout, hydration, visual
   states) — server-side contracts verified above; the browser render was not
   judged in this pass.
+
+## 7. STEP-2 FIXES — all four step-1 BROKEN findings, shipped and verified live 2026-08-08
+
+| Fix | Live evidence (new production, observed) |
+|---|---|
+| Tracker manual add + import | `POST /tracker/manual` 201 (id 9, no URL; id 10 with URL); import 201; board shows 3; shared-feed search for the entries: 0 rows (no leak); `jobs.job_url` nullable claim read back from the live catalogue (10/10 schema claims). |
+| Progress board | Kanban buckets by stage — the 3 submitted rows RENDER (before: nowhere); legacy `phone_screen` translates to stage `interviewing` with status untouched; draft move → 409 with reason; browser pass: stage columns render, moved row in "They replied — interviewing", zero console errors. |
+| Inbox honesty | API reports `inboundConfigured:false`; page renders "Recruiter-mail forwarding is not connected yet…" with no dead proxy address and no delivery promise. |
+| ATS checker | Same real JD: 253 → 179 keywords, zero junk terms in matched+missing (checked against the observed junk set). |
+| Analytics/stats | `interviews:1`, `responses:1`, `responseRate:25`, `offers:0` after one stage move — derived from tracker_stage; `hired` gone from both payloads; Offers tile renders live. |
+
+Suites at ship: backend 626, frontend 311, gate 11/11, deployed with
+`railway up` (backend + frontend), new bundles verified by fetching the served
+chunks and finding the new markers in the bytes.
+
+Budgets (rule 10): idle RSS 184/300 ✓ · boot peak 243/500 ✓ · per-source
+ingest counts unchanged (greenhouse ~10.2k, ashby ~4.4k, `errors: []`) ✓ ·
+**1,000-concurrent ✗ — 71×500 twice; no capacity regression; operator lever;
+see LOAD.md + BLOCKED.md.** 500 concurrent clean.
+
+Follow-up filed, not fixed here: the dashboard labels `total_applications`
+(which includes drafts) as applications sent; and `GET /api/applications`'s
+`total` counts every row while the page renders a subset.

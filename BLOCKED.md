@@ -318,3 +318,23 @@ A second replica is still the lever if throughput must rise further, and the
 pool was sized so two of them fit under max_connections.
 
 Work continues meanwhile — this does not block the feature queue.
+
+## OPERATOR DECISION 2026-08-08 — the 1,000-concurrent bar needs a second replica or an accepted tolerance
+
+Rule 10's "1,000 concurrent with zero failures" did not hold on two runs this
+session: exactly 71 × 500 both times, one distinct error (`timeout exceeded
+when trying to connect`, pg-pool). Full numbers and the analysis in LOAD.md.
+
+Not a regression: idle path times equal the recorded pass's arithmetic, the
+failing route is unmodified, and 500 concurrent is clean. The service performs
+at exactly its documented ~133 req/s; whether the 3,000-request burst's tail
+crosses the 10 s acquire bound depends on client arrival shape.
+
+What only the operator can decide:
+ 1. `railway scale` to a second replica (cost; pool already sized so two fit
+    under max_connections=100), or
+ 2. accept that the one-replica bar is "500 clean, 1,000 best-effort" and
+    restate rule 10, or
+ 3. commission real capacity work on the feed query (the only lever that adds
+    capacity without cost).
+Raising the acquire timeout stays rejected for the recorded reason.
