@@ -19,8 +19,9 @@ git remote add origin https://github.com/sumit-hirepilot/hirepilot-rebuild.git
 ## STEP 2: PUSH TO GITHUB
 
 ```bash
-git branch -M main
-git push -u origin main
+# The trunk is `production`; origin/main is a frozen archive - never push it.
+git branch -M production
+git push -u origin production
 ```
 
 **When prompted for credentials:**

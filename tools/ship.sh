@@ -121,6 +121,16 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 echo "== 11/11 push =="
+# The trunk is `production`. origin/main is a frozen archive wired to a
+# Railway account nobody can reach - pushing it would redeploy a config with
+# no FRONTEND_URL. The gate refuses to push from anywhere else, so a stale
+# clone or a renamed branch fails loudly here instead of landing on main.
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+if [ "$UPSTREAM" != "origin/production" ]; then
+  echo "REFUSED: current branch tracks '${UPSTREAM:-nothing}', not origin/production." >&2
+  echo "The trunk is 'production'; origin/main is a frozen archive." >&2
+  exit 1
+fi
 git push
 
 echo

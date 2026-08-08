@@ -355,3 +355,25 @@ advances the stage. All of it is exercisable only through POST
 Until then the inbox states plainly that forwarding is not connected (shipped
 in step 2), and the routing behaviour is pinned by 8 unit tests through the
 real route including the meta.com-vs-Metabase case the old matcher got wrong.
+
+## OPERATOR — one click left on the branch move: the GitHub default branch
+
+The brief said `production` (formerly `backup/pre-reset-2026-08-08`) was made
+the GitHub default. Checked against the remote, not assumed: `git ls-remote
+--symref origin HEAD` still answers `refs/heads/main`, and no `production`
+branch existed until this session created one. The rename did not happen (or
+happened somewhere else).
+
+Done from here over the git protocol: `production` created at `0a43987` (the
+exact backup-branch tip), local trunk retargeted, ship.sh stage 11 refuses
+any branch not tracking origin/production, and this machine's pre-push hook
+refuses refs/heads/main outright — both refusals proven by firing them.
+
+What only the operator can do (gh CLI is unauthenticated here, and repo
+settings are not reachable over git):
+ 1. GitHub → sumit-hirepilot/hirepilot-rebuild → Settings → General →
+    Default branch → switch to `production`.
+ 2. Optionally delete `backup/pre-reset-2026-08-08` (now a duplicate pointer
+    to the same commit) — left in place from here, deleting refs is not an
+    autonomous call.
+Until 1 happens, fresh clones and PRs default to the frozen archive.

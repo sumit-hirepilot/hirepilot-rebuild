@@ -96,10 +96,14 @@ watch the test fail. Several guards here passed while the defect was reverted.
 8. **Lever and Ashby stay disabled.** They enter `SUPPORTED_ATS` only after a
    verified live run, in the same commit as the evidence.
 
-9. **Do not push to GitHub without saying so.** `origin/main` is 32 commits
-   behind and Railway is not connected to it, so a push does not deploy — but
-   the old production still exists and assumptions about it are easy to get
-   wrong.
+9. **The trunk is `production`. `origin/main` is a frozen archive — never
+   push it.** main is wired to a Railway account nobody can reach and its
+   deploy config is broken (no FRONTEND_URL); a push there could redeploy the
+   old production in a broken state. Enforced twice over: ship.sh's stage 11
+   refuses unless the current branch tracks `origin/production`, and this
+   machine's pre-push hook refuses `refs/heads/main` outright. Do not remove
+   either. (The GitHub *default branch* setting still points at main and only
+   the operator can flip it — see BLOCKED.md.)
 
 10. **Budgets, every deploy:** idle RSS under 300 MB, boot peak under 500 MB,
     1,000 concurrent with zero failures, and **per-source ingest counts

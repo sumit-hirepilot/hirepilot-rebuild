@@ -15,8 +15,9 @@ git remote add origin https://github.com/sumit-hirepilot/hirepilot-rebuild.git
 git remote set-url origin https://github.com/sumit-hirepilot/hirepilot-rebuild.git
 
 # Push to GitHub
-git branch -M main
-git push -u origin main
+# The trunk is `production`; origin/main is a frozen archive - never push it.
+git branch -M production
+git push -u origin production
 ```
 
 ## Step 2: Create Railway Project

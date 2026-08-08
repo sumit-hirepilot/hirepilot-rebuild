@@ -1531,3 +1531,21 @@ Granularity loss accepted deliberately: phone_screen vs onsite collapses to
 'interviewing'. The finer distinctions were storable only in a column the
 constraints refuse; keeping them would have meant a third vocabulary and a
 schema change for a distinction the tracker has never offered.
+
+## D59 — session boot 2026-08-08 (second autonomous run): the branch rename had not happened
+
+The brief stated `production` was already the GitHub default. The remote
+disagreed on both counts (HEAD → main; no production ref; the backup branch
+still under its old name). Decision: complete the intent rather than wait —
+`production` was created at the exact commit the brief names, the local trunk
+retargeted, and pushing main was made mechanically impossible from here
+(ship.sh upstream check + pre-push hook, both proven by firing). The
+default-branch flip needs repo settings and is logged in BLOCKED.md.
+Historical records naming the old branch (D57, earlier PROJECT.md sections,
+LOAD.md entries) stay as written - they describe what was true then.
+
+Lesson recorded: proving the ship-gate guard on a throwaway branch let stage
+10's `git add -A` commit the working tree onto that branch; the edit had to
+be recovered from the orphaned commit after the branch was deleted. The gate
+commits before it pushes BY DESIGN - prove push-stage guards with the tree
+clean.

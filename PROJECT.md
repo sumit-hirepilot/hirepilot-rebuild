@@ -561,3 +561,29 @@ running (announced in the UI); the second-replica / load-bar policy decision.
 The verification account `autonomy-verify-2026-08-08@hirepilot.local`
 (user 3) holds the session's test rows and is labelled as such — left in
 place as the evidence behind this document.
+
+---
+
+## 15. Q1 (2026-08-08, second run) — `production` is the trunk everywhere
+
+The brief said the GitHub rename was done; the remote said otherwise (HEAD →
+main, no production ref, backup branch unrenamed — read via `git ls-remote
+--symref`, not assumed). Completed the intent from here:
+
+- `production` created on origin at `0a43987`, the exact backup-branch tip.
+  Local trunk renamed to `production`, tracking it; stale local `main`
+  deleted (the remote archive keeps the history).
+- **Pushing main is now mechanically refused twice over**: ship.sh stage 11
+  exits unless the current branch tracks `origin/production` (proven: a
+  branch tracking origin/main ran the gate and was refused at stage 11), and
+  the machine's pre-push hook refuses `refs/heads/main` (proven: a dry-run
+  push of main was refused).
+- Docs: CLAUDE.md rule 9 rewritten (main = frozen archive, never push);
+  the `git branch -M main` snippets in DEPLOYMENT / PUSH_AND_DEPLOY /
+  RAILWAY_SETUP now say production. Historical records keep the old names.
+- BLOCKED-NEEDS-HUMAN: the GitHub *default branch* setting still points at
+  main — repo settings are unreachable from here (gh unauthenticated); one
+  click, written up in BLOCKED.md.
+- Incident note (D59): proving the stage-11 guard on a throwaway branch let
+  stage 10 commit the working tree onto it; the edit was recovered from the
+  orphaned commit. The gate commits before it pushes by design.
