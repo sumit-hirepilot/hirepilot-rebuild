@@ -1457,3 +1457,38 @@ nothing about whether the served API uses it — the unwired-guard failure D-ser
 keeps paying for, and the CORS mount is exactly the kind of single global line
 that is easy to leave behind. The test was run against the old wildcard first
 and failed 17 of 18, every failure reading `Received: "*"`.
+
+## D57 — session boot 2026-08-08 (autonomous run): where the truth lives, and what disagreed
+
+The operator's brief said to read PROJECT.md, CLAUDE.md, DECISIONS.md,
+BLOCKED.md and the master prompt, then check them against the code. Findings:
+
+- **The docs live only on `backup/pre-reset-2026-08-08`.** Local `main` was at
+  `773f393` (Aug 5) with none of them; `origin/main` at `0a6f055` is also
+  behind. All work this session is based on the backup branch (local branch
+  `work-reset` tracking it), which contains everything on `origin/main` plus
+  33 commits ending at `407edda` "checkpoint before reset".
+- **Push routing:** `git config push.default upstream` set locally, so
+  `tools/ship.sh` stage 11's bare `git push` can only reach
+  `backup/pre-reset-2026-08-08`. Pushing `origin/main` is forbidden this
+  session (its deploy has no FRONTEND_URL and would break).
+- **PROJECT.md's suite counts are true** (backend 576, frontend 307). The
+  frontend first ran 242 with 10 suites failing — a stale local
+  `node_modules` missing `@testing-library/user-event`, fixed by `npm
+  install`. The docs were right; the environment was stale.
+- **This machine CAN deploy.** `railway whoami` → sumit.uxai@gmail.com,
+  project `hirepilot` in workspace `sumituxai-netizen's Projects`. PROJECT.md's
+  "unreachable Railway" dead end refers to the OLD account and stays true.
+- **The master prompt's production URL is stale** —
+  `hirepilot-rebuild-production.up.railway.app` is the old-account frontend.
+  Production this session: API `backend-production-e6a8.up.railway.app`,
+  frontend `frontend-production-0d14b.up.railway.app`. Both verified 200.
+- **"CLAUDE.md rule 10 budgets"** read as: idle RSS < 300 MB, boot peak
+  < 500 MB, 1,000 concurrent zero failures, per-source ingest counts unchanged
+  or explained.
+- **Verification account:** no credential for the operator's account on the
+  new production exists anywhere readable (deliberately). Created
+  `autonomy-verify-2026-08-08@hirepilot.local` (user 3) via public signup and
+  seeded it with the operator's real resume text, 11 skills, 6 roles —
+  a real user exercising the real path. Credentials in the session scratchpad
+  only, never in the repo.
