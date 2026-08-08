@@ -537,3 +537,27 @@ created (row 25) — matching is exact-equality by design, but from-url's
 response had shown a different company string for the same employer.
 Follow-up filed: company display strings differ between the from-url
 response and the stored row; worth one canonical reading.
+
+---
+
+## 14. SESSION CLOSE 2026-08-08 (autonomous run) — queue state
+
+Every queue item closed. Step 1 verified seven surfaces server-side against
+the new production as a real seeded user; step 2 fixed all four BROKEN
+findings and deployed them; features 10–15 all shipped, each with tests
+proved red first, its own commits, the 11-stage gate, deploys via
+`railway up`, and live verification recorded per feature above.
+
+Final state: suites backend 685 / frontend 321, all green. Final budgets:
+idle 129/300 MB, boot peak 205/500 MB, 1,000 concurrent 3,000/3,000 ok,
+per-source ingest counts unchanged since the explained greenhouse-discord
+drop. Branch `backup/pre-reset-2026-08-08` carries everything; origin/main
+untouched by instruction.
+
+Still operator-only (BLOCKED.md): inbound-mail secret + provider (or Gmail
+OAuth credentials) to put feature 12's wire live; the A5 live-board
+Greenhouse run; Naukri/Instahyre partnerships; the D49 formula re-score is
+running (announced in the UI); the second-replica / load-bar policy decision.
+The verification account `autonomy-verify-2026-08-08@hirepilot.local`
+(user 3) holds the session's test rows and is labelled as such — left in
+place as the evidence behind this document.

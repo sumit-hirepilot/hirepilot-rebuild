@@ -614,3 +614,17 @@ The 1,000 bar is MET on this run - which also revises this morning's
 the 10 s acquire bound run by run, so the bar is arrival-shape sensitive at
 exactly 1,000, and 71/3,000 vs 0/3,000 is that sensitivity, not a code
 difference. The step-2 entry stands as recorded.
+
+## 2026-08-08 — final budget run of the autonomous session (post feature 15)
+
+| concurrent | requests | ok | failed | wall | RSS |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | **0** | 2.6 s | 129 → 160 MB |
+| 200 | 600 | 600 | **0** | 5.7 s | 133 → 221 MB |
+| 500 | 1,500 | 1,500 | **0** | 12.8 s | 141 → 315 MB |
+| **1,000** | **3,000** | **3,000** | **0** | 25.1 s | 148 → 331 MB |
+
+Idle 129 MB (limit 300), boot peak 205 MB (limit 500). All four rule-10
+budgets pass on the final deployed state. The morning's arrival-shape note
+stands: exactly 1,000 on one replica sits at the capacity edge, and this run
+cleared it.
