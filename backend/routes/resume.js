@@ -118,7 +118,34 @@ router.get('/:id/original', async (req, res) => {
 
 // Upload a resume file (.txt, .docx, .pdf), extract text and parse
 // skills/experience for the user to review before saving to their profile.
-router.post('/upload', upload.single('file'), async (req, res) => {
+/*
+ * L3 — upload failures fail in sentences.
+ *
+ * multer's LIMIT_FILE_SIZE used to fall through to the global error handler
+ * as a bare 500 ("Internal Server Error / File too large"), and a corrupt
+ * file surfaced the parser's own words ("Invalid PDF structure."). A
+ * stranger can act on neither. The limit becomes a 413 with the number and
+ * the alternative; the parse failure names what to DO, and the parser's
+ * diagnosis goes to the log where it is useful.
+ */
+const uploadSingle = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        error: 'That file is over the 8 MB limit. Export a smaller PDF, or paste your resume text below instead.',
+      });
+    }
+    if (err) {
+      console.error('Resume upload rejected:', err.message);
+      return res.status(400).json({
+        error: 'That upload did not come through. Try again, or paste your resume text below instead.',
+      });
+    }
+    return next();
+  });
+};
+
+router.post('/upload', uploadSingle, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -126,7 +153,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     try {
       text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
     } catch (err) {
-      return res.status(422).json({ error: err.message });
+      console.error('Resume text extraction failed:', err.message);
+      return res.status(422).json({
+        error: "We couldn't read that file - it may be damaged, password-protected, or a scanned image. "
+          + 'Try re-exporting it as a PDF, or paste your resume text below instead.',
+      });
     }
 
     text = (text || '').trim();

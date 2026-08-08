@@ -230,7 +230,7 @@ router.post('/', verifyToken, async (req, res) => {
     );
 
     if (existingResult.rows.length > 0) {
-      return res.status(409).json({ error: 'Already applied to this job' });
+      return res.status(409).json({ error: 'You already have an application for this job - it is in your queue or on your Progress board.' });
     }
 
     // Job may have gone inactive (delisted upstream) since the user last saw

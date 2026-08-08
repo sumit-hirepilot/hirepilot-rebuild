@@ -765,3 +765,23 @@ no information. Verified live: the blank account's feed now serves
 driver completed its first real run: `{"total":1044,"done":1044,
 "remaining":0,"complete":true}` — the formula banner retires itself
 everywhere.
+
+## 22. L3 (2026-08-08, third run) — the failure paths, broken on purpose
+
+Probed live as the cold-start user, before any fix:
+wrong password ✔ sentence · duplicate signup ✔ · garbage token ✔ · empty
+resume text ✔ · unsupported ATS URL ✔ (names the board, offers the paste
+path) · double-submit ✔ guarded (wording sharpened: a draft is not
+"applied") · **corrupt PDF ✘ parser jargon ("Invalid PDF structure.")** ·
+**20 MB PDF ✘ a bare 500 ("Internal Server Error / File too large")** —
+multer's LIMIT_FILE_SIZE through the global handler.
+
+Fixed: the limit is a 413 with the number and the alternative ("over the
+8 MB limit… paste your resume text instead"); a parse failure says what to
+DO ("may be damaged, password-protected, or a scanned image — re-export or
+paste") with the parser's diagnosis kept in the log. 2 tests through the
+real exported app, red-proven against the live-observed failures.
+
+Dead-network mid-request: covered by the #45-era floors (timeouts, retry
+buttons, "could not reach HirePilot" states) and their suites; not
+re-broken live against production.
