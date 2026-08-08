@@ -24,26 +24,57 @@ const path = require('path');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'styles', 'Dashboard.module.css'), 'utf8');
 
-/** The body of the narrow-viewport media query. */
-function narrowBlock() {
-  const at = css.indexOf('@media (max-width: 640px)');
-  if (at < 0) return '';
-  let depth = 0;
-  for (let i = css.indexOf('{', at); i < css.length; i += 1) {
-    if (css[i] === '{') depth += 1;
-    else if (css[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(at, i + 1);
+/*
+ * EVERY narrow-viewport block, concatenated - not just the first.
+ *
+ * The rules that make the header fit had to move to the end of the sheet:
+ * `.extensionCta` and `.creditsPill` are defined at ~1250 and ~1330, so an
+ * override placed in the earlier media query lost to them at equal specificity
+ * and silently did nothing. A test that reads only the first block would have
+ * gone green while the header was still clipped - which is the failure mode
+ * this whole file exists to catch.
+ */
+function narrowBlocks() {
+  const out = [];
+  let from = 0;
+  for (;;) {
+    const at = css.indexOf('@media (max-width: 640px)', from);
+    if (at < 0) break;
+    let depth = 0;
+    let end = css.length;
+    for (let i = css.indexOf('{', at); i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) { end = i + 1; break; }
+      }
     }
+    out.push(css.slice(at, end));
+    from = end;
   }
-  return '';
+  return out;
 }
 
-const narrow = narrowBlock();
+const blocks = narrowBlocks();
+const narrow = blocks.join('\n');
 
 describe('at 375 the header cannot push controls off-screen', () => {
-  it('has a narrow-viewport block at all', () => {
+  it('has narrow-viewport rules at all', () => {
+    expect(blocks.length).toBeGreaterThan(0);
     expect(narrow.length).toBeGreaterThan(200);
+  });
+
+  it('the shrinking rules come AFTER the base rules they override', () => {
+    /*
+     * A media query adds no specificity, so an override earlier in the sheet
+     * than the rule it targets simply loses. Both of these did, and did
+     * nothing, until they were moved.
+     */
+    const label = css.indexOf('.extensionCtaLabel {\n    display: none;');
+    const baseCta = css.indexOf('.extensionCta {');
+    const baseCredits = css.indexOf('.creditsPill, .creditsPillLow {');
+    expect(label).toBeGreaterThan(baseCta);
+    expect(label).toBeGreaterThan(baseCredits);
   });
 
   it('drops the extension button\'s visible label', () => {

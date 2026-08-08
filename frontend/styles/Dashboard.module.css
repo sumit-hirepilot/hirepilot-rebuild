@@ -534,39 +534,6 @@
     padding: 0.375rem 0.5rem;
   }
 
-  /*
-   * The header must FIT at 375, and it did not.
-   *
-   * Measured on production: ten elements had a right edge past the 375px
-   * viewport, the worst being the Auto-Pilot toggle at 452px - a safety
-   * control 77px off-screen and unreachable on a phone. `scrollWidth` read
-   * exactly 375 throughout, which is why nothing caught it: the header is a
-   * non-wrapping flex row, so the overflow is CLIPPED rather than scrollable
-   * and the page reports no overflow at all. Same shape as D5, where a 530px
-   * header inside 375 rendered "4500" as "45".
-   *
-   * The two space hogs are the extension button's label and the credits pill.
-   * Both keep their accessible names; only the visible text is dropped.
-   */
-  .extensionCtaLabel {
-    display: none;
-  }
-
-  .creditsPill,
-  .creditsPillLow {
-    padding: 0.25rem 0.5rem;
-  }
-
-  /* The word "left" goes; the number and its title attribute stay. */
-  .creditsPill,
-  .creditsPillLow {
-    font-size: 0;
-  }
-
-  .creditsNum {
-    font-size: 0.8125rem;
-  }
-
   /* The title takes what is left rather than pushing everything right. */
   .headerTitle {
     min-width: 0;
@@ -1436,3 +1403,39 @@
    over a bare number. Lives here because pages/jobs.js binds the drawer
    classes to Dashboard.module.css, not Jobs.module.css. */
 .drawerSectionHint { font-weight: 400; color: var(--text-muted, #6b7280); font-size: 0.82em; }
+
+
+/*
+ * The header must FIT at 375, and these rules live HERE, at the end, on purpose.
+ *
+ * Measured with getBoundingClientRect on every element rather than by looking:
+ * ten had a right edge past the viewport, the worst being the Auto-Pilot
+ * toggle - the kill switch for automated submission - at 452px, 77px
+ * off-screen and unreachable on a phone. document.scrollWidth read exactly 375
+ * throughout, because a non-wrapping flex row CLIPS rather than scrolls and a
+ * page reports no overflow when its content is clipped. D5 again.
+ *
+ * The first attempt put these in the @media block at line ~500 and TWO OF THEM
+ * SILENTLY DID NOTHING: `.extensionCta` and `.creditsPill` are defined at
+ * ~1250 and ~1330, later in the same sheet at equal specificity, so the base
+ * rules won. A media query adds no specificity. Measuring again is what showed
+ * it - the extension button was still 116px wide and the credits pill 79px,
+ * while the one rule that did apply moved the bell exactly 37px.
+ *
+ * Both keep their accessible names; only visible text is dropped.
+ */
+@media (max-width: 640px) {
+  .extensionCtaLabel {
+    display: none;
+  }
+
+  .creditsPill,
+  .creditsPillLow {
+    padding: 0.25rem 0.5rem;
+    font-size: 0;          /* drops the word "left"; the title attribute stays */
+  }
+
+  .creditsNum {
+    font-size: 0.8125rem;
+  }
+}
