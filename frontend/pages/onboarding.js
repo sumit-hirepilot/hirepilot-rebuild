@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import page from '../styles/Onboarding.module.css';
 import { API_BASE } from '../lib/apiBase';
 import LiveIndexCount from '../components/LiveIndexCount';
@@ -13,13 +13,45 @@ import { humanise } from '../lib/labels';
 
 const STEPS = ['Basics', 'Skills & Resume', 'Preferences', 'Auto-Pilot'];
 
-function ChipInput({ values, onChange, placeholder }) {
+/*
+ * L? — the chip input merged three fast-typed skills into one chip.
+ *
+ * The old addChip closed over `draft` and `values` from the render that
+ * created it. Typed fast, two Enters could fire inside one React batch before
+ * either setState committed: the second addChip read the SAME stale `values`
+ * as the first and overwrote it, while the DOM input — controlled by a `draft`
+ * that had not been cleared yet — kept accumulating characters, so a whole
+ * run of skills collapsed into a single chip. A Playwright paste of a
+ * newline-separated list reproduced the collapse deterministically; jest never
+ * could, because it lacks real key timing.
+ *
+ * The fix removes both stale reads. commit() takes the live value straight off
+ * the DOM event (never the possibly-behind `draft` state) and folds new tokens
+ * onto a ref that always holds the latest committed list, so a second commit
+ * in the same tick sees what the first just added instead of the render-time
+ * snapshot. Splitting on comma/newline means a pasted or fast-typed run of
+ * separators becomes several chips, never one merged blob.
+ */
+export function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
-  const addChip = () => {
-    const v = draft.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
+  // Always the latest committed list, even between a setState and its commit.
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+
+  const commit = (raw) => {
+    const parts = String(raw).split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
     setDraft('');
+    if (!parts.length) return;
+    const current = valuesRef.current;
+    const next = [...current];
+    for (const p of parts) if (!next.includes(p)) next.push(p);
+    if (next.length === current.length) return;
+    // Advance the ref before the parent re-renders, so a second commit fired
+    // in the same batch folds onto this list rather than the stale snapshot.
+    valuesRef.current = next;
+    onChange(next);
   };
+
   return (
     <div className={page.chipInputWrap}>
       {values.map((v) => (
@@ -32,8 +64,8 @@ function ChipInput({ values, onChange, placeholder }) {
         className={page.chipInput}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addChip(); } }}
-        onBlur={addChip}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(e.currentTarget.value); } }}
+        onBlur={(e) => commit(e.currentTarget.value)}
         placeholder={placeholder}
       />
     </div>
