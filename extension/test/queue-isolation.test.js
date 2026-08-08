@@ -37,11 +37,17 @@ function runLoop(items, processOne) {
 }
 
 const items = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
-let failures = 0;
+/*
+ * This ran for months as a standalone script no runner executed - a suite
+ * that never runs reads as safety (the empty-jest-output defect, quieter).
+ * Now a jest suite under the backend runner; the cases are unchanged.
+ */
 const check = (name, cond, detail) => {
-  if (!cond) { failures += 1; console.log(`  FAIL  ${name}${detail ? ` - ${detail}` : ''}`); }
-  else console.log(`  pass  ${name}`);
+  it(name, () => {
+    if (!cond) throw new Error(detail || 'failed');
+  });
 };
+describe('queue isolation', () => {
 
 // 1. An unanswered question mid-batch parks that one and lets the rest run.
 {
@@ -99,5 +105,4 @@ const check = (name, cond, detail) => {
   check('it parks with its own reason', parked[0].id === 3 && parked[0].reason === 'captcha');
 }
 
-console.log(failures ? `\n  ${failures} FAILED` : '\n  all isolation cases pass');
-process.exit(failures ? 1 : 0);
+});

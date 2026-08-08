@@ -110,6 +110,41 @@ $('connectBtn').addEventListener('click', async () => {
   refresh();
 });
 
+/*
+ * Feature 13 (E3) — one-click capture. Renders exactly what the server said:
+ * the added job with its score (or "Not scored yet" - never 0%), or the
+ * refusal in the server's own words with the app's paste box as the next
+ * step. Text via textContent throughout; a job title is untrusted input.
+ */
+$('captureBtn').addEventListener('click', async () => {
+  const out = $('captureResult');
+  $('captureBtn').disabled = true;
+  out.textContent = 'Reading this page…';
+  try {
+    const r = await send({ type: 'HP_CAPTURE_TAB' });
+    out.textContent = '';
+    if (r.ok) {
+      const company = r.job.companyStated ? r.job.company_name : 'company not stated';
+      const scoreText = r.score !== null && r.score !== undefined
+        ? `scored ${Math.round(Number(r.score) * 100)}%` : 'not scored yet';
+      out.textContent = r.alreadyHad
+        ? `Already in your list: ${r.job.title} (${company}).`
+        : `Added: ${r.job.title} (${company}) — ${scoreText}.`;
+    } else {
+      out.textContent = r.detail || 'Could not add this page.';
+      if (r.reason === 'refused' && r.appBase) {
+        const a = document.createElement('a');
+        a.href = `${r.appBase}/jobs`;
+        a.target = '_blank';
+        a.textContent = ' Paste it in HirePilot instead.';
+        out.appendChild(a);
+      }
+    }
+  } finally {
+    $('captureBtn').disabled = false;
+  }
+});
+
 $('runBtn').addEventListener('click', async () => { await send({ type: 'HP_RUN' }); refresh(); });
 $('stopBtn').addEventListener('click', async () => { await send({ type: 'HP_STOP' }); refresh(); });
 $('disconnectBtn').addEventListener('click', async () => {

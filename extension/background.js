@@ -714,6 +714,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
     try {
       switch (msg.type) {
         /*
+         * Feature 13 (E3) — one-click capture of whatever posting the active
+         * tab is showing. The URL goes to the SAME endpoint the paste box
+         * uses, so fetch, extraction, refusal wording and the rate limit all
+         * live server-side; the extension only reports what the server said.
+         * A refusal carries appBase so the popup can hand the user to the
+         * app's paste box - the fallback 4a built for exactly these boards.
+         */
+        case 'HP_CAPTURE_TAB': {
+          const { token, appBase } = await config();
+          if (!token) {
+            return respond({ ok: false, reason: 'not_connected', detail: 'Sign in from the extension first.' });
+          }
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const url = tab && tab.url;
+          if (!url || !/^https?:/i.test(url)) {
+            return respond({ ok: false, reason: 'not_a_page', detail: 'Open the job posting in a normal browser tab first.' });
+          }
+          try {
+            const r = await api('/api/jobs/from-url', { method: 'POST', body: JSON.stringify({ url }) });
+            return respond({
+              ok: true, job: r.job, score: r.score ?? null,
+              alreadyHad: Boolean(r.alreadyHad), weak: Boolean(r.weak), appBase,
+            });
+          } catch (err) {
+            // api() surfaces the server's own sentence (or the network's).
+            return respond({ ok: false, reason: 'refused', detail: err.message, appBase });
+          }
+        }
+        /*
          * Sent by every content script the moment it loads on a supported job
          * page. Without it the drawer only ever appeared part-way through a run,
          * so landing on a posting directly - which is how people actually browse

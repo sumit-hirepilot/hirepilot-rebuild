@@ -34,6 +34,14 @@
 
   <!-- Main -->
   <section id="mainView" class="view hidden">
+    <!-- Feature 13 (E3): capture the posting in the active tab. Same server
+         path as the app's paste box; the button only reports what the server
+         said, including its refusals. -->
+    <div class="row">
+      <button id="captureBtn" class="btn">Add this page as a job</button>
+    </div>
+    <p id="captureResult" class="tiny"></p>
+
     <div class="stats">
       <div class="stat"><span id="sQueued">0</span><label>Queued</label></div>
       <div class="stat"><span id="sSubmitted" class="ok">0</span><label>Submitted</label></div>

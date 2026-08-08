@@ -20,4 +20,11 @@
 module.exports = {
   testEnvironment: 'node',
   testTimeout: 20000,
+  /*
+   * extension/test existed for months with NO runner executing it - a suite
+   * that never runs reads as safety and is the empty-jest-output defect in a
+   * quieter form. The backend runner owns it now (the extension has no
+   * package.json of its own, and its tests are plain node like these).
+   */
+  roots: ['<rootDir>', '<rootDir>/../extension/test'],
 };
