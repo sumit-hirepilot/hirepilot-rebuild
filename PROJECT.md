@@ -903,3 +903,48 @@ Those legacy selectors are dead but harmless (OR'd alternates that never
 match); left in place — removing verified-once fallbacks on a live submit
 path is not worth the risk, and the check would catch it if the modern ones
 ever regress to them.
+
+## 27. E1 (2026-08-08, extension-testing run) — the extension loaded and driven for real; the premise was wrong
+
+The docs said "the extension cannot be loaded in a browser here" and
+SUBMISSION_PROOF listed MV3 service-worker orchestration as "not covered."
+Both are now false, tested not assumed.
+
+**Why the premise held until now:** stable Google Chrome (v137+, confirmed on
+151) has REMOVED `--load-extension` — under it no service worker registers and
+no content script runs (observed: null announce stamp, no worker). The
+supported path is a Chromium that still allows it. Google **Chrome for
+Testing** (bundled with Playwright, already cached on this machine at
+`~/Library/Caches/ms-playwright/chromium-1228`) loads the unpacked extension
+fine: MV3 worker live at `chrome-extension://…/background.js`, announce
+content script stamps the app page `1.0.0`.
+
+**The full flow, driven by the REAL extension against the ATS sandbox**
+(harness at `extension/test-e2e/`, gated seed at
+`POST /api/ats-sandbox/seed`):
+- popup paired against production, showed **Connected** and the queued
+  `approved` application;
+- the MV3 worker opened the sandbox tab, injected the content scripts, the
+  HirePilot drawer rendered and filled the form;
+- the sandbox target **received** (its own record of what arrived, byte for
+  byte): first/last/email/phone, the cover letter, and screening answers
+  `work_authorised=Yes`, `sponsorship=No`, `notice=30 days`, `years=7.0`;
+- **demographic answers arrived BLANK** (`gender=""`, `veteran=""`) — Constraint
+  5 proven in a real browser with the real worker, the strongest evidence yet
+  that EEO questions are never auto-answered;
+- résumé attached **byte-exact**: 615 bytes, sha256 `2e66…04ee`, matching both
+  what `resume-file` served and the local upload;
+- confirmation captured (`GH-SANDBOX-58615736D16F`), application `verified_at`
+  set, immutable receipt written carrying that same sha256.
+
+This closes the SUBMISSION_PROOF delta rows for MV3 orchestration, chrome.*
+APIs, tab watching, field resolution, byte-exact résumé, confirmation and
+receipt — everything except the two rows that are inherently out of a
+sandbox's reach: **live Greenhouse markup drift** (covered read-only by E2,
+no drift found) and a **real employer's CAPTCHA/login/consent** (A5).
+
+Honest limits: Playwright didn't surface the MV3 worker's console.log as an
+artifact (sw-console.log empty) — the server-side proof (sandbox capture,
+receipt, verified_at) is stronger and unfakeable, since the sandbox records
+what it actually received. A non-fatal favicon 404 on the sandbox page is
+cosmetic and pre-existing.

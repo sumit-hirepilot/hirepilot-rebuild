@@ -91,3 +91,19 @@ Both were invisible to a green suite, and both are the reason the run mattered.
 
 Guards added for both classes: SQL column references are checked against the
 schema, and the target's tests now drive the real bracket names.
+
+---
+
+## UPDATE 2026-08-08 — MV3 orchestration is now covered (real extension, sandbox)
+
+The delta table above listed "MV3 service-worker orchestration, chrome.* APIs,
+tab watching" as NOT covered because the harness loaded the content scripts
+directly. That row is now closed: the REAL unpacked extension was loaded under
+Google Chrome for Testing and driven end to end against the sandbox — the MV3
+worker opened the tab, injected the scripts, filled, attached the résumé
+byte-exact (sha256 2e66…04ee), submitted, and captured the confirmation
+(GH-SANDBOX-58615736D16F); the application carries verified_at and an immutable
+receipt. Demographic fields arrived blank. See PROJECT.md §27 and
+extension/test-e2e/. Only two rows remain uncovered, both inherent to a
+sandbox: live Greenhouse selector drift (E2 covers this read-only — no drift)
+and a real employer's CAPTCHA/login/consent (A5).
