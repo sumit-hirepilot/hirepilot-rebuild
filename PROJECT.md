@@ -866,3 +866,40 @@ their data, delete their account. Zero console errors on every page walked.
   harness, and the profile page's own chip input is unaffected).
 - Visual polish, tap-target comfort, and readability of data-dense screens on
   a real phone.
+
+## 26. E2 (2026-08-08, extension-testing run) — selector drift, closed by a real-DOM check
+
+The sandbox is built to the adapter's own selectors, so it can never catch
+Greenhouse changing its markup — the one failure that breaks a live submit.
+Closed with `tools/check-greenhouse-selectors.js` + a standing jest test
+(`frontend/__tests__/greenhouseSelectorDrift.test.js`) that run the SHIPPED
+adapter (fields.js + greenhouse.js, unmodified) against REAL Greenhouse
+application DOM captured from production boards. Read-only: only the
+adapter's resolver methods are called; nothing is filled, clicked or
+submitted; fixtures are on disk (refresh with `--live`).
+
+**Result on real DOM, 2026-08-08:** the modern `job-boards.greenhouse.io`
+board (Anthropic, Cloudflare, GitLab fixtures) resolves every load-bearing
+selector — `FORM#application-form`, first/last/email unique, resume file
+input, submit button. NO drift on the path that carries every real submit.
+
+**Two honest limits, both surfaced not hidden:**
+- Careers-domain embeds (jobs.elastic.co) ship an empty shell and mount the
+  form with client JS. jsdom doesn't run page scripts, so it's DETECTED and
+  reported as `client-rendered — assess with the browser harness`, never
+  silently passed as ok. E1's real-browser render covers that generation.
+- `genericQuestions()` gates on visibility (getBoundingClientRect), which
+  jsdom fakes as 0, so the employer's own screening questions aren't
+  assessable here — also E1 territory.
+
+The instrument is proven in both directions (D24): green on the three real
+boards, and a committed test mutates the form id + email selector and asserts
+the checker goes red, so a future real drift cannot pass unseen.
+
+**Stale-doc note:** greenhouse.js's comment says the legacy Rails board
+(`boards.greenhouse.io`, `#application_form` underscore, `job_application[...]`)
+is "still widely embedded." It now 301-redirects to the modern React board.
+Those legacy selectors are dead but harmless (OR'd alternates that never
+match); left in place — removing verified-once fallbacks on a live submit
+path is not worth the risk, and the check would catch it if the modern ones
+ever regress to them.
