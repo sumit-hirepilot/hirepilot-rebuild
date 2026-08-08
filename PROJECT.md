@@ -427,3 +427,27 @@ the 40 MB bound and httpSource refused it (log: "greenhouse: response
 exceeded 40MB… needs paging, not a bigger buffer"). Follow-up filed: page
 the Greenhouse boards fetch per D55's own instruction; until then Discord's
 ~900 postings are absent and the sources panel reports it honestly.
+
+## 9. FEATURE 11 — rejection intelligence  [shipped + VERIFIED live 2026-08-08]
+
+`GET /api/analytics/rejections` + a patterns section on Analytics. Conversion
+by source, seniority band (shared definition, moved to
+services/experienceBands so a service never requires a route file), and
+match-score band — over recorded outcomes only (interviewing/offer = reply,
+both rejection paths, ghosted separate, pending visible).
+
+The 15-application floor, verified live in BOTH directions on production:
+- 3 sent → `sufficient:false, sentTotal:3, needed:15`, every grouping null;
+  the page renders the honest floor sentence.
+- After a 12-row CSV import (exercising the fixed tracker import at volume):
+  `sufficient:true`, source `manual` n=15 rate **27%** (4 replied / 3 no /
+  1 quiet / 7 waiting rendered on the page), and every thin group (senior
+  n=6, staff n=6, mid n=3) withholds its rate as "not enough data (n)" —
+  null, never a fabricated 0%.
+- Score bands say in the payload AND on the page that they use today's
+  calculation — score-at-apply was never instrumented (D1 debt, restated).
+
+Tests: 7 service (fabricated-zero mutation proven to bite), 2 route, 2 page;
+the one-definition experience guard was found VACUOUS after the move (its
+slice marker vanished) — rewritten to sweep both files and mutation-proven.
+Suites: backend 642, frontend 316. Gate 11/11.
