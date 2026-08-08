@@ -401,3 +401,29 @@ Regression pinned by test (the ranked CTE must never carry the snippet).
 Lesson recorded: a per-row expression added to a full-scan CTE is a cost on
 EVERY request, and single-request probes cannot see it - only the
 concurrency budget could, which is the reason it runs on every deploy.
+
+## 8. FEATURE 10 — India salary and notice-period filters  [shipped + VERIFIED live 2026-08-08]
+
+- **Salary in lakhs.** `?salaryInr=` bands (Under ₹10L / 10–25 / 25–50 / ₹50L+)
+  through the same conversion chain as the USD bands. Live facet counts:
+  137 / 322 / 991 / 2,005. Undisclosed pay is never swept into a band.
+- **Immediate joiner, in the employer's own words.** Jobs carry no
+  notice-period field and inventing one would be fabricated data; the filter
+  matches only explicit asks and every matching row carries the posting's own
+  sentence (`joinerNote`). Live: 10 matching jobs; browser-verified end to
+  end — chip → "10 results" → "Training Lead - Biology @ Khanacademy,
+  Vijayawada · Asks for a quick start: 'Immediate Start'". Zero console
+  errors on a fresh tab.
+- Suites: backend 633, frontend 314. Gate 11/11 twice (the second after the
+  bounds checker caught an unbounded `joiner` param — the guard worked).
+- **Incident during this feature** (section 7 above): the first deploy ran
+  the snippet regex over every row of the feed CTE; caught by the rule-10
+  load run, fixed to an id-bounded per-page query, and the post-fix budget
+  run passed 3,000/3,000 at 1,000 concurrent — the load bar is currently MET.
+
+**Ingest note (rule 10, "unchanged or explained"):** greenhouse fell
+~10.2k → 9,275 this cycle. Explained: the Discord board's response crossed
+the 40 MB bound and httpSource refused it (log: "greenhouse: response
+exceeded 40MB… needs paging, not a bigger buffer"). Follow-up filed: page
+the Greenhouse boards fetch per D55's own instruction; until then Discord's
+~900 postings are absent and the sources panel reports it honestly.
