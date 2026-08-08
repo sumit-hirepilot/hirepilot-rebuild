@@ -451,3 +451,23 @@ Tests: 7 service (fabricated-zero mutation proven to bite), 2 route, 2 page;
 the one-definition experience guard was found VACUOUS after the move (its
 slice marker vanished) — rewritten to sweep both files and mutation-proven.
 Suites: backend 642, frontend 316. Gate 11/11.
+
+## 10. FEATURE 12 — recruiter email routing  [shipped 2026-08-08; live wire is operator work]
+
+The matcher links a message to an application only on UNIQUE evidence — the
+normalised company name equals the sender's org token, or the job's own URLs
+live on the sender's registrable domain (two-label public suffixes handled).
+Anything else waits in a review state; the user says which application the
+mail is about, and only that confirmation runs the stage rule (which is now
+the same on-board rule the tracker uses, manual rows included). The old
+matcher linked on substring containment — mail from meta.com filed under
+Metabase, stage moved on the wrong application — and that exact case is
+pinned red-proven in the suite.
+
+Verified live within what the environment allows: GET /api/inbox reports
+`needsReview:0` and `inboundConfigured:false`; POST /:id/link exists and
+scopes (404 for a foreign message); /inbound answers its honest 503 until the
+operator connects mail (BLOCKED.md — secret + provider or Gmail OAuth
+credentials; no code can conjure them). Routing behaviour itself is pinned by
+8 route-level tests plus 2 page tests (review banner + link call).
+Suites: backend 650, frontend 318. Gate 11/11.
