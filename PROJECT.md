@@ -471,3 +471,30 @@ operator connects mail (BLOCKED.md — secret + provider or Gmail OAuth
 credentials; no code can conjure them). Routing behaviour itself is pinned by
 8 route-level tests plus 2 page tests (review banner + link call).
 Suites: backend 650, frontend 318. Gate 11/11.
+
+## 11. FEATURE 13 — extension: one-click capture from any posting  [shipped + VERIFIED 2026-08-08]
+
+`HP_CAPTURE_TAB` in the background worker: active tab's URL → the SAME
+`POST /api/jobs/from-url` the paste box uses (server owns fetch, extraction,
+refusal wording, rate limit), popup renders exactly what the server said —
+the added job with its score / "not scored yet" (never 0%), "already in your
+list", or the refusal in the server's own words with a link to the app's
+paste box. Non-web tabs and signed-out states refuse locally without a
+server call.
+
+Verified: 4 tests drive the REAL background.js through a stubbed chrome
+(the extension cannot be loaded into a browser here); the served
+hirepilot-extension.zip was fetched from production and its bytes carry
+HP_CAPTURE_TAB + the popup wiring; and the exact server call was probed live
+in both directions — a real Greenhouse posting captured and scored 0.91 with
+its breakdown, and a real Ashby posting refused with the server's own
+sentence ("larger than 2 MB"), which is the sentence the popup shows.
+
+Also closed: `extension/test/` had existed for months with NO runner
+executing it — a suite that never runs reads as safety. It is a jest suite
+under the backend runner now (cases unchanged, 16 of them, all green).
+Suites: backend 670, frontend 318. Gate 11/11.
+
+Follow-up filed: from-url refuses Ashby postings whose public page exceeds
+2 MB even though the Ashby API path could serve them — the Harvey posting
+that produced the refusal is the repro.
