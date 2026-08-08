@@ -1635,3 +1635,23 @@ measures against real DOM.
 Everything else in the five docs matches the code: branch is `production`
 (0/0 vs origin), suites green (backend 724, frontend 328), production healthy,
 rule-10 bar and Q-series records consistent.
+
+## D63 — E2/E3 real-browser cross-check: no selector drift to fix
+
+Ran the shipped Greenhouse adapter against real DOM two ways: jsdom over
+captured SSR HTML (the standing check), and a real Chrome-for-Testing render.
+
+- Modern `job-boards.greenhouse.io` (Anthropic et al.): `FORM#application-form`,
+  every identity field unique, resume + submit resolve — in BOTH jsdom and the
+  live render. No drift. This path carries essentially every real Greenhouse
+  submit.
+- Careers-domain embed (`jobs.elastic.co`): the job page shows the description;
+  the application form appears only after the adapter's `openForm()` clicks
+  Apply. A read-only check can't surface it without interacting, which the
+  brief forbids on a real employer page. This is by design (openForm exists),
+  not drift.
+
+So E3 finds nothing to fix: the load-bearing selectors are current, and the
+multi-step careers-domain flow is a runtime concern the adapter already
+handles. The standing check (frontend jest + tools/check-greenhouse-selectors)
+will catch a future regression on the modern board without a human.
