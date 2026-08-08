@@ -297,4 +297,16 @@ cost.
 **What the operator decides:** whether to run more than one replica, which is a
 plan and cost question. `railway scale <region>=N` is the mechanism.
 
+**Updated once the cause was isolated.** The failures are not vague timeouts:
+all 55 are `timeout exceeded when trying to connect` from pg-pool, one distinct
+message in the whole log. The pool was `max: 15` against a database allowing
+100; raising it to 40 halved the wall time (46.8s -> 21.6s) and removed the
+client timeouts. What is left is arithmetic - ~40 database slots at ~0.3s a
+request is ~133 req/s, and 3,000 requests need ~22s to drain, so the tail waits
+past the 10s acquire bound.
+
+The acquire bound is deliberately NOT being raised to clear the bar: that would
+make every user wait 20s instead of failing fast, and would make the number
+look met without adding capacity.
+
 Work continues meanwhile — this does not block the feature queue.

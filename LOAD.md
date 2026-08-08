@@ -472,3 +472,43 @@ ingest cycle, which is finished by the time these runs start.
 The one lever that plainly addresses queueing on a single replica — running
 more than one — is a plan and cost decision on a trial account, not an
 engineering change.
+
+
+## The 1,000-concurrent failure, now diagnosed exactly
+
+The earlier entry said the cause could not be separated from trial-tier
+variance. It can now, and the reason it could not before was **my instrument**:
+that run used a stale token, so two of the three paths returned 401 and the
+failures were counted as timeouts. With a valid token the failures change shape
+and name themselves.
+
+| concurrent | ok | failed | p95 | wall | RSS |
+|---|---|---|---|---|---|
+| 50 | 150 | **0** | 1,529 ms | 2.6 s | 155 → 182 MB |
+| 200 | 600 | **0** | 3,363 ms | 5.1 s | 182 → 237 MB |
+| 500 | 1,500 | **0** | 7,205 ms | 11.5 s | 163 → 281 MB |
+| 1,000 | 2,945 | **55** | 14,234 ms | 21.6 s | 172 → 304 MB |
+
+Every one of the 55 is the same server-side error, and there is exactly one
+distinct message in the whole log:
+
+```
+Get jobs error: timeout exceeded when trying to connect   (pg-pool)   x55
+```
+
+**The mechanism, with numbers.** The pool was `max: 15`; Postgres reports
+`max_connections = 100` with 10 in use, so the bound was ours and far below
+what the database allows. Raised to 40 (arithmetic in `db.js`: two replicas
+must still fit). That halved the wall — **46.8 s → 21.6 s** — and removed the
+client timeouts entirely. What remains is capacity: ~40 concurrent database
+slots at ~0.3 s a request is ~133 req/s, so 3,000 requests need ~22 s to drain
+and the tail waits longer than the 10 s acquire bound.
+
+**Why the acquire bound is not being raised to clear the bar.** It would turn a
+fast, honest 500 into every user waiting 20 s, and it would make the number
+look met without adding any capacity — D54 in the other direction. The 500 is
+the pool telling the truth about being over capacity.
+
+**Still failing at 1,000. The remaining lever is a second replica**, which is
+the operator's. 50, 200 and 500 are clean, memory is well inside budget
+throughout, and the p95 curve is monotonic.
