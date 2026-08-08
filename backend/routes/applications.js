@@ -4,6 +4,7 @@ const { verifyToken } = require('../middleware/auth');
 const { runAutoApplyForUser } = require('../services/autoApplyEngine');
 const { calculateMatchesForUser } = require('../services/matchingEngine');
 const { fixMojibake } = require('../services/apis/textSanitizer');
+const { buildInterviewPrep } = require('../services/interviewPrep');
 
 const router = express.Router();
 
@@ -556,6 +557,49 @@ router.put('/:id/status', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Update application status error:', err);
     res.status(500).json({ error: 'Failed to update application' });
+  }
+});
+
+/*
+ * Feature 15 — interview prep for one application (D5). The trigger is the
+ * conversation reaching the board; the content is the posting's own skills
+ * and sentences against the caller's recorded skills - assembled in
+ * services/interviewPrep, which invents nothing.
+ */
+router.get('/:id/interview-prep', verifyToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Application id must be a number' });
+    }
+
+    const r = await query(
+      `SELECT a.id, a.status, a.is_manual, a.tracker_stage,
+              j.title, j.company_name, j.description, j.requirements
+         FROM applications a JOIN jobs j ON j.id = a.job_id
+        WHERE a.id = $1 AND a.user_id = $2`,
+      [id, req.user.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Application not found' });
+
+    const row = r.rows[0];
+    const onBoard = row.status === 'submitted' || row.is_manual === true;
+    if (!onBoard) {
+      return res.status(409).json({
+        error: "This application hasn't been sent yet, so there is no interview to prepare for.",
+      });
+    }
+
+    const skills = await query('SELECT skill FROM user_skills WHERE user_id = $1', [req.user.id]);
+
+    res.json({
+      job: { title: row.title, company_name: row.company_name },
+      stage: row.tracker_stage || 'applied',
+      prep: buildInterviewPrep({ job: row, userSkills: skills.rows.map((s) => s.skill) }),
+    });
+  } catch (err) {
+    console.error('GET /applications/:id/interview-prep failed:', err.message);
+    res.status(500).json({ error: 'Could not build interview prep' });
   }
 });
 

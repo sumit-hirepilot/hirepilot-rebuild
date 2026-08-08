@@ -58,6 +58,8 @@ export default function Applications() {
    */
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkWorking, setBulkWorking] = useState(false);
+  // Feature 15 - interview prep. Keyed by application id; null value = loading.
+  const [prepById, setPrepById] = useState({});
 
   const base = API_BASE;
 
@@ -114,6 +116,34 @@ export default function Applications() {
       setLoading(false);
     }
   }, [base]);
+
+  /*
+   * Feature 15 - fetch prep once per card, toggle on re-click. The panel
+   * renders only what the server derived from the posting's own text.
+   */
+  const handlePrep = async (applicationId) => {
+    if (prepById[applicationId] !== undefined) {
+      setPrepById((prev) => {
+        const next = { ...prev };
+        delete next[applicationId];
+        return next;
+      });
+      return;
+    }
+    setPrepById((prev) => ({ ...prev, [applicationId]: null }));
+    try {
+      const res = await fetch(`${base}/api/applications/${applicationId}/interview-prep`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setPrepById((prev) => ({
+        ...prev,
+        [applicationId]: res.ok ? data : { error: data.error || 'Could not build interview prep.' },
+      }));
+    } catch {
+      setPrepById((prev) => ({ ...prev, [applicationId]: { error: 'Could not reach HirePilot.' } }));
+    }
+  };
 
   const handleRetry = async (applicationId) => {
     setRetrying(applicationId);
@@ -507,6 +537,56 @@ export default function Applications() {
                               in your name is the defect that matters most,
                               because an application cannot be unsent. */}
                           <SubmissionReceipt applicationId={app.id} token={token} />
+                          {/* Feature 15 - the conversation reached an
+                              interview; offer prep from the posting's own
+                              text and the user's actual gaps. */}
+                          {col.key === 'interviewing' && (
+                            <>
+                              <button
+                                type="button"
+                                className={page.retryButton}
+                                onClick={() => handlePrep(app.id)}
+                              >
+                                {prepById[app.id] !== undefined ? 'Hide prep' : 'Prep for this interview'}
+                              </button>
+                              {prepById[app.id] === null && (
+                                <p className={page.cardMeta}>Reading the posting…</p>
+                              )}
+                              {prepById[app.id]?.error && (
+                                <p className={page.failureReason}>{prepById[app.id].error}</p>
+                              )}
+                              {prepById[app.id]?.prep && (
+                                <div className={page.cardMeta}>
+                                  {prepById[app.id].prep.sufficientJd ? (
+                                    <>
+                                      {prepById[app.id].prep.strengths.length > 0 && (
+                                        <>
+                                          <strong>Lead with</strong>
+                                          {prepById[app.id].prep.strengths.map((it) => (
+                                            <p key={it.skill} style={{ marginBottom: '0.25rem' }}>
+                                              <strong>{it.skill}</strong> — &ldquo;{it.quote}&rdquo;
+                                            </p>
+                                          ))}
+                                        </>
+                                      )}
+                                      {prepById[app.id].prep.gaps.length > 0 && (
+                                        <>
+                                          <strong>Have an answer ready</strong>
+                                          {prepById[app.id].prep.gaps.map((it) => (
+                                            <p key={it.skill} style={{ marginBottom: '0.25rem' }}>
+                                              <strong>{it.skill}</strong> — &ldquo;{it.quote}&rdquo;
+                                            </p>
+                                          ))}
+                                        </>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <p>{prepById[app.id].prep.reason}</p>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )}
                           {app.status === 'failed' ? (
                             <>
                               <p className={page.failureReason}>{app.failure_reason}</p>
