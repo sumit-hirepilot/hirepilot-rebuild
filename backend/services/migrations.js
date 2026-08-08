@@ -1076,6 +1076,29 @@ const STATEMENTS = [
   `DELETE FROM job_matches jm
       WHERE NOT EXISTS (SELECT 1 FROM user_skills us WHERE us.user_id = jm.user_id)
         AND NOT EXISTS (SELECT 1 FROM user_experience ue WHERE ue.user_id = jm.user_id AND ue.start_date IS NOT NULL)`,
+
+  /*
+   * L5 (2026-08-08) — the receipts trigger gains its one legitimate
+   * exception. Receipts are append-only against EDITING history; account
+   * deletion is not editing, it is the person leaving and taking their
+   * records with them, and without this the users cascade throws on the
+   * first receipt and no account holding one can ever be deleted. DELETE
+   * passes only when the transaction-local account-deletion flag is set
+   * (SET LOCAL, so it cannot leak past the transaction); UPDATE never
+   * passes in any state - history stays unrewritable.
+   */
+  `CREATE OR REPLACE FUNCTION submission_receipts_are_immutable()
+     RETURNS TRIGGER AS $fn$
+     BEGIN
+       IF TG_OP = 'DELETE'
+          AND current_setting('hirepilot.account_deletion', true) = 'on' THEN
+         RETURN OLD;
+       END IF;
+       RAISE EXCEPTION
+         'submission_receipts is append-only: % on receipt % was rejected',
+         TG_OP, COALESCE(OLD.id, NEW.id);
+     END;
+     $fn$ LANGUAGE plpgsql`,
 ];
 
 /*

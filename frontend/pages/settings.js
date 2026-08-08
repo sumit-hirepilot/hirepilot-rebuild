@@ -65,6 +65,13 @@ export default function Settings() {
   // L1 - what this deployment can actually do. null = not known yet; copy
   // about a capability renders only from a loaded answer, never a guess.
   const [capabilities, setCapabilities] = useState(null);
+  // L5 - the real deletion flow. The button used to flash "disabled in this
+  // demo deployment" - a control that looks like it works, on a product
+  // holding resumes and application history.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   // Application Profile: the answers employer forms ask on every application.
   // Kept separate from the display profile above because these values are
   // submitted to employers, so nothing here is ever guessed or defaulted.
@@ -967,10 +974,93 @@ export default function Settings() {
               </form>
             </div>
 
+            <div className={styles.card}>
+              <p className={page.masterTitle}>Download my data</p>
+              <p className={page.masterSubtitle}>
+                Everything HirePilot holds about you - account, resumes, skills,
+                applications, receipts, contacts, mail - as one JSON file.
+              </p>
+              <button
+                className={page.saveButton}
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`${BASE_URL}/api/auth/export`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (!res.ok) { flash('Could not build your export just now. Try again shortly.'); return; }
+                    const blob = await res.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'hirepilot-export.json';
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  } catch {
+                    flash('Could not reach HirePilot. Check your connection and try again.');
+                  }
+                }}
+              >
+                Download my data
+              </button>
+            </div>
+
             <div className={styles.card} style={{ marginBottom: 0, borderColor: 'var(--error)' }}>
               <p className={page.masterTitle}>Delete account</p>
-              <p className={page.masterSubtitle}>Permanently remove {user.email} and all associated data. This can&apos;t be undone.</p>
-              <button className={page.deleteAccountButton} onClick={() => flash('Account deletion is disabled in this demo deployment.')}>Delete my account</button>
+              <p className={page.masterSubtitle}>
+                Permanently removes {user.email} and everything in it: resumes,
+                applications, submission receipts, contacts, mail. This can&apos;t be undone.
+              </p>
+              {!deleteArmed ? (
+                <button className={page.deleteAccountButton} onClick={() => { setDeleteArmed(true); setDeleteError(''); }}>
+                  Delete my account
+                </button>
+              ) : (
+                <div>
+                  <label htmlFor="hp-delete-password" className={page.masterSubtitle}>
+                    Type your password to confirm
+                  </label>
+                  <input
+                    id="hp-delete-password"
+                    type="password"
+                    className={page.input}
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button
+                      className={page.deleteAccountButton}
+                      disabled={deleting || !deletePassword}
+                      onClick={async () => {
+                        setDeleting(true); setDeleteError('');
+                        try {
+                          const res = await fetch(`${BASE_URL}/api/auth/account`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ password: deletePassword }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (res.ok && data.deleted) {
+                            localStorage.removeItem('token');
+                            localStorage.removeItem('user');
+                            router.replace('/');
+                            return;
+                          }
+                          setDeleteError(data.error || 'Your account could not be deleted just now - nothing was removed.');
+                        } catch {
+                          setDeleteError('Could not reach HirePilot - nothing was removed. Check your connection and try again.');
+                        } finally {
+                          setDeleting(false);
+                        }
+                      }}
+                    >
+                      {deleting ? 'Deleting…' : 'Delete everything'}
+                    </button>
+                    <button className={page.saveButton} onClick={() => { setDeleteArmed(false); setDeletePassword(''); setDeleteError(''); }}>
+                      Keep my account
+                    </button>
+                  </div>
+                  {deleteError && <p className={page.masterSubtitle} style={{ color: 'var(--error)', marginTop: 8 }}>{deleteError}</p>}
+                </div>
+              )}
             </div>
           </>
         )}

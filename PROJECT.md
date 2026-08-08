@@ -805,3 +805,25 @@ Honest limits, per D46: this measures CSS at a true 375px viewport (the
 viewport meta tag has been in _app.js since D45); it proves geometry on the
 EMPTY account. Tap-target comfort, data-rich layouts and readability are a
 human's call — listed under BLOCKED-NEEDS-HUMAN.
+
+## 24. L5 (2026-08-08, third run) — legal pages verified; the deletion path is real now
+
+Privacy, terms, refund-policy and contact pages already existed and read
+honestly (the privacy page states what is stored, what is never done —
+no demographic answers, no invented resume content, no unapproved
+submissions — and that the extension runs in the user's own browser and
+talks only to HirePilot and the job board). What was FALSE on arrival: the
+privacy page's "export or delete your data at any time from Settings", because
+the delete button's entire behaviour was flash('Account deletion is disabled
+in this demo deployment.') and no export existed.
+
+Both are real now, red-proven (6 backend + 2 frontend tests):
+- `DELETE /api/auth/account`: password re-entered, one transaction on ONE
+  pooled client (SET LOCAL scopes per-connection), rollback + honest sentence
+  on failure. The receipts trigger gained its one legitimate exception —
+  DELETE passes only inside an account-deletion transaction (the person
+  leaving takes their records with them); UPDATE never passes, so history
+  stays unrewritable.
+- `GET /api/auth/export`: every user-owned table as one JSON attachment,
+  never the password hash, every query caller-scoped. Settings gained the
+  matching "Download my data" button.
