@@ -377,3 +377,11 @@ settings are not reachable over git):
     to the same commit) — left in place from here, deleting refs is not an
     autonomous call.
 Until 1 happens, fresh clones and PRs default to the frozen archive.
+
+## RESOLVED 2026-08-08 — the 1,000-concurrent bar, by operator decision
+
+Option 2 taken: "500 clean enforced, 1,000 measured and informational". No
+second replica, acquire timeout unchanged. Encoded in CLAUDE.md rule 10 with
+the reasoning, in LOAD.md, and in tools/loadtest.py itself, which now exits
+non-zero only when a step at or under 500 users has failures. The 1,000 step
+keeps running on every budget check so the trend stays visible.

@@ -610,3 +610,28 @@ a failing exit and deployed an unverified tree; rolled back within minutes
 per the rail, re-shipped through a properly-invoked gate.** The scrub data
 change had already executed during the bad boot; the end-state was
 re-verified under the verified build.
+
+## 17. Q3 (2026-08-08, second run) — the load bar is decided and encoded
+
+"500 concurrent clean enforced, 1,000 measured and informational; no second
+replica." Encoded in CLAUDE.md rule 10 (with the reasoning), LOAD.md, and
+tools/loadtest.py itself, which now carries the verdict: exit 1 iff any step
+at or under 500 users has failures. Instrument proven on stubs in all three
+directions (known-good → 0; failures under the bar → 1; failures only above
+→ 0 + informational label) before it was trusted — and the first mistaken
+proof attempt piped the instrument into tail, which is exactly the D60
+lesson, caught and redone unpiped.
+
+One disagreement with the brief, recorded: ship.sh never contained a load
+stage to change — the budgets run post-deploy by rule 10's own five-minute
+rule, and adding a live load test to the pre-deploy gate would hammer the
+OLD deployment on every commit. The enforcement now lives in the instrument
+the budget protocol invokes.
+
+Live run against production immediately after (past the five-minute rule):
+50/200/500 all clean (1,500/1,500 at 500), the 1,000 step failed 80 of
+3,000 — the THIRD distinct reading at identical capacity (71, 0, 80),
+which is the arrival-shape sensitivity the decision is premised on —
+instrument exit 0 with the informational label. Trend note: burst RSS at
+1,000 reached 450 MB (previous runs 296–331); inside the 800 MB abort line,
+recorded for the trend.

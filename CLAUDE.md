@@ -106,9 +106,22 @@ watch the test fail. Several guards here passed while the defect was reverted.
    the operator can flip it — see BLOCKED.md.)
 
 10. **Budgets, every deploy:** idle RSS under 300 MB, boot peak under 500 MB,
-    1,000 concurrent with zero failures, and **per-source ingest counts
-    unchanged or explained**. Never load-test within five minutes of a deploy,
-    and never with an expired token.
+    **500 concurrent with zero failures (enforced), 1,000 measured and
+    reported (informational)**, and **per-source ingest counts unchanged or
+    explained**. Never load-test within five minutes of a deploy, and never
+    with an expired token.
+
+    Why the bar is 500, decided by the operator 2026-08-08: the 1,000 step
+    sits exactly on the one-replica capacity edge, and whether the burst's
+    tail crosses the 10 s pool-acquire bound is arrival-shape dependent —
+    the same code recorded 0 and 71 failures on different mornings (LOAD.md).
+    A bar that flips on client arrival shape gates nothing. 500 has been
+    clean under every shape observed and is far beyond current traffic. No
+    second replica (cost), and the acquire timeout stays put — raising it
+    would fake the number. `tools/loadtest.py` encodes the verdict: it exits
+    non-zero iff any step at or under 500 has failures, and labels larger
+    steps informational. A 1,000-step failure is a trend to watch, not a
+    deploy blocker.
 
 11. **When optimising a resource, assert the work still happens.** Less work is
     less memory — every optimisation has a degenerate solution that scores

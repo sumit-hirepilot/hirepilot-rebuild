@@ -628,3 +628,20 @@ Idle 129 MB (limit 300), boot peak 205 MB (limit 500). All four rule-10
 budgets pass on the final deployed state. The morning's arrival-shape note
 stands: exactly 1,000 on one replica sits at the capacity edge, and this run
 cleared it.
+
+## 2026-08-08 — the bar is DECIDED: 500 clean enforced, 1,000 informational
+
+Operator decision, closing the BLOCKED.md item: no second replica; accept
+"500 concurrent clean, 1,000 best-effort". Grounds are this file's own
+record — at identical capacity and identical code the 1,000 step returned
+0 and 71 failures on different runs, because whether the burst's tail
+crosses the 10 s acquire bound depends on client arrival shape. A bar that
+flips on arrival shape gates nothing; 500 has been clean under every shape
+observed.
+
+`tools/loadtest.py` now IS the bar: exit 1 iff any step ≤ 500 has failures;
+steps above 500 print as informational. Proven on stubs in all three
+directions before trusting it (known-good → exit 0; failures under the bar
+→ exit 1; failures only above the bar → exit 0 with the informational
+label), because a verdict instrument gets a known-good and a known-bad
+reading first.

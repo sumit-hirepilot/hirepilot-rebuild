@@ -21,6 +21,17 @@ import sys
 import time
 from urllib.parse import urlparse
 
+# The bar, decided by the operator 2026-08-08: 500 concurrent CLEAN is
+# enforced; 1,000 is measured and reported but informational. Reasoning: at
+# identical capacity the 1,000 step sits exactly on the one-replica capacity
+# edge, and whether the burst's tail crosses the 10s pool-acquire bound is
+# arrival-shape dependent - the same code recorded 0 and 71 failures on
+# different mornings (LOAD.md, 2026-08-08). A bar that flips on client
+# arrival shape gates nothing; 500 has been clean under every shape observed
+# and is far beyond current traffic. No second replica (cost), and the
+# acquire timeout stays where it is (raising it fakes the number).
+ENFORCED_MAX_USERS = int(__import__('os').environ.get('ENFORCED_MAX_USERS') or 500)
+
 BASE = sys.argv[1] if len(sys.argv) > 1 else "https://backend-production-e6a8.up.railway.app"
 TOKEN = sys.argv[2] if len(sys.argv) > 2 else ""
 STEPS = [int(x) for x in (__import__('os').environ.get('STEPS') or '50,200,500,1000').split(',')]
@@ -144,6 +155,22 @@ async def main():
         await asyncio.sleep(20)
 
     print("\n" + json.dumps(rows, indent=1))
+
+    # The verdict, so this instrument IS the bar rather than a number someone
+    # reads against a rule they remember. Steps at or under the enforced
+    # ceiling must be failure-free; larger steps are reported, never fatal.
+    enforced = [r for r in rows if r["users"] <= ENFORCED_MAX_USERS]
+    info = [r for r in rows if r["users"] > ENFORCED_MAX_USERS]
+    bad = [r for r in enforced if r["failed"]]
+    for r in info:
+        print(f"informational: {r['users']} users, {r['failed']} failed "
+              f"(beyond the enforced bar of {ENFORCED_MAX_USERS} clean)")
+    if bad:
+        print(f"\nBAR FAILED: {', '.join(str(r['users']) for r in bad)} users "
+              f"had failures at or under the enforced {ENFORCED_MAX_USERS}.")
+        sys.exit(1)
+    print(f"\nBAR MET: every step at or under {ENFORCED_MAX_USERS} users was failure-free.")
+    sys.exit(0)
 
 
 asyncio.run(main())
