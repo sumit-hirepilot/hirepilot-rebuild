@@ -1099,6 +1099,34 @@ const STATEMENTS = [
          TG_OP, COALESCE(OLD.id, NEW.id);
      END;
      $fn$ LANGUAGE plpgsql`,
+
+  /*
+   * E5 — the browser extension used to pair by having the user paste their
+   * whole 7-day login JWT into a text box: a password in a field, copied
+   * through the clipboard, living in the extension exactly as long as a
+   * session. This table backs the replacement — a short, single-use pairing
+   * CODE the user reads from Settings and types into the extension, which the
+   * extension exchanges once for its own token. The login token never leaves
+   * the web app.
+   *
+   * Only the HASH of the code is stored, never the code itself: a snapshot of
+   * this table must not hand someone a live, unconsumed pairing. Rows are
+   * short-lived (minutes) and pruned on the next create, so it stays tiny —
+   * the 500 MB volume that filled once is a standing constraint here.
+   */
+  `CREATE TABLE IF NOT EXISTS extension_pairings (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    consumed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  // Unambiguous lookup on redeem, and it makes an (astronomically unlikely)
+  // duplicate code a loud INSERT failure the create path retries, never two
+  // rows a single redeem would consume at once.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_extension_pairings_code_hash ON extension_pairings(code_hash)`,
+  `CREATE INDEX IF NOT EXISTS idx_extension_pairings_user ON extension_pairings(user_id)`,
 ];
 
 /*

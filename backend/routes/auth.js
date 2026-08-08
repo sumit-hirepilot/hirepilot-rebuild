@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, pool } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { boundText } = require('../services/requestBounds');
+const { createPairing, redeemPairing } = require('../services/extensionPairing');
 
 const router = express.Router();
 
@@ -192,6 +194,74 @@ router.get('/export', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Export failed:', err.message);
     res.status(500).json({ error: 'Could not build your export just now. Try again shortly.' });
+  }
+});
+
+/*
+ * E5 — extension pairing, the replacement for pasting the login token.
+ *
+ * POST /api/auth/extension/pair (authenticated): the logged-in web app asks
+ * for a short one-time code and shows it. The login JWT is never exposed to
+ * the extension or the clipboard.
+ */
+router.post('/extension/pair', verifyToken, async (req, res) => {
+  try {
+    const { code, expiresAt, ttlSeconds } = await createPairing(req.user.id);
+    res.json({ code, expiresAt, ttlSeconds });
+  } catch (err) {
+    console.error('extension pair failed:', err.message);
+    res.status(500).json({ error: 'Could not create a pairing code just now. Try again in a moment.' });
+  }
+});
+
+/*
+ * POST /api/auth/extension/exchange (UNAUTHENTICATED by design): the extension
+ * posts the code the user typed and receives its own token. It carries no
+ * HirePilot credential yet — the code IS the one-time bearer of the pairing.
+ *
+ * The code's own entropy plus a ten-minute, single-use lifetime is the
+ * brute-force defence: ~40 bits redeemable once inside ten minutes is not a
+ * space an attacker walks. A wrong code and an expired code are one answer, so
+ * probing cannot distinguish "no such code" from "too late".
+ */
+router.post('/extension/exchange', async (req, res) => {
+  try {
+    const { value: code } = boundText(req.body?.code, { max: 64 });
+    if (!code.trim()) {
+      return res.status(400).json({ error: 'Enter the pairing code from HirePilot → Settings.' });
+    }
+
+    const userId = await redeemPairing(code);
+    if (!userId) {
+      return res.status(400).json({
+        error: 'That pairing code is invalid or has expired. Generate a fresh one in HirePilot → Settings.',
+      });
+    }
+
+    const u = await query('SELECT id, email, full_name FROM users WHERE id = $1', [userId]);
+    if (!u.rows.length) {
+      return res.status(400).json({ error: 'Pairing failed — that account no longer exists.' });
+    }
+    const user = u.rows[0];
+
+    // A deliberately-paired device earns a longer-lived token than a browser
+    // session (30 days by default), delivered by the code exchange rather than
+    // copied by hand. Still a signed, expiring JWT; scoped so a future audit
+    // can tell an extension token from a web login, and revoked with the
+    // account like every other credential.
+    const token = jwt.sign(
+      { id: user.id, email: user.email, scope: 'extension' },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: process.env.EXTENSION_TOKEN_EXPIRY || '30d' }
+    );
+
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, fullName: user.full_name },
+    });
+  } catch (err) {
+    console.error('extension exchange failed:', err.message);
+    res.status(500).json({ error: 'Pairing failed just now. Generate a fresh code and try again.' });
   }
 });
 

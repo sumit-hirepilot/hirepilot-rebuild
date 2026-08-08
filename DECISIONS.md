@@ -1655,3 +1655,101 @@ So E3 finds nothing to fix: the load-bearing selectors are current, and the
 multi-step careers-domain flow is a runtime concern the adapter already
 handles. The standing check (frontend jest + tools/check-greenhouse-selectors)
 will catch a future regression on the modern board without a human.
+
+## D64 — E4 onboarding chip merge: the premise was half-right, and the honest half is fixed
+
+The brief said the skills ChipInput "merges skills into one chip when typed
+fast," suspected a stale closure, and asked for a Playwright repro at human key
+timing. Held against the code and the real browser, the premise splits in two —
+and, as warned, the "typed fast" half did not hold.
+
+WHAT DID NOT REPRODUCE. Real keystrokes never merged. Driven under Chrome for
+Testing at 25 ms/char with an Enter between each skill, and again with
+zero-gap per-word inserts plus Enter, the field produced three correct chips
+every time. It cannot merge that way: each keydown is its own browser task, so
+React commits `setDraft('')` and the appended value between Enters, and the next
+addChip reads fresh state. Human typing (tens of ms between keys) is far slower
+than a React commit (~1–16 ms), so the "two Enters inside one batch" race the
+stale closure would need is not reachable by a person typing. Three timings,
+zero merges — logged rather than chased further (rule 12).
+
+WHAT DID REPRODUCE. Pasting a whole list into the field and committing once.
+`Input.insertText('Figma, Design Systems, User Research')` + Enter, on the OLD
+code, made ONE chip carrying the entire string — addChip trimmed the whole
+draft and pushed it verbatim. That is the real, deterministic collapse, and the
+realistic vector: people paste comma-separated skill lists.
+
+THE FIX (shipped, commit 88ea362, frontend deployed). commit() reads the live
+value off the DOM event instead of the possibly-stale `draft` state, folds
+tokens onto a ref that always holds the latest committed list so a second
+commit in the same tick appends instead of clobbering (closes the stale-closure
+door the brief pointed at, even though a person can't open it), and splits on
+comma/newline so a pasted run becomes several chips. Pinned in
+frontend/__tests__/onboardingChipInput.test.js, proven red on the old merge
+(1 chip vs 3). Verified on production: comma-paste now yields
+["Figma","Design Systems","User Research"], fast typing still yields three.
+
+ONE MERGE LEFT, AND WHY IT STAYS. A NEWLINE-separated paste still lands as one
+chip. A single-line <input> sanitizes newlines to spaces before any handler
+sees them, and splitting on spaces would shatter multi-word skills ("Design
+Systems" → "Design","Systems"). So that collapse is inherent to a single-line
+control, not a closure bug, and the safe fix (a real multi-value control) is
+out of scope for E4. Recorded, not hidden.
+
+## D65 — E5: the extension pairs with a one-time code, not the pasted login token
+
+The extension's whole authentication was the user copying their 7-day login
+JWT out of Settings and pasting it into a text box. A password in a field,
+carried through the clipboard, sitting in extension storage for a session's
+worth of time. The Settings button even called itself "Copy pairing code"
+while copying the raw token, under text that said "treat it like your
+password" — the UI already knew what it should be and wasn't.
+
+SHIPPED. A real pairing-code flow, additive and idempotent end to end:
+
+- **Schema** (migration appended): `extension_pairings` — user_id, code_hash,
+  expires_at, consumed_at. Only the SHA-256 of the code is stored; a dump of
+  the table hands nobody a live pairing. UNIQUE on code_hash for unambiguous
+  redeem; rows pruned on the next create so the table cannot grow (the 500 MB
+  volume that filled once is the standing reason).
+
+- **Service** `extensionPairing.js`: an 8-char code from a 32-symbol alphabet
+  with 0/O/1/I/L/U removed (~40 bits, no glyph confusion), formatted XXXX-XXXX,
+  10-minute TTL. Redeem is a single atomic UPDATE guarded on
+  `consumed_at IS NULL AND expires_at > now` — single-use is enforced by the
+  database, so two extensions racing one code cannot both win.
+
+- **Endpoints** on /api/auth: `POST /extension/pair` (authenticated) mints and
+  returns the code once; `POST /extension/exchange` (unauthenticated by design
+  — the code is the one-time bearer) redeems it for the extension's OWN token,
+  scoped `extension`, 30-day (a deliberately-paired device, not a web session).
+  A wrong code and an expired code are one answer, so probing learns nothing.
+
+- **Web UI** (Settings → Integrations): "Generate pairing code" calls /pair and
+  shows the code with its expiry; the old copy-the-login-token button and its
+  "valid 7 days / treat it like your password" text are gone.
+
+- **Extension**: the popup's token textarea is now a pairing-code field; a new
+  `HP_PAIR` message in the background worker does the unauthenticated exchange
+  and stores the returned token. The user's login JWT never reaches the
+  clipboard or extension storage.
+
+Tests: backend extensionPairing.test.js (hash-only storage proven red against a
+plaintext-storing variant; single-use, expiry, scope, wrong-code all pinned),
+frontend extensionPairingSettings.test.js (Generate renders the server code;
+copy copies the code, never the login token; the old scare copy is asserted
+gone). Backend 733, frontend 348, all green.
+
+## D66 — correction: /settings had its OWN copy of the E4 chip-merge bug
+
+E4's notes recorded that "/settings uses a different chip component,
+unaffected." Reading settings.js for E5 disproved that: it carries its own
+inline ChipInput, byte-identical to onboarding's OLD defective one, used for
+the blacklist and dream-company lists — so pasting "Acme, Globex" collapsed
+into a single bogus company chip there too. The earlier note was wrong.
+
+Fixed in the same file I was already editing for E5, with the identical E4 fix
+(live-DOM read, ref-folded commit, comma/newline split). The two copies now
+share the fix; the onboarding test pins the logic. Extracting a single shared
+ChipInput component would be the real cure but is a refactor beyond this task's
+files, so both copies were corrected in place and this divergence recorded.

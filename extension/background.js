@@ -1012,6 +1012,39 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
             autoSubmit: s.autoSubmit !== false,
           });
         }
+        /*
+         * E5 — pair with a one-time code instead of a pasted login token.
+         *
+         * The user reads a short code from HirePilot and types it into the
+         * popup; this exchanges it, unauthenticated, for the extension's OWN
+         * token and stores that. The user's 7-day login JWT never travels
+         * through the clipboard or lives in extension storage - only a token
+         * minted for this device does.
+         */
+        case 'HP_PAIR': {
+          const code = String(msg.code || '').trim();
+          if (!code) return respond({ ok: false, reason: 'Enter the pairing code from HirePilot first.' });
+          const apiBase = (msg.apiBase || '').trim() || (await config()).apiBase;
+          try {
+            const res = await fetch(`${apiBase}/api/auth/extension/exchange`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code }),
+            });
+            const text = await res.text();
+            let body = null;
+            try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+            if (!res.ok || !body?.token) {
+              return respond({ ok: false, reason: body?.error || `Pairing failed (${res.status}).` });
+            }
+            await chrome.storage.local.set({ token: body.token, apiBase });
+            return respond({ ok: true });
+          } catch (err) {
+            return respond({ ok: false, reason: err.message });
+          }
+        }
+        // Retained for internal callers/tests; the popup pairs via HP_PAIR and
+        // never asks the user to paste a token.
         case 'HP_SET_TOKEN':
           await chrome.storage.local.set({
             token: msg.token,

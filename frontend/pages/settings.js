@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import styles from '../styles/Dashboard.module.css';
 import page from '../styles/Settings.module.css';
@@ -13,13 +13,31 @@ const TABS = ['Account', 'Apply', 'Memory', 'Portfolio', 'Plans', 'Referrals', '
 
 const BASE_URL = API_BASE;
 
+/*
+ * Same chip-merge fix as onboarding's ChipInput (E4). This file carried its own
+ * copy of the identical defective component — used for the blacklist and dream
+ * company lists — so pasting "Acme, Globex" collapsed into one bogus company
+ * chip here too. commit() reads the live DOM value (never stale draft state),
+ * folds onto a ref that holds the latest committed list so a same-tick second
+ * commit appends instead of clobbering, and splits on comma/newline.
+ */
 function ChipInput({ values, onChange, placeholder }) {
   const [draft, setDraft] = useState('');
-  const addChip = () => {
-    const v = draft.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+
+  const commit = (raw) => {
+    const parts = String(raw).split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
     setDraft('');
+    if (!parts.length) return;
+    const current = valuesRef.current;
+    const next = [...current];
+    for (const p of parts) if (!next.includes(p)) next.push(p);
+    if (next.length === current.length) return;
+    valuesRef.current = next;
+    onChange(next);
   };
+
   return (
     <div className={page.chipInputWrap}>
       {values.map((v) => (
@@ -32,8 +50,8 @@ function ChipInput({ values, onChange, placeholder }) {
         className={page.chipInput}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addChip(); } }}
-        onBlur={addChip}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(e.currentTarget.value); } }}
+        onBlur={(e) => commit(e.currentTarget.value)}
         placeholder={placeholder}
       />
     </div>
@@ -247,6 +265,33 @@ export default function Settings() {
   const flash = (text) => {
     setMessage(text);
     setTimeout(() => setMessage(''), 4000);
+  };
+
+  /*
+   * E5 — the extension pairing code. The old flow copied the login JWT to the
+   * clipboard; this asks the server for a short one-time code and shows it. The
+   * login token never leaves this page.
+   */
+  const [pairing, setPairing] = useState(null); // { code, ttlSeconds } once generated
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const generatePairingCode = async () => {
+    setPairingBusy(true);
+    try {
+      const res = await fetch(`${base}/api/auth/extension/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        flash(body.error || 'Could not create a pairing code. Try again.');
+        return;
+      }
+      setPairing({ code: body.code, ttlSeconds: body.ttlSeconds || 600 });
+    } catch {
+      flash('Could not reach HirePilot to create a pairing code.');
+    } finally {
+      setPairingBusy(false);
+    }
   };
 
   const recalcMatches = (authToken) => {
@@ -891,23 +936,44 @@ export default function Settings() {
                 <p className={page.integrationName}>HirePilot Apply browser extension</p>
                 <p className={page.integrationStatus}>
                   Submits your approved applications on employer sites, in your own
-                  browser session. Load the extension, then paste this access token
-                  into its Connect screen. The token is your login session
-                  (valid 7 days) - treat it like your password.
+                  browser session. Load the extension, click Connect, and enter a
+                  one-time pairing code. The code works once and expires in ten
+                  minutes &mdash; your login stays on this page.
                 </p>
               </div>
               <button
                 className={page.connectButton}
-                onClick={() => {
-                  navigator.clipboard.writeText(token).then(
-                    () => flash('Access token copied - paste it in the extension popup.'),
-                    () => flash('Could not copy. Copy it from your browser storage instead.')
-                  );
-                }}
+                onClick={generatePairingCode}
+                disabled={pairingBusy}
+                aria-busy={pairingBusy}
               >
-                Copy pairing code
+                {pairingBusy ? 'Generating…' : (pairing ? 'New pairing code' : 'Generate pairing code')}
               </button>
             </div>
+            {pairing ? (
+              <div className={page.integrationRow} aria-live="polite">
+                <div style={{ minWidth: 0 }}>
+                  <p className={page.integrationName} style={{ fontFamily: 'monospace', fontSize: '1.4rem', letterSpacing: '0.12em' }}>
+                    {pairing.code}
+                  </p>
+                  <p className={page.integrationStatus}>
+                    Type this into the extension&rsquo;s Connect screen within{' '}
+                    {Math.round((pairing.ttlSeconds || 600) / 60)} minutes. It can be used once.
+                  </p>
+                </div>
+                <button
+                  className={page.connectButton}
+                  onClick={() => {
+                    navigator.clipboard.writeText(pairing.code).then(
+                      () => flash('Pairing code copied.'),
+                      () => flash('Could not copy — type the code shown above.')
+                    );
+                  }}
+                >
+                  Copy code
+                </button>
+              </div>
+            ) : null}
             {/*
               * Disabled, not clickable-then-apologetic.
               *

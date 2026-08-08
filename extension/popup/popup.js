@@ -96,18 +96,31 @@ function escapeHtml(s) {
 }
 
 $('connectBtn').addEventListener('click', async () => {
-  const token = $('token').value.trim();
+  const code = $('pairingCode').value.trim();
   const apiBase = $('apiBase').value.trim() || undefined;
-  if (!token) { $('connectErr').textContent = 'Paste your access token first.'; return; }
+  if (!code) { $('connectErr').textContent = 'Enter the pairing code from HirePilot first.'; return; }
   $('connectErr').textContent = '';
-  await send({ type: 'HP_SET_TOKEN', token, apiBase });
-  const q = await send({ type: 'HP_QUEUE' });
-  if (!q.ok) {
-    $('connectErr').textContent = q.reason || 'Could not reach HirePilot with that token.';
-    await send({ type: 'HP_DISCONNECT' });
-    return;
+  $('connectBtn').disabled = true;
+  try {
+    // Exchange the one-time code for this extension's own token. The background
+    // worker does the network call and stores the token; the popup never sees
+    // or holds a credential.
+    const paired = await send({ type: 'HP_PAIR', code, apiBase });
+    if (!paired.ok) {
+      $('connectErr').textContent = paired.reason || 'Could not pair with that code.';
+      return;
+    }
+    const q = await send({ type: 'HP_QUEUE' });
+    if (!q.ok) {
+      $('connectErr').textContent = q.reason || 'Paired, but could not reach HirePilot.';
+      await send({ type: 'HP_DISCONNECT' });
+      return;
+    }
+    $('pairingCode').value = '';
+    refresh();
+  } finally {
+    $('connectBtn').disabled = false;
   }
-  refresh();
 });
 
 /*
