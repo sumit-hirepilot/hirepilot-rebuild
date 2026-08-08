@@ -280,7 +280,7 @@ follows from it:
   point at the new backend. MIGRATION.md records what moved and what did not.
 
 
-## Operator dependency — 1,000 concurrent needs more than one replica
+## RESOLVED 2026-08-08 — 1,000 concurrent, zero failures (was: needs more than one replica)
 
 The load bar is 1,000 concurrent with zero failures. At 1,000 the service now
 returns 1–10 client timeouts per run (never a 5xx); 50, 200 and 500 are all
@@ -308,5 +308,13 @@ past the 10s acquire bound.
 The acquire bound is deliberately NOT being raised to clear the bar: that would
 make every user wait 20s instead of failing fast, and would make the number
 look met without adding capacity.
+
+**RESOLVED.** Raising the pool from 15 to 40 - against a database that allows
+100 - took the failures to zero at 1,000 concurrent: 3,000 requests, 3,000 ok,
+idle 189MB, peak 227MB. No replica was added. The failing runs stay recorded in
+LOAD.md as they happened; the passing run is appended, not substituted.
+
+A second replica is still the lever if throughput must rise further, and the
+pool was sized so two of them fit under max_connections.
 
 Work continues meanwhile — this does not block the feature queue.

@@ -512,3 +512,35 @@ the pool telling the truth about being over capacity.
 **Still failing at 1,000. The remaining lever is a second replica**, which is
 the operator's. 50, 200 and 500 are clean, memory is well inside budget
 throughout, and the p95 curve is monotonic.
+
+
+## 2026-08-08 — the 1,000-concurrent bar is MET, and it was the pool
+
+**The failing runs above stand exactly as recorded.** They happened, with those
+numbers and those ruled-out causes, and the entry that says the bar was not met
+is not being edited. This is a later run after a real fix, appended.
+
+| concurrent | requests | ok | failed | p95 | wall | RSS |
+|---|---|---|---|---|---|---|
+| 50 | 150 | 150 | **0** | 1,619 ms | 2.8 s | 168 → 195 MB |
+| 200 | 600 | 600 | **0** | 3,782 ms | 5.8 s | 195 → 227 MB |
+| 500 | 1,500 | 1,500 | **0** | 9,861 ms | 13.9 s | 176 → 300 MB |
+| **1,000** | **3,000** | **3,000** | **0** | 14,478 ms | 30 s | 183 → 273 MB |
+
+Budgets: idle **189 MB** (limit 300), peak **227 MB** (limit 500).
+
+**The cause was ours, not the tier.** The pool was `max: 15` against a database
+reporting `max_connections = 100` with 10 in use. Every failure in the earlier
+runs was one message — `timeout exceeded when trying to connect` from pg-pool.
+At 40 connections the wall went 46.8 s → 21.6 s → and the failures reached zero.
+
+**What the earlier entry got wrong, and why.** It said the cause could not be
+separated from trial-tier variance. That was true of the evidence in hand and
+false about the system: the evidence was poor because one run used a stale
+token, so two of three paths returned 401 and the failures were miscounted as
+timeouts rather than as 500s. A load test is an instrument, and an
+unauthenticated instrument measures something else.
+
+**The second replica is no longer needed for this bar.** It remains the lever
+if throughput has to rise further — 40 slots at ~0.3 s is ~133 req/s, and the
+pool was deliberately sized so two replicas still fit under 100 connections.
