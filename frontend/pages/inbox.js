@@ -63,6 +63,12 @@ export default function Inbox() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Feature 12 - review linking. Board rows to offer, the chosen id, and the
+  // count of actionable messages the matcher refused to guess about.
+  const [needsReview, setNeedsReview] = useState(0);
+  const [boardRows, setBoardRows] = useState(null);
+  const [linkChoice, setLinkChoice] = useState('');
+  const [linking, setLinking] = useState(false);
 
   const load = useCallback(async (t, cat, q) => {
     const params = new URLSearchParams();
@@ -76,6 +82,7 @@ export default function Inbox() {
     setMessages(d.messages || []);
     setCounts(d.counts || {});
     setProxyEmail(d.proxyEmail || null);
+    setNeedsReview(Number(d.needsReview) || 0);
     // Older API payloads carry no flag; treat absence as unknown rather than
     // as dead, so a stale backend does not render a false outage.
     setInboundConfigured(typeof d.inboundConfigured === 'boolean' ? d.inboundConfigured : null);
@@ -96,8 +103,43 @@ export default function Inbox() {
     if (res && res.ok) {
       const d = await res.json();
       setSelected(d.message);
+      setLinkChoice('');
+      // An actionable message with no application needs the board rows for
+      // the review select - fetch them as the reader opens, not on focus,
+      // so the options are there by the time a hand reaches the control.
+      const msg = d.message || {};
+      if (!msg.application_id && ['interview', 'rejection', 'offer'].includes(msg.category) && boardRows === null) {
+        loadBoardRows(token);
+      }
       // Reflect the read state without a round trip for the whole list.
       setMessages((prev) => (prev || []).map((m) => (m.id === id ? { ...m, is_read: true } : m)));
+    }
+  };
+
+  const loadBoardRows = useCallback(async (t) => {
+    const res = await fetch(`${BASE}/api/tracker`, {
+      headers: { Authorization: `Bearer ${t}` },
+    }).catch(() => null);
+    if (!res || !res.ok) { setBoardRows([]); return; }
+    const d = await res.json();
+    setBoardRows(Object.values(d.columns || {}).flat());
+  }, []);
+
+  const linkMessage = async () => {
+    if (!selected || !linkChoice) return;
+    setLinking(true);
+    try {
+      const res = await fetch(`${BASE}/api/inbox/${selected.id}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ applicationId: Number(linkChoice) }),
+      });
+      if (res.ok) {
+        setSelected((prev) => (prev ? { ...prev, application_id: Number(linkChoice) } : prev));
+        load(token, category, search);
+      }
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -164,6 +206,16 @@ export default function Inbox() {
               mail here. It reaches your real inbox either way.
             </p>
           )}
+        </div>
+      )}
+
+      {needsReview > 0 && (
+        <div className={page.proxyBar}>
+          <p className={page.proxyHint}>
+            {needsReview} message{needsReview === 1 ? ' needs' : 's need'} you to
+            say which application {needsReview === 1 ? 'it belongs' : 'they belong'} to.
+            Open one and pick the application — nothing is filed by guesswork.
+          </p>
         </div>
       )}
 
@@ -238,6 +290,27 @@ export default function Inbox() {
               {selected.otp_code && (
                 <div className={page.otpBox}>
                   Verification code <strong>{selected.otp_code}</strong>
+                </div>
+              )}
+              {/* Feature 12 - the matcher links only on unique evidence;
+                  everything else is the user's call, made here. */}
+              {!selected.application_id && ['interview', 'rejection', 'offer'].includes(selected.category) && (
+                <div className={page.otpBox}>
+                  <label htmlFor="hp-link-app">Which application is this about?</label>{' '}
+                  <select
+                    id="hp-link-app"
+                    aria-label="Which application is this about?"
+                    value={linkChoice}
+                    onChange={(e) => setLinkChoice(e.target.value)}
+                  >
+                    <option value="">Choose an application…</option>
+                    {(boardRows || []).map((r) => (
+                      <option key={r.id} value={r.id}>{r.title} — {r.company_name || 'Company not stated'}</option>
+                    ))}
+                  </select>{' '}
+                  <button type="button" className={page.ghostBtn} onClick={linkMessage} disabled={linking || !linkChoice}>
+                    {linking ? 'Linking…' : 'Link'}
+                  </button>
                 </div>
               )}
               <pre className={page.readerBody}>{selected.body_text || '(no text content)'}</pre>

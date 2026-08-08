@@ -338,3 +338,20 @@ What only the operator can decide:
  3. commission real capacity work on the feed query (the only lever that adds
     capacity without cost).
 Raising the acquire timeout stays rejected for the recorded reason.
+
+## Feature 12 — the live mail wire is operator work; the routing logic is not
+
+Recruiter-email routing shipped 2026-08-08: evidence-only matching (unique or
+nothing), a review state for everything else, user-confirmed linking that then
+advances the stage. All of it is exercisable only through POST
+/api/inbox/inbound, which answers 503 until the operator provides:
+
+ 1. `INBOUND_MAIL_SECRET` on the backend service, and
+ 2. a mail provider (or Gmail OAuth app) actually posting inbound mail there —
+    `INBOUND_MAIL_DOMAIN` plus MX/forwarding for it, or
+    `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` + consent screen for
+    the E1 Gmail read-only variant, which no code can conjure.
+
+Until then the inbox states plainly that forwarding is not connected (shipped
+in step 2), and the routing behaviour is pinned by 8 unit tests through the
+real route including the meta.com-vs-Metabase case the old matcher got wrong.

@@ -32,6 +32,7 @@ function mockListQueries() {
   query
     .mockResolvedValueOnce({ rows: [] })                                        // messages
     .mockResolvedValueOnce({ rows: [] })                                        // counts
+    .mockResolvedValueOnce({ rows: [{ n: 0 }] })                                // needsReview (feature 12)
     .mockResolvedValueOnce({ rows: [{ proxy_email: 'hp-x@hirepilot-mail.com' }] }); // proxy lookup
 }
 

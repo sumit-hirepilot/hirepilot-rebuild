@@ -64,6 +64,51 @@ function extractOtp(subject, body) {
   return near ? (near[1] || near[2]) : null;
 }
 
+/*
+ * Feature 12 — matching a message to an application takes EVIDENCE, and the
+ * evidence must be unique.
+ *
+ * The old matcher linked "the newest application whose company name CONTAINS
+ * the sender's domain token". Containment is a guess - mail from meta.com
+ * linked to an application at Metabase, and the stage-advance then moved the
+ * wrong application. E1's rule: unmatched goes to review, never guessed.
+ *
+ * A candidate matches when the normalised company name EQUALS the sender's
+ * org token, or the job's own URLs live on the sender's registrable domain.
+ * Two candidates is not a match - the human decides from the review state.
+ */
+const DECISIVE_STAGE = { interview: 'interviewing', rejection: 'rejected', offer: 'offer' };
+
+const normalizeCompany = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Two-label public suffixes where "last two labels" would make every
+// co.uk sender match every co.uk employer. Conservative and small on
+// purpose: an unlisted suffix means a missed match, never a wrong one.
+const TWO_LABEL_SUFFIXES = new Set(['co.uk', 'org.uk', 'ac.uk', 'com.au', 'net.au', 'co.in', 'co.nz', 'co.jp', 'com.br']);
+function registrableDomain(host) {
+  const labels = String(host || '').toLowerCase().split('.').filter(Boolean);
+  if (labels.length < 2) return '';
+  const lastTwo = labels.slice(-2).join('.');
+  if (TWO_LABEL_SUFFIXES.has(lastTwo) && labels.length >= 3) return labels.slice(-3).join('.');
+  return lastTwo;
+}
+function hostOf(url) {
+  try { return new URL(url).hostname.toLowerCase(); } catch { return ''; }
+}
+
+function matchApplication(candidates, senderDomain) {
+  const senderReg = registrableDomain(senderDomain);
+  if (!senderReg) return null;
+  const org = senderReg.split('.')[0];
+
+  const hits = candidates.filter((c) => {
+    if (org && normalizeCompany(c.company_name) === org) return true;
+    return [c.job_url, c.company_url].some((u) => u && registrableDomain(hostOf(u)) === senderReg);
+  });
+  // Unique or nothing. Two candidates means the human decides.
+  return hits.length === 1 ? hits[0] : null;
+}
+
 // The address recruiter mail is forwarded to. Created on first request so an
 // existing account gets one without a backfill.
 async function ensureProxyEmail(userId) {
@@ -121,7 +166,18 @@ router.get('/', verifyToken, async (req, res) => {
       [req.user.id]
     );
 
+    // Feature 12 - actionable mail nothing could be linked to by evidence.
+    // These wait for the user to say which application they belong to; the
+    // count is what lets the UI say so instead of the messages sitting silent.
+    const review = await query(
+      `SELECT COUNT(*)::int AS n FROM inbox_messages
+        WHERE user_id = $1 AND application_id IS NULL
+          AND category IN ('interview', 'rejection', 'offer')`,
+      [req.user.id]
+    );
+
     res.json({
+      needsReview: review.rows[0]?.n || 0,
       messages: r.rows,
       counts: Object.fromEntries(counts.rows.map((c) => [c.category, c.n])),
       proxyEmail: await ensureProxyEmail(req.user.id),
@@ -195,19 +251,20 @@ router.post('/inbound', async (req, res) => {
     const fromEmail = String(b.from || b.sender || b.From || '').slice(0, 320);
     const fromName = (fromEmail.match(/^"?([^"<]+?)"?\s*</) || [])[1] || null;
 
-    // Match to an application by the sending domain, so a reply lands on the
-    // right row rather than floating loose in the inbox.
+    // Match to an application on unique evidence (see matchApplication above)
+    // so a reply lands on the RIGHT row - or on none, for the user to link.
     const domain = (fromEmail.match(/@([a-z0-9.-]+)/i) || [])[1] || '';
-    const org = domain.split('.').slice(-2)[0] || '';
     let applicationId = null;
-    if (org) {
+    if (domain) {
       const a = await query(
-        `SELECT a.id FROM applications a JOIN jobs j ON j.id = a.job_id
-          WHERE a.user_id = $1 AND lower(j.company_name) LIKE $2
-          ORDER BY a.created_at DESC LIMIT 1`,
-        [userId, `%${org.toLowerCase()}%`]
+        `SELECT a.id, a.status, a.is_manual, j.company_name, j.job_url, j.company_url
+           FROM applications a JOIN jobs j ON j.id = a.job_id
+          WHERE a.user_id = $1
+          ORDER BY a.created_at DESC LIMIT 200`,
+        [userId]
       );
-      applicationId = a.rows[0]?.id || null;
+      const matched = matchApplication(a.rows, domain);
+      applicationId = matched ? matched.id : null;
     }
 
     const category = categorise(subject, body);
@@ -220,7 +277,10 @@ router.post('/inbound', async (req, res) => {
        RETURNING id`,
       [
         userId, applicationId, String(b['Message-Id'] || b.messageId || '').slice(0, 500) || null,
-        fromEmail, fromName, subject, body, category, extractOtp(subject, body), org || null,
+        fromEmail, fromName, subject, body, category, extractOtp(subject, body),
+        // The sender's org token, stored for display/search - a hint about
+        // who wrote, never the basis of a link.
+        registrableDomain(domain).split('.')[0] || null,
       ]
     );
 
@@ -230,12 +290,13 @@ router.post('/inbound', async (req, res) => {
      * the conversation got to. Letting a mail rewrite status would destroy the
      * evidence trail that makes "Applied" mean anything.
      */
-    if (applicationId && ['interview', 'rejection', 'offer'].includes(category)) {
-      const stage = category === 'rejection' ? 'rejected' : category === 'offer' ? 'offer' : 'interviewing';
+    if (applicationId && DECISIVE_STAGE[category]) {
+      // Same on-board rule the tracker uses: submitted rows and manual rows
+      // are conversations; drafts are not, whatever the mail says.
       await query(
         `UPDATE applications SET tracker_stage = $1, stage_changed_at = CURRENT_TIMESTAMP
-          WHERE id = $2 AND user_id = $3 AND status = 'submitted'`,
-        [stage, applicationId, userId]
+          WHERE id = $2 AND user_id = $3 AND (status = 'submitted' OR COALESCE(is_manual, FALSE) = TRUE)`,
+        [DECISIVE_STAGE[category], applicationId, userId]
       );
     }
 
@@ -243,6 +304,54 @@ router.post('/inbound', async (req, res) => {
   } catch (err) {
     console.error('POST /inbox/inbound failed:', err.message);
     res.status(500).json({ error: 'Could not accept message' });
+  }
+});
+
+/*
+ * Feature 12 — linking is the user's call.
+ *
+ * When evidence could not pick a unique application, the message waits here.
+ * The user says which application the mail is about, and only THEN does the
+ * stage rule run - a human confirmation is the evidence the matcher lacked.
+ */
+router.post('/:id/link', verifyToken, async (req, res) => {
+  try {
+    const messageId = Number(req.params.id);
+    const applicationId = Number(req.body?.applicationId);
+    if (!Number.isInteger(messageId) || !Number.isInteger(applicationId)) {
+      return res.status(400).json({ error: 'applicationId is required' });
+    }
+
+    const m = await query(
+      'SELECT id, category FROM inbox_messages WHERE id = $1 AND user_id = $2',
+      [messageId, req.user.id]
+    );
+    if (!m.rows.length) return res.status(404).json({ error: 'Message not found' });
+
+    const a = await query(
+      'SELECT id FROM applications WHERE id = $1 AND user_id = $2',
+      [applicationId, req.user.id]
+    );
+    if (!a.rows.length) return res.status(404).json({ error: 'Application not found' });
+
+    await query(
+      'UPDATE inbox_messages SET application_id = $1 WHERE id = $2 AND user_id = $3',
+      [applicationId, messageId, req.user.id]
+    );
+
+    const stage = DECISIVE_STAGE[m.rows[0].category] || null;
+    if (stage) {
+      await query(
+        `UPDATE applications SET tracker_stage = $1, stage_changed_at = CURRENT_TIMESTAMP
+          WHERE id = $2 AND user_id = $3 AND (status = 'submitted' OR COALESCE(is_manual, FALSE) = TRUE)`,
+        [stage, applicationId, req.user.id]
+      );
+    }
+
+    res.json({ ok: true, applicationId, stage });
+  } catch (err) {
+    console.error('POST /inbox/:id/link failed:', err.message);
+    res.status(500).json({ error: 'Could not link that message' });
   }
 });
 
