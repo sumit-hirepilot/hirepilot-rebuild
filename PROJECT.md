@@ -751,3 +751,17 @@ Found and fixed, each proven red first:
    "See plans →").
 4. Agents page spoke two vocabularies ("Saved searches" beside "+ Create
    agent" / "No search agents yet") — unified to the D28 word.
+
+### L2 addendum — the fabricated scores also had to be UNSTORED, and the driver proved out
+
+The first deploy stopped new minting but the walk's own earlier browsing had
+already persisted defaults-only 0.30 rows, which the join replayed. Second
+pass: scores stripped at the response boundary whenever
+`profileScoreable:false`, plus a corrective migration (audit row first,
+idempotent) deleting match rows for profiles with no skills and no dated
+experience — by this project's own definition those are scores computed from
+no information. Verified live: the blank account's feed now serves
+`mode:all, profileScoreable:false` with every score null. And the re-score
+driver completed its first real run: `{"total":1044,"done":1044,
+"remaining":0,"complete":true}` — the formula banner retires itself
+everywhere.
