@@ -498,3 +498,19 @@ Suites: backend 670, frontend 318. Gate 11/11.
 Follow-up filed: from-url refuses Ashby postings whose public page exceeds
 2 MB even though the Ashby API path could serve them — the Harvey posting
 that produced the refusal is the repro.
+
+## 12. FEATURE 14 — referral finder  [shipped + VERIFIED live 2026-08-08]
+
+`GET /api/network/referral-path/:jobId` + a "Find a referral" section in the
+job drawer. Three honest ingredients only: the user's OWN tracked contacts at
+that company (matched by exact normalised equality — "Adyen B.V." is the
+user's judgement, not the code's substring), the addresses the posting itself
+publishes (extractContactEmails moved to services/referralPath, one
+definition, jobs.js imports it), and the three LinkedIn searches. Unstated
+company → no searches, with the reason. `areIdentifiedPeople:false` travels
+in every payload.
+
+Live: real Adyen job 3867 → the account's real tracked contact surfaced,
+3 LinkedIn search URLs built, no invented person anywhere. 8 backend tests
+(service + route) and 2 drawer tests, red-proven. Suites: backend 678,
+frontend 320. Gate 11/11.
