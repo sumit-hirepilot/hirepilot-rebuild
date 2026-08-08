@@ -1,10 +1,36 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { analyze } = require('../services/rejectionIntelligence');
 
 const router = express.Router();
 
 router.use(verifyToken);
+
+/*
+ * Feature 11 — rejection intelligence (D3). Conversion patterns across the
+ * caller's SENT applications; the analyzer enforces the 15-application floor
+ * and withholds every rate below it. Only rows that reached an employer
+ * (submitted, or manually vouched) can carry an outcome, so only those are
+ * read. LEFT JOIN on the score: an unscored application is a real state the
+ * analyzer buckets as such, never a dropped row.
+ */
+router.get('/rejections', async (req, res) => {
+  try {
+    const r = await query(
+      `SELECT j.source, j.title, a.status, a.tracker_stage, jm.overall_score
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+         LEFT JOIN job_matches jm ON jm.job_id = a.job_id AND jm.user_id = $1
+        WHERE a.user_id = $1 AND (a.status = 'submitted' OR COALESCE(a.is_manual, FALSE) = TRUE)`,
+      [req.user.id]
+    );
+    res.json(analyze(r.rows));
+  } catch (err) {
+    console.error('GET /analytics/rejections failed:', err.message);
+    res.status(500).json({ error: 'Could not compute rejection patterns' });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {

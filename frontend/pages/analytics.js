@@ -29,6 +29,9 @@ export default function Analytics() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [data, setData] = useState(null);
+  // Feature 11 - rejection intelligence. null = not loaded; the payload's own
+  // `sufficient` flag decides whether patterns or the honest floor renders.
+  const [rejections, setRejections] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const base = API_BASE;
@@ -38,6 +41,8 @@ export default function Analytics() {
     try {
       const res = await fetch(`${base}/api/analytics`, { headers: { Authorization: `Bearer ${authToken}` } });
       if (res.ok) setData(await res.json());
+      const rej = await fetch(`${base}/api/analytics/rejections`, { headers: { Authorization: `Bearer ${authToken}` } }).catch(() => null);
+      if (rej && rej.ok) setRejections(await rej.json());
     } catch (err) {
       console.error('Failed to load analytics', err);
     } finally {
@@ -150,6 +155,56 @@ export default function Analytics() {
                 ))
               )}
             </div>
+
+            {/* Feature 11 - why it isn't working, from recorded outcomes only.
+                A withheld rate renders as "not enough data (n)", never 0%:
+                the floor is what separates a measured zero from an absent
+                measurement. */}
+            {rejections && !rejections.sufficient && (
+              <div className={styles.card}>
+                <p className={page.sectionTitle}>Why it isn&rsquo;t working — patterns</p>
+                <p className={styles.emptyState}>
+                  Patterns need volume before they mean anything: you have
+                  {' '}{rejections.sentTotal} of the {rejections.needed} sent
+                  applications a claim has to be backed by. Keep applying —
+                  this section fills in on its own.
+                </p>
+              </div>
+            )}
+            {rejections && rejections.sufficient && (
+              <div className={styles.card}>
+                <p className={page.sectionTitle}>Why it isn&rsquo;t working — patterns from your {rejections.sentTotal} sent applications</p>
+                {[
+                  ['Response rate by source', rejections.bySource],
+                  ['Response rate by seniority band', rejections.bySeniority],
+                  ['Response rate by match score (today\u2019s calculation)', rejections.byScoreBand],
+                ].map(([title, groups]) => (
+                  <div key={title} style={{ marginBottom: 16 }}>
+                    <p className={page.sectionTitle}>{title}</p>
+                    {(groups || []).filter((g) => g.applications > 0).map((g) => (
+                      <div key={g.key} className={page.breakdownRow}>
+                        <span className={page.breakdownLabel}>{g.label}</span>
+                        <div className={page.breakdownTrack}>
+                          <div className={page.breakdownFill} style={{ width: `${g.responseRate ?? 0}%` }} />
+                        </div>
+                        <span className={page.breakdownCount}>
+                          {g.sufficient
+                            ? `${g.responseRate}%`
+                            : `not enough data (${g.applications})`}
+                          {' '}&middot; {g.responses} replied / {g.rejections} no / {g.ghosted} quiet / {g.pending} waiting
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <p className={styles.emptyState}>
+                  A response is an interview or an offer, counted against
+                  everything you sent — early pipelines read low rather than
+                  wrong. Score bands use today&rsquo;s calculation, not the
+                  score at the moment you applied.
+                </p>
+              </div>
+            )}
           </>
         )}
       </DashboardLayout>

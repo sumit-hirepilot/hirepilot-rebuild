@@ -64,11 +64,9 @@ let aggregationInFlight = false;
  * Found in the feature audit; carried into feature 2 because the fix is what
  * the chip can honestly say.
  */
-const EXPERIENCE_TERMS = {
-  senior: 'senior|sr\\.?|lead|head of',
-  staff: 'staff|principal|distinguished',
-  entry: 'junior|jr\\.?|entry|intern|graduate',
-};
+// Moved to services/experienceBands so feature 11's service does not have to
+// require a route file to share the definition. Same terms, one place.
+const { EXPERIENCE_TERMS, classifyExperience } = require('../services/experienceBands');
 const EXPERIENCE_SQL = {
   senior: `title ~* '(${EXPERIENCE_TERMS.senior})'`,
   staff: `title ~* '(${EXPERIENCE_TERMS.staff})'`,
@@ -85,13 +83,7 @@ const EXPERIENCE_SQL = {
  * Order matters and is kept: staff before senior, because "Senior Staff
  * Engineer" is a staff role, and the SQL bands overlap where this one commits.
  */
-function classifyExperience(title) {
-  const t = (title || '').toLowerCase();
-  if (new RegExp(`(${EXPERIENCE_TERMS.staff})`).test(t)) return 'staff';
-  if (new RegExp(`(${EXPERIENCE_TERMS.senior})`).test(t)) return 'senior';
-  if (new RegExp(`(${EXPERIENCE_TERMS.entry})`).test(t)) return 'entry';
-  return 'mid';
-}
+// classifyExperience comes from services/experienceBands (one definition).
 
 // Defense in depth: repair any mojibake that slipped through ingestion or
 // survived the one-time migration (e.g. a batch that partially failed),
@@ -2119,3 +2111,4 @@ router.get('/:id', async (req, res) => {
 
 module.exports = router;
 module.exports.resetFeedCountCache = resetFeedCountCache;
+module.exports.classifyExperience = classifyExperience;
