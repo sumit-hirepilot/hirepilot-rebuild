@@ -1588,3 +1588,25 @@ then re-verified under the gate-passed build.
   NOT filter — an integrity audit that skips accounts cannot audit.
 - Skills were kept: generic terms (Figma, Leadership) identify nobody, and
   the account must stay scoreable to remain useful for verification.
+
+## D61 — Q5 wire hardening, and NUL bytes found in two source files
+
+Q5 shipped: multipart parsing (Mailgun/SendGrid default POST format — the
+route previously answered "No recipient" to both), a 2 MB route-scoped body
+bound (the global 100kb default would 413 real provider payloads and get the
+webhook disabled), SendGrid envelope-string recipient resolution, Postmark
+MessageID, a deterministic content-hash message id when providers strip
+theirs (at-least-once retries must not store mail twice), 200-with-reason
+for unknown recipients, and a timing-safe secret comparison. Seven
+integration tests drive the REAL exported app so the deployed parser stack
+is what is proven.
+
+Found while working: my own earlier edits had written literal NUL bytes
+(U+0000) into template-string separators in routes/inbox.js and
+routes/tracker.js — valid JavaScript, invisible in review, and every text
+tool (grep, file) then treats the file as binary, which is how they were
+found. Replaced with '|'. tracker.js's content-derived manual external_id
+changes for new same-content entries; the company+title reuse lookup and the
+ON CONFLICT clause both backstop that, so the cost is at most one extra
+inactive row per re-added entry. Rule: no control characters in source,
+ever — if a separator matters, make it visible.

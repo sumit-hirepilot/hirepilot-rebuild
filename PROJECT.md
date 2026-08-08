@@ -676,3 +676,25 @@ window (rerun cleanly after; both runs met the bar), and the backend
 container was replaced once ~4 min after deploy — zero crash reports, none
 of the D43 exit paths logged, service continuous since; read as a
 platform-side replacement, noted rather than diagnosed further.
+
+## 19. Q5 (2026-08-08, second run) — the inbound mail wire is provider-ready; only the secret is yours
+
+Hardened and proven against what providers actually send, through the REAL
+exported app (parser stack included): Mailgun-style multipart and
+SendGrid-style envelope payloads now parse (both would previously have
+answered "No recipient" — multipart was never parsed on this route);
+Postmark JSON works; a 2 MB route-scoped body bound replaces the global
+100kb default that would have 413'd real mail; provider retries dedupe via
+a deterministic content hash when no Message-Id arrives; unknown recipients
+answer 200 accepted:false so one dead address cannot get the whole webhook
+disabled; the secret comparison is constant-time. 7 integration tests,
+red-proven (6 of 7 failed before the changes).
+
+Live after deploy: /inbound still answers its honest 503 (secret unset),
+inboundConfigured still false, health and feed unaffected. The remaining
+work is credentials-only and written as a 5-step recipe in BLOCKED.md
+(variables: INBOUND_MAIL_SECRET, optionally INBOUND_MAIL_DOMAIN; both on
+the backend service).
+
+Also found and fixed (D61): literal NUL bytes my own earlier edits had
+hidden inside two source files, turning them binary to every text tool.

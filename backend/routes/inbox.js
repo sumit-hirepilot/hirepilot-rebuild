@@ -16,11 +16,21 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const multer = require('multer');
 const { query } = require('../db');
 const { boundText, boundInt } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
+
+/*
+ * Q5 — Mailgun and SendGrid post inbound mail as multipart/form-data by
+ * default (Postmark posts JSON). Without a multipart parser this route saw
+ * an empty body and answered "No recipient" to the two biggest providers'
+ * default configuration. Text fields only, no files: attachments stay with
+ * the provider, per the header comment about the volume.
+ */
+const multipartFields = multer({ limits: { fieldSize: 2 * 1024 * 1024, fields: 200, fileSize: 1 } }).none();
 
 const MAX_BODY = 8000;
 const PROXY_DOMAIN = process.env.INBOUND_MAIL_DOMAIN || 'hirepilot-mail.com';
@@ -224,26 +234,49 @@ router.get('/:id', verifyToken, async (req, res) => {
  * sent to. Trusting a user id in the payload would let anyone who found this
  * URL write messages into any account's inbox.
  */
-router.post('/inbound', async (req, res) => {
+router.post('/inbound', multipartFields, async (req, res) => {
   try {
     const secret = process.env.INBOUND_MAIL_SECRET;
     if (!secret) return res.status(503).json({ error: 'Inbound mail is not configured' });
     /*
-     * Bounded before comparison. It is compared with === against a secret, so
-     * length was never a correctness risk - but an unbounded value reaching a
-     * comparison is still an unbounded value read from a request, and the
-     * sweep is only useful if it has no exceptions carved into it.
+     * Bounded before comparison, and compared in constant time. The value is
+     * a shared webhook secret an attacker can probe with as many requests as
+     * they like; hashing both sides first makes timingSafeEqual legal on
+     * unequal lengths without leaking which byte diverged.
      */
-    const supplied = req.get('x-hirepilot-signature') || boundText(req.query.token, { max: 512 }).value;
-    if (supplied !== secret) return res.status(401).json({ error: 'Bad signature' });
+    const supplied = req.get('x-hirepilot-signature') || boundText(req.query.token, { max: 512 }).value || '';
+    const a = crypto.createHash('sha256').update(supplied).digest();
+    const bDigest = crypto.createHash('sha256').update(secret).digest();
+    if (!crypto.timingSafeEqual(a, bDigest)) return res.status(401).json({ error: 'Bad signature' });
 
     const b = req.body || {};
-    const to = String(b.to || b.recipient || b.To || '').toLowerCase();
-    const match = to.match(/[a-z0-9._%+-]+@[a-z0-9.-]+/);
+    /*
+     * The recipient, across the three provider shapes actually in the wild:
+     * Mailgun `recipient`, Postmark `To`/`ToFull`, SendGrid `to` plus
+     * `envelope` - which is a JSON STRING, not an object.
+     */
+    let to = String(b.to || b.recipient || b.To || '');
+    if (!/@/.test(to) && b.envelope) {
+      try {
+        const env = typeof b.envelope === 'string' ? JSON.parse(b.envelope) : b.envelope;
+        to = String((Array.isArray(env.to) ? env.to[0] : env.to) || '');
+      } catch { /* malformed envelope - fall through to the 400 below */ }
+    }
+    if (!/@/.test(to) && Array.isArray(b.ToFull) && b.ToFull[0]?.Email) to = String(b.ToFull[0].Email);
+    const match = to.toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+/);
     if (!match) return res.status(400).json({ error: 'No recipient' });
 
     const u = await query('SELECT id FROM users WHERE lower(proxy_email) = $1', [match[0]]);
-    if (!u.rows.length) return res.status(404).json({ error: 'Unknown recipient' });
+    if (!u.rows.length) {
+      /*
+       * 200, not 404. A non-2xx makes the provider retry for days and then
+       * disable the webhook - mail to one dead proxy address must not cost
+       * everyone else their delivery. Probing for live addresses already
+       * requires the shared secret, so nothing is leaked by answering
+       * calmly. The drop is stated in the response for the provider's logs.
+       */
+      return res.status(200).json({ ok: false, reason: 'unknown_recipient' });
+    }
     const userId = u.rows[0].id;
 
     const subject = String(b.subject || b.Subject || '').slice(0, 500);
@@ -268,6 +301,16 @@ router.post('/inbound', async (req, res) => {
     }
 
     const category = categorise(subject, body);
+    /*
+     * Q5 — webhooks are at-least-once. With a provider Message-Id the
+     * ON CONFLICT dedupe handles retries; without one (some providers strip
+     * it) a retry would store the same mail twice, so absence gets a
+     * deterministic content hash instead of NULL. `hash-` prefixed so a real
+     * provider id and a synthesised one can never be confused.
+     */
+    const providerMessageId = String(b['Message-Id'] || b.MessageID || b.messageId || '').slice(0, 500);
+    const messageId = providerMessageId
+      || `hash-${crypto.createHash('sha256').update(`${fromEmail}|${subject}|${body}`).digest('hex')}`;
     const inserted = await query(
       `INSERT INTO inbox_messages
          (user_id, application_id, message_id, from_email, from_name, subject,
@@ -276,7 +319,7 @@ router.post('/inbound', async (req, res) => {
        ON CONFLICT (user_id, message_id) WHERE message_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [
-        userId, applicationId, String(b['Message-Id'] || b.messageId || '').slice(0, 500) || null,
+        userId, applicationId, messageId,
         fromEmail, fromName, subject, body, category, extractOtp(subject, body),
         // The sender's org token, stored for display/search - a hint about
         // who wrote, never the basis of a link.

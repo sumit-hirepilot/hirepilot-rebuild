@@ -385,3 +385,32 @@ second replica, acquire timeout unchanged. Encoded in CLAUDE.md rule 10 with
 the reasoning, in LOAD.md, and in tools/loadtest.py itself, which now exits
 non-zero only when a step at or under 500 users has failures. The 1,000 step
 keeps running on every budget check so the trend stays visible.
+
+## OPERATOR — inbox mail wire: exact setup, everything else is done
+
+The code side is finished and proven against simulated Mailgun, Postmark and
+SendGrid payloads (multipart, urlencoded and JSON all parse; provider retries
+dedupe; unknown recipients answer 200 so the webhook never gets disabled;
+the secret compares in constant time). What only you can do:
+
+1. **Pick a domain** for proxy addresses (the code defaults to
+   `hirepilot-mail.com`, which we do NOT own — if you buy a different one,
+   also set `INBOUND_MAIL_DOMAIN=<your-domain>` on the **backend** service so
+   minted addresses use it).
+2. **Point the domain at a provider** (any of the three below), i.e. add the
+   MX records the provider tells you to add for inbound mail.
+3. **Set the shared secret** on the **backend** Railway service:
+   `INBOUND_MAIL_SECRET=<long random string>` (e.g. `openssl rand -hex 32`).
+   The moment it is set, GET /api/inbox flips `inboundConfigured:true` and
+   the UI stops saying forwarding is not connected. No deploy needed beyond
+   the variable change (Railway restarts the service).
+4. **Configure the provider's inbound route** to POST every message to:
+   `https://backend-production-e6a8.up.railway.app/api/inbox/inbound?token=<the same secret>`
+   - Mailgun: Receiving → Routes → catch-all `.*@<domain>` → "forward" to the
+     URL above (Mailgun cannot set custom headers; the `?token=` form exists
+     for exactly this).
+   - Postmark: Server → Inbound → webhook URL as above (JSON payloads —
+     handled).
+   - SendGrid: Settings → Inbound Parse → add host + URL as above.
+5. **Send one real mail** to any user's proxy address (shown on /inbox) and
+   confirm it appears there. Nothing else needs touching.

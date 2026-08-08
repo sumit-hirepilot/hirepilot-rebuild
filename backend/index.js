@@ -30,6 +30,17 @@ const { installCrashLogging, startWatchdog } = require('./services/watchdog');
 const PORT = process.env.PORT || 3000;
 
 app.use(corsMiddleware);
+/*
+ * Q5 — the inbound-mail webhook gets its own parsers BEFORE the global ones,
+ * with a larger bound: a real provider payload (full text part plus headers)
+ * routinely exceeds express.json's 100kb default, and a 413 here makes the
+ * provider retry for days and then disable the webhook. 2 MB matches the
+ * multipart field bound in routes/inbox.js; the stored fields are still
+ * sliced to their own limits on the way in. The global parsers skip a body
+ * these have already consumed.
+ */
+app.use('/api/inbox/inbound', express.json({ limit: '2mb' }));
+app.use('/api/inbox/inbound', express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
