@@ -587,3 +587,26 @@ main, no production ref, backup branch unrenamed — read via `git ls-remote
 - Incident note (D59): proving the stage-11 guard on a throwaway branch let
   stage 10 commit the working tree onto it; the edit was recovered from the
   orphaned commit. The gate commits before it pushes by design.
+
+## 16. Q2 (2026-08-08, second run) — the verification account is synthetic and flagged internal
+
+User 3 held the operator's real name, phone, personal email, employers,
+portfolio and city. Scrubbed via corrective migration (audit row first,
+email-keyed, idempotent-by-guard; D60), plus `users.is_internal` (additive
+column) which the auto-apply sweep now excludes fail-safe.
+
+Verified on production after the gate-passed deploy, by reading back every
+surface and sweeping the payloads for 13 real strings (name, phone, personal
+email, every real employer, LinkedIn, portfolio, city):
+auth/me CLEAN · resumes CLEAN (id 3 kept, text starts "SYNTHETIC
+VERIFICATION RESUME") · profile CLEAN (6 experience rows kept, all
+"Verification Employer N") · cover-letters CLEAN (id 7 kept) ·
+resume-3 document CLEAN · schema claims 11/11 with `users.is_internal`
+present read from the live catalogue · feed search for the account's
+entries: 0 rows.
+
+**Incident during this item (D60, in full): a piped gate invocation swallowed
+a failing exit and deployed an unverified tree; rolled back within minutes
+per the rail, re-shipped through a properly-invoked gate.** The scrub data
+change had already executed during the bad boot; the end-state was
+re-verified under the verified build.

@@ -1549,3 +1549,42 @@ Lesson recorded: proving the ship-gate guard on a throwaway branch let stage
 be recovered from the orphaned commit after the branch was deleted. The gate
 commits before it pushes BY DESIGN - prove push-stage guards with the tree
 clean.
+
+## D60 — Q2, and a hard-rail breach during it, recorded in full
+
+**The breach.** The Q2 deploy command chained
+`./tools/ship.sh … | tail -3 && railway up …`. The pipe made `&&` read
+tail's exit status, not the gate's; the gate had FAILED at stage 6 (one test:
+`evidenceRefusalAndReceiptAreRead :: writes no receipt for a refused
+submission`, "socket hang up" — the GOAL-1j harness-flake class, 5/5 green in
+isolation immediately after) and the unverified working tree deployed anyway.
+That violated "never deploy without the full ship gate passing in the same
+invocation". Response, per the rail: rolled back to the last gate-passed
+commit within minutes (stash → railway up → confirmed the container),
+diagnosed, re-shipped through a properly-invoked gate (exit code captured,
+no pipe), redeployed. Production served the unverified build for roughly
+seven minutes; health and feed probes during the window were clean.
+
+**Standing rule from it:** a gate invocation must never sit on the left side
+of a pipe. Capture output to a file and branch on the gate's own exit code.
+The session's remaining ships follow that pattern.
+
+**Side effect kept:** the bad deploy's boot ran the scrub migration, so the
+data reached its intended end-state ~15 minutes early via an unverified
+build. The statements were already suite-green at the time; the end-state was
+then re-verified under the gate-passed build.
+
+**Q2 interpretation notes.**
+- Scrub mechanism: corrective migration statements (the A1/A7.2 precedent) —
+  the only write path this machine has to the production DB. Audit row first;
+  every statement keyed on the email, never an id; every content mutation
+  carries an already-synthetic guard, so re-runs are no-ops.
+- "Excluded from analytics, stats, feed, leaderboards": analytics and stats
+  are per-user surfaces (only the account sees itself); no leaderboard
+  exists; the account's job rows were already is_active=false. The two real
+  cross-user paths were handled explicitly: the auto-apply sweep now filters
+  `COALESCE(is_internal, FALSE) = FALSE` (an internal account must never be
+  swept into sending), and `/api/applications/integrity` deliberately does
+  NOT filter — an integrity audit that skips accounts cannot audit.
+- Skills were kept: generic terms (Figma, Leadership) identify nobody, and
+  the account must stay scoreable to remain useful for verification.
