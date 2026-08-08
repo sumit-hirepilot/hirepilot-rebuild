@@ -105,7 +105,7 @@ export default function Dashboard() {
   const dateLabel = `${DAY_NAMES[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
   const firstName = (user.fullName || user.email.split('@')[0]).split(' ')[0];
 
-  const applicationsSent = appStats ? parseInt(appStats.total_applications || 0) : 0;
+  const applicationsSent = appStats ? parseInt(appStats.sent ?? appStats.total_applications ?? 0) : 0;
   const interviews = appStats ? parseInt(appStats.interviews || 0) : 0;
   const scannedToday = appStats ? parseInt(appStats.scanned_today || 0) : 0;
   /*

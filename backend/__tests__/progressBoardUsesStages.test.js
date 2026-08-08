@@ -132,9 +132,24 @@ describe('GET /api/applications/stats counts conversations from stages', () => {
     query.mockReset();
     query
       .mockResolvedValueOnce({
-        rows: [{ total_applications: '4', applied: '2', interviews: '1', offers: '1', days_applying: '2' }],
+        rows: [{ total_applications: '4', sent: '1', applied: '2', interviews: '1', offers: '1', days_applying: '2' }],
       })
       .mockResolvedValueOnce({ rows: [{ scanned: '100' }] });
+  });
+
+  it('reports SENT as rows that reached an employer, never drafts', async () => {
+    /*
+     * L4 walk, seen on camera: a draft created by the double-submit probe
+     * rendered as "APPLICATIONS YOU HAVE SENT 1" on a brand-new dashboard.
+     * total_applications counts every row including drafts; the tile needs a
+     * number that means what it says.
+     */
+    const res = await request(app()).get('/api/applications/stats');
+    expect(res.status).toBe(200);
+    const sql = query.mock.calls[0][0];
+    expect(sql).toMatch(/as sent/i);
+    expect(sql).toMatch(/status = 'submitted' OR is_manual = TRUE[\s\S]*\) as sent|\(status = 'submitted' OR is_manual = TRUE\)[^)]*as sent/i);
+    expect(res.body.sent).toBe('1');
   });
 
   it('derives interviews and offers from tracker_stage, not from statuses nothing writes', async () => {

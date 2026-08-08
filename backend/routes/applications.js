@@ -616,6 +616,7 @@ router.get('/stats', verifyToken, async (req, res) => {
        */
       `SELECT
         COUNT(*) as total_applications,
+        COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE) THEN 1 END) as sent,
         COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
                     AND (tracker_stage IS NULL OR tracker_stage = 'applied') THEN 1 END) as applied,
         COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)

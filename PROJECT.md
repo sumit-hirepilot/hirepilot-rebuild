@@ -785,3 +785,23 @@ real exported app, red-proven against the live-observed failures.
 Dead-network mid-request: covered by the #45-era floors (timeouts, retry
 buttons, "could not reach HirePilot" states) and their suites; not
 re-broken live against production.
+
+## 23. L4 (2026-08-08, third run) — 375px, measured not eyeballed
+
+Thirteen pages measured at 375×812 on production (dashboard, jobs,
+applications, apply-queue, auto-apply, tracker, network, analytics, agents,
+resume, profile, settings, pricing, landing): `document.scrollWidth === 375`
+on every one — zero horizontal overflow, no clipped element found by the
+bounding-box sweep. The mobile menu opens and all 13 nav destinations are
+reachable inside it. The L2 dashboard CTA fix confirmed live on the
+screenshot ("See plans →" for a plan-excluded account).
+
+Caught ON the screenshot: the double-submit probe's DRAFT rendered as
+"APPLICATIONS YOU HAVE SENT 1" on a brand-new dashboard —
+`total_applications` counts drafts. /stats now reports `sent` (submitted or
+manual only) and the tile reads it; red-proven.
+
+Honest limits, per D46: this measures CSS at a true 375px viewport (the
+viewport meta tag has been in _app.js since D45); it proves geometry on the
+EMPTY account. Tap-target comfort, data-rich layouts and readability are a
+human's call — listed under BLOCKED-NEEDS-HUMAN.
