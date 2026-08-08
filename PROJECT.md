@@ -635,3 +635,44 @@ which is the arrival-shape sensitivity the decision is premised on —
 instrument exit 0 with the informational label. Trend note: burst RSS at
 1,000 reached 450 MB (previous runs 296–331); inside the 800 MB abort line,
 recorded for the trend.
+
+## 18. Q4 (2026-08-08, second run) — the ~900 missing greenhouse postings: found, fixed, recovered
+
+**The queue's premise did not survive contact with the data, and the dead-end
+list paid for itself.** Probed live before writing anything: the discord
+board holds 47 jobs and its content=true response measures 409KB today — the
+>40MB refusal was real but transient and trivial. And Greenhouse's boards API
+IGNORES page/per_page (page 2 returns byte-identical content) — the exact
+dead-end-8 trap; paging code written from memory would have re-read the same
+board every "page". Logged so nobody writes Greenhouse paging again.
+
+**The real cause, reproduced then fixed:** `findCrossSourceDuplicate`
+matched title + company + ±3-day window with NO source exclusion and NO
+location — so same-board multi-location roles ate each other. Simulated
+against live boards before the fix: Brex 183 of 303 eaten (db held 140),
+Braze 129/257, ClickHouse 79/166; the sum ≈ the 933 gap between live boards
+(10,210) and the database (9,277). Fix: a cross-source duplicate must be a
+DIFFERENT source in the SAME normalised place, NULL location never merges —
+a false merge deletes a real posting, a false non-merge shows a duplicate
+card; the asymmetry decides every tiebreak. 5 tests red-proven through the
+real store path (storeJob exported for them).
+
+**Verified by a real run, counting the postings** (D54): after deploy the
+boot cycle recovered board by board — Brex 140→301 (live 303), Braze
+139→258 (257), Databricks 715→820 (819), ClickHouse 100→166 (166), Elastic
+185→245 (245), discord present at 48 — greenhouse total 9,277 → **10,243**
+vs 10,210 live. lastRunSuccess true, lastRunError null.
+
+**Also shipped:** per-slug board failures now land in the ingestion run's
+record (`partial: N board(s) failed - slug: reason`) instead of dying as a
+console line — the observability gap that let the discord refusal go
+unrecorded.
+
+**Budgets:** idle 194 MB, boot peak 234 MB, DB 93/500 MB, bar MET (500
+clean 1,500/1,500); 1,000 informational at 145 failures — fourth distinct
+reading (71, 0, 80, 145), trend recorded, index ~1k rows larger now.
+**Two honest slips in this item:** one load run started inside the 5-minute
+window (rerun cleanly after; both runs met the bar), and the backend
+container was replaced once ~4 min after deploy — zero crash reports, none
+of the D43 exit paths logged, service continuous since; read as a
+platform-side replacement, noted rather than diagnosed further.
