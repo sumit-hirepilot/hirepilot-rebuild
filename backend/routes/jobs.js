@@ -271,6 +271,58 @@ const bandCondition = (band) => {
   return `(${parts.join(' AND ')})`;
 };
 
+/*
+ * Feature 10 — the same salary, read in lakhs.
+ *
+ * A user in Bengaluru thinks in LPA; a USD band makes them do FX arithmetic
+ * to use their own filter. Same conversion chain as the USD bands (source
+ * currency → USD at reference rates), then into INR at the same reference
+ * rate, so the two groups can never disagree about which band a job is in.
+ * The labels say approx for the same reason the USD ones do.
+ */
+const SALARY_INR = `(${SALARY_USD} / ${USD_RATES.INR})`;
+const SALARY_INR_BANDS = [
+  { value: 'lt10', label: 'Under ₹10L', min: null, max: 1000000 },
+  { value: '10-25', label: '₹10L – ₹25L', min: 1000000, max: 2500000 },
+  { value: '25-50', label: '₹25L – ₹50L', min: 2500000, max: 5000000 },
+  { value: 'gt50', label: '₹50L+', min: 5000000, max: null },
+];
+
+const inrBandCondition = (band) => {
+  const b = SALARY_INR_BANDS.find((x) => x.value === band);
+  if (!b) return null;
+  const parts = ['salary_min IS NOT NULL', `${USD_CASE} IS NOT NULL`];
+  if (b.min !== null) parts.push(`${SALARY_INR} >= ${b.min}`);
+  if (b.max !== null) parts.push(`${SALARY_INR} < ${b.max}`);
+  return `(${parts.join(' AND ')})`;
+};
+
+/*
+ * Feature 10 — the immediate-joiner ask, in the employer's own words.
+ *
+ * Jobs carry no notice-period FIELD, and inventing one per row would be
+ * fabricated data on a live surface. What a posting sometimes carries is the
+ * employer's own sentence - "immediate joiners preferred", "can join within
+ * 15 days". So the filter matches only EXPLICIT asks, and every matching row
+ * returns the matched fragment as evidence (the C4 pattern: quote the source
+ * sentence). "Notice period: 60 days" mentions the concept without asking
+ * for urgency and deliberately does not match.
+ */
+const JOINER_CORE = 'immediate(ly)?[[:space:]]+(joiner|joining|start)'
+  + '|join(ing)?[[:space:]]+immediately'
+  + '|start[[:space:]]+immediately'
+  + '|can[[:space:]]+join[[:space:]]+within[[:space:]]+[0-9]+[[:space:]]+(day|week)s?'
+  + '|short[[:space:]]+notice[[:space:]]+period'
+  + '|notice[[:space:]]+period[^.]{0,25}(15|30)[[:space:]]*days?[[:space:]]*or[[:space:]]+less';
+const JOINER_MATCH = `description ~* '(${JOINER_CORE})'`;
+// Only the matched fragment travels to the client - descriptions are the two
+// largest columns and D20 measured them dominating response time. Takes a
+// column prefix because the feed CTE reads `jobs.description` while other
+// contexts read the bare column - and cannot live inside JOB_COLUMNS, which
+// gets split on commas and per-column prefixed (the CASE contains commas).
+const joinerSnippetSql = (prefix = '') => `CASE WHEN ${prefix}description ~* '(${JOINER_CORE})'
+  THEN substring(${prefix}description from '(?i)[^.]{0,60}(${JOINER_CORE})[^.]{0,60}') END`;
+
 // Pull contact addresses that the employer actually published in the posting
 // text. These are real, verifiable, and already public in the job ad.
 //
@@ -521,7 +573,7 @@ router.get('/:id/ats', verifyToken, async (req, res) => {
 // cannot deliver.
 router.get('/facets', async (req, res) => {
   try {
-    const [workArrangement, jobType, salary, experience, region] = await Promise.all([
+    const [workArrangement, jobType, salary, experience, region, salaryInr, joiner] = await Promise.all([
       query(`SELECT COALESCE(NULLIF(work_arrangement,''),'unknown') AS value, COUNT(*)::int AS count
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
       query(`SELECT ${JOB_TYPE_SQL} AS value, COUNT(*)::int AS count
@@ -540,6 +592,13 @@ router.get('/facets', async (req, res) => {
              FROM jobs WHERE is_active = true`),
       query(`SELECT ${REGION_SQL} AS value, COUNT(*)::int AS count
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
+      // Feature 10 - same conversion chain as the filter, so the two cannot
+      // disagree about which band a job is in.
+      query(`SELECT
+               ${SALARY_INR_BANDS.map((b) => `COUNT(*) FILTER (WHERE ${inrBandCondition(b.value)})::int AS "${b.value}"`).join(',\n               ')}
+             FROM jobs WHERE is_active = true`),
+      query(`SELECT COUNT(*) FILTER (WHERE ${JOINER_MATCH})::int AS immediate
+             FROM jobs WHERE is_active = true`),
     ]);
 
     const exp = experience.rows[0];
@@ -574,6 +633,11 @@ router.get('/facets', async (req, res) => {
         label: REGION_LABELS[r.value] || r.value,
         count: r.count,
       })),
+      // Feature 10 - the same salaries read in lakhs, and the count of
+      // postings whose own text asks for immediate joiners. Absence of the
+      // ask is not a facet value: silence about notice periods is not a fact.
+      salaryInr: SALARY_INR_BANDS.map((b) => ({ value: b.value, label: b.label, count: salaryInr.rows[0][b.value] })),
+      joiner: { immediate: joiner.rows[0].immediate },
     });
   } catch (err) {
     console.error('Get facets error:', err);
@@ -1038,6 +1102,8 @@ const RELAX_ORDER = {
   minScore: 1,
   datePosted: 1,
   salary: 2,
+  salaryInr: 2,
+  joiner: 2,
   workArrangement: 2,
   jobType: 2,
   experience: 2,
@@ -1325,6 +1391,25 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       addFilter('salary', `Salary: ${salaryBands.join(', ')}`, () => `(${salaryConds.join(' OR ')})`);
     }
 
+    // Feature 10 - the same salaries read in lakhs. A separate facet rather
+    // than a mode switch on the USD one, so both stay linkable and a URL
+    // carrying either keeps meaning what it said.
+    const salaryInrB = boundList(req.query.salaryInr, { maxItems: 8, maxLength: 20 });
+    const salaryInrBands = salaryInrB.value;
+    const salaryInrConds = salaryInrBands.map(inrBandCondition).filter(Boolean);
+    if (salaryInrConds.length) {
+      addFilter('salaryInr', `Salary (INR): ${salaryInrBands.join(', ')}`, () => `(${salaryInrConds.join(' OR ')})`);
+    }
+
+    // Feature 10 - explicit immediate-joiner asks only, evidenced per row by
+    // the posting's own sentence (joinerNote). Never inferred from silence.
+    const joinerB = boundText(req.query.joiner, { max: 20 });
+    if (joinerB.value === 'immediate') {
+      // Bare `description` is unambiguous in the feed CTE (job_matches
+      // carries no such column), same as every other filter clause here.
+      addFilter('joiner', 'Immediate joiner asked', () => `(${JOINER_MATCH})`);
+    }
+
     // EXPERIENCE_SQL is module-scoped and shared with the facet query above.
     const EXPERIENCE_LABEL = {
       senior: 'Senior', staff: 'Staff+', entry: 'Entry level', mid: 'Mid level',
@@ -1475,6 +1560,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         cte: `
       WITH ranked AS (
         SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
+               ${joinerSnippetSql('jobs.')} AS joiner_snippet,
                ${v.tierCaseExpr} AS match_tier,
                jm.overall_score, jm.skills_match_score, jm.experience_match_score,
                jm.location_match_score, jm.salary_match_score
@@ -1760,7 +1846,17 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       noExactMatches = relatedJobs.length > 0;
     }
 
-    const decorate = (list) => list.map((j) => ({ ...sanitizeJob(j), experienceLevel: classifyExperience(j.title) }));
+    const decorate = (list) => list.map((j) => {
+      // Feature 10 - the employer's own immediate-joiner sentence, or null.
+      // Renamed so the SQL alias never leaks, and trimmed because the
+      // substring window can start mid-whitespace.
+      const { joiner_snippet, ...rest } = j;
+      return {
+        ...sanitizeJob(rest),
+        experienceLevel: classifyExperience(j.title),
+        joinerNote: joiner_snippet ? fixMojibake(String(joiner_snippet).trim()) : null,
+      };
+    });
 
     res.json({
       total,

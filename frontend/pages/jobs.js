@@ -367,6 +367,11 @@ export default function Jobs() {
   const [jobTypes, setJobTypes] = useState([]);
   const [workArrangements, setWorkArrangements] = useState([]);
   const [salary, setSalary] = useState([]);
+  // Feature 10 - the same salaries read in lakhs, and the explicit
+  // immediate-joiner ask. joiner is '' or 'immediate'; silence about notice
+  // periods is not a filterable fact.
+  const [salaryInr, setSalaryInr] = useState([]);
+  const [joiner, setJoiner] = useState('');
   const [regions, setRegions] = useState([]);
   const [facets, setFacets] = useState(null);
   const [atsScores, setAtsScores] = useState({});
@@ -435,6 +440,8 @@ export default function Jobs() {
       const jt = params.jobTypes ?? jobTypes;
       const wa = params.workArrangements ?? workArrangements;
       const sal = params.salary ?? salary;
+      const salInr = params.salaryInr ?? salaryInr;
+      const jn = params.joiner ?? joiner;
       const rg = params.regions ?? regions;
       const co = params.company ?? company;
       kws.forEach((k) => k && qs.append('keywords', k));
@@ -447,6 +454,8 @@ export default function Jobs() {
       jt.forEach((v) => v && qs.append('jobType', v));
       wa.forEach((v) => v && qs.append('workArrangement', v));
       sal.forEach((v) => v && qs.append('salary', v));
+      salInr.forEach((v) => v && qs.append('salaryInr', v));
+      if (jn) qs.set('joiner', jn);
       rg.forEach((v) => v && qs.append('region', v));
       if (co) qs.set('company', co);
       // Score ranking is the default; `recent` is the explicit unranked browse.
@@ -542,7 +551,7 @@ export default function Jobs() {
     } finally {
       setLoading(false);
     }
-  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, company, rankMode, sortBy, minScore, loadAtsScores]);
+  }, [base, page_, keywords, excludeTerms, scope, experience, location, includeRelated, datePosted, jobTypes, workArrangements, salary, salaryInr, joiner, company, rankMode, sortBy, minScore, loadAtsScores]);
 
   // Facet counts are fetched once and reflect the whole active job pool, so
   // each option can show how many jobs it would match before it's applied.
@@ -588,6 +597,8 @@ export default function Jobs() {
     const jt = o.jobTypes ?? jobTypes;
     const wa = o.workArrangements ?? workArrangements;
     const sal = o.salary ?? salary;
+    const salInr = o.salaryInr ?? salaryInr;
+    const jn = o.joiner ?? joiner;
     const rg = o.regions ?? regions;
     const pg = o.page ?? page_;
     const scp = o.scope ?? scope;
@@ -603,6 +614,8 @@ export default function Jobs() {
     if (jt.length) q.jobType = jt;
     if (wa.length) q.workArrangement = wa;
     if (sal.length) q.salary = sal;
+    if (salInr.length) q.salaryInr = salInr;
+    if (jn) q.joiner = jn;
     if (rg.length) q.region = rg;
     if (pg > 1) q.page = String(pg);
     if (scp && scp !== 'title_description') q.scope = scp;
@@ -677,6 +690,8 @@ export default function Jobs() {
     const jt = asArray(q.jobType);
     const wa = asArray(q.workArrangement);
     const sal = asArray(q.salary);
+    const salInr = asArray(q.salaryInr);
+    const jn = q.joiner === 'immediate' ? 'immediate' : '';
     const rg = asArray(q.region);
     const pg = Math.max(1, parseInt(q.page, 10) || 1);
     const scp = q.scope || 'title_description';
@@ -695,14 +710,14 @@ export default function Jobs() {
     const ms = Number.isFinite(rawMs) && rawMs >= 0 && rawMs <= 1 ? rawMs : DEFAULT_MIN_SCORE;
 
     setKeywords(kws); setExcludeTerms(excl); setJobTypes(jt);
-    setWorkArrangements(wa); setSalary(sal); setRegions(rg);
+    setWorkArrangements(wa); setSalary(sal); setSalaryInr(salInr); setJoiner(jn); setRegions(rg);
     setPage(pg); setScope(scp); setExperience(exp); setLocation(loc);
     setDatePosted(dp); setCompany(co); setIncludeRelated(rel); setShowSavedOnly(saved);
     setSortBy(srt); setRankMode(rm); setMinScore(ms);
 
     loadJobs(authToken, {
       page: pg, keywords: kws, excludeTerms: excl, jobTypes: jt,
-      workArrangements: wa, salary: sal, regions: rg, scope: scp,
+      workArrangements: wa, salary: sal, salaryInr: salInr, joiner: jn, regions: rg, scope: scp,
       experience: exp, location: loc, datePosted: dp, company: co,
       includeRelated: rel, sortBy: srt, rankMode: rm, minScore: ms,
     });
@@ -718,7 +733,7 @@ export default function Jobs() {
     : null;
   const emptyAction = emptyReasonAction(emptyCause);
 
-  const MULTI_KEYS = ['keywords', 'exclude', 'jobType', 'workArrangement', 'salary', 'region'];
+  const MULTI_KEYS = ['keywords', 'exclude', 'jobType', 'workArrangement', 'salary', 'salaryInr', 'region'];
 
   const queryFromSearch = (search) => {
     const sp = new URLSearchParams(search);
@@ -938,6 +953,11 @@ export default function Jobs() {
             {job.salary_min ? ` · ${formatSalary(job)}` : ''}
             {' · '}{postedTimeAgo(job.posted_at)}
           </p>
+          {/* Feature 10 - the employer's own words, quoted, never inferred.
+              Rendered only when the posting itself asked. */}
+          {job.joinerNote && (
+            <p className={page.jobMeta}>Asks for a quick start: &ldquo;{job.joinerNote}&rdquo;</p>
+          )}
         </div>
         {/* The ATS badge lives in the drawer now. It answers "how well does my
             resume's wording match this posting" - a question you ask about one
@@ -1135,6 +1155,37 @@ export default function Jobs() {
             }))}
             onApply={(vals) => { setSalary(vals); setPage(1); syncUrl({ page: 1, salary: vals }); loadJobs(token, { page: 1, salary: vals }); }}
           />
+          {/* Feature 10 - the same salaries read in lakhs. Same conversion
+              chain as the USD bands server-side, so the two groups cannot
+              disagree about which band a job is in. */}
+          <FilterPanel
+            label="Salary (INR)"
+            hint="Converted at approximate rates and read in lakhs per annum. Only a minority of postings publish pay."
+            selected={salaryInr}
+            options={(facets?.salaryInr || []).map((o) => ({
+              value: o.value,
+              label: o.label || o.value,
+              count: o.count,
+            }))}
+            onApply={(vals) => { setSalaryInr(vals); setPage(1); syncUrl({ page: 1, salaryInr: vals }); loadJobs(token, { page: 1, salaryInr: vals }); }}
+          />
+          {/* Feature 10 - explicit immediate-joiner asks only. Wired the full
+              way (state + page reset + URL + reload) per the A7.5 rule. */}
+          <button
+            type="button"
+            className={joiner ? page.filterTriggerActive : page.filterTrigger}
+            onClick={() => {
+              const next = joiner ? '' : 'immediate';
+              setJoiner(next); setPage(1);
+              syncUrl({ page: 1, joiner: next });
+              loadJobs(token, { page: 1, joiner: next });
+            }}
+          >
+            Immediate joiner asked
+            {typeof facets?.joiner?.immediate === 'number' && (
+              <span className={page.filterCount}>{facets.joiner.immediate}</span>
+            )}
+          </button>
           <input
             type="text"
             value={company}
@@ -1142,18 +1193,20 @@ export default function Jobs() {
             placeholder="Company"
             className={page.locInput}
           />
-          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary.length || regions.length || company) && (
+          {(experience || location || datePosted || jobTypes.length || workArrangements.length || salary.length || salaryInr.length || joiner || regions.length || company) && (
             <button
               type="button"
               className={page.clearFiltersButton}
               onClick={() => {
                 setExperience(''); setLocation(''); setDatePosted('');
                 setJobTypes([]); setWorkArrangements([]); setSalary([]);
+                setSalaryInr([]); setJoiner('');
                 setRegions([]); setCompany('');
                 setPage(1);
                 const cleared = {
                   page: 1, experience: '', location: '', datePosted: '',
-                  jobTypes: [], workArrangements: [], salary: [], regions: [], company: '',
+                  jobTypes: [], workArrangements: [], salary: [], salaryInr: [], joiner: '',
+                  regions: [], company: '',
                 };
                 // Keywords survive a filter clear - clearing filters is not the
                 // same action as clearing the search.
