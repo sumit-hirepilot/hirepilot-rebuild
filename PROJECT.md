@@ -514,3 +514,26 @@ Live: real Adyen job 3867 → the account's real tracked contact surfaced,
 3 LinkedIn search URLs built, no invented person anywhere. 8 backend tests
 (service + route) and 2 drawer tests, red-proven. Suites: backend 678,
 frontend 320. Gate 11/11.
+
+## 13. FEATURE 15 — interview prep  [shipped + VERIFIED live 2026-08-08]
+
+`GET /api/applications/:id/interview-prep` + a prep panel on interviewing
+cards. No LLM is configured, so nothing invents a "likely question": every
+item is a skill the posting itself names, quoted in the posting's own
+sentence, marked strength or gap against the user's recorded skills. Thin
+JDs say "nothing honest to prepare from"; drafts 409 (no interview exists).
+
+Live, all three directions: real Chime Product Designer row →
+`sufficientJd:true`, strengths Figma / Design Systems / Prototyping with the
+posting's own bullet quoted ("Deep expertise with Figma and modern
+prototyping tools…"); manual jobless row → the honest insufficient state;
+draft → 409. Gap computation mutation-proven. Frontend bundle serving the
+panel confirmed from the served bytes.
+Suites: backend 685, frontend 321. Gate 11/11.
+
+Found while verifying: the tracker's reuse-lookup missed on "Chime
+Financial, Inc" vs the stored "Chime", so a duplicate jobless manual row was
+created (row 25) — matching is exact-equality by design, but from-url's
+response had shown a different company string for the same employer.
+Follow-up filed: company display strings differ between the from-url
+response and the stored row; worth one canonical reading.
