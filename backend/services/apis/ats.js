@@ -207,6 +207,13 @@ const FETCH_WINDOW = Number(process.env.ATS_FETCH_WINDOW) || 4;
 const fetchAllForPlatform = async (companies, fetchOne, platformLabel, onBatch) => {
   const all = onBatch ? null : [];
   let fetched = 0;
+  /*
+   * Q4 — a failing slug used to be a console line and nothing else: the run
+   * still recorded success, so a whole company's postings could vanish for a
+   * cycle (the discord >40MB refusal) with no record anywhere queryable.
+   * Collected here and surfaced through the ingestion run.
+   */
+  const failedSlugs = [];
 
   for (let i = 0; i < companies.length; i += FETCH_WINDOW) {
     const window = companies.slice(i, i + FETCH_WINDOW);
@@ -216,6 +223,7 @@ const fetchAllForPlatform = async (companies, fetchOne, platformLabel, onBatch) 
           return await fetchOne(slug);
         } catch (err) {
           console.error(`${platformLabel} (${slug}) error:`, err.message);
+          failedSlugs.push({ slug, error: err.message });
           return [];
         }
       })
@@ -235,11 +243,15 @@ const fetchAllForPlatform = async (companies, fetchOne, platformLabel, onBatch) 
     }
   }
 
-  return onBatch ? { fetched } : all;
+  return onBatch ? { fetched, failedSlugs } : all;
 };
 
 const fetchGreenhouseJobs = (onBatch) => fetchAllForPlatform(GREENHOUSE_COMPANIES, fetchGreenhouseCompany, 'Greenhouse', onBatch);
 const fetchLeverJobs = (onBatch) => fetchAllForPlatform(LEVER_COMPANIES, fetchLeverCompany, 'Lever', onBatch);
 const fetchAshbyJobs = (onBatch) => fetchAllForPlatform(ASHBY_COMPANIES, fetchAshbyCompany, 'Ashby', onBatch);
 
-module.exports = { fetchGreenhouseJobs, fetchLeverJobs, fetchAshbyJobs, FETCH_WINDOW };
+module.exports = {
+  fetchGreenhouseJobs, fetchLeverJobs, fetchAshbyJobs, FETCH_WINDOW,
+  // Exported for the Q4 failure-visibility tests.
+  fetchAllForPlatform,
+};

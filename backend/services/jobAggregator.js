@@ -125,15 +125,34 @@ const normalizeForDedup = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, 
 // Himalayas). There's no shared external ID across sources, so match on
 // normalized title + company posted within a few days of each other, and
 // merge into the earliest-seen canonical row rather than creating a copy.
-const findCrossSourceDuplicate = async (title, companyName, postedAt) => {
+/*
+ * Q4 (2026-08-08) — a cross-source duplicate is the SAME job listed on a
+ * DIFFERENT board. This matcher used to check title + company + date window
+ * only, and it ate same-board postings: Brex publishes "Software Engineer"
+ * in NYC, SF and London inside one week, and every sibling after the first
+ * merged into it. Measured live before the fix: Brex 303 published / 140
+ * stored, Braze 257/139, ClickHouse 166/87 - ~930 postings missing across
+ * the Greenhouse list, which is the gap the queue attributed to the
+ * transient discord >40MB refusal (that board holds 47 jobs; 409KB today).
+ *
+ * So: different source, same normalised location, same title/company/window.
+ * A false merge deletes a posting a user could have applied to; a false
+ * non-merge shows a duplicate card. The asymmetry decides every tiebreak
+ * here, including NULL location - unknown place is not "same place", so a
+ * NULL on either side refuses the merge.
+ */
+const findCrossSourceDuplicate = async (title, companyName, postedAt, source, location) => {
   const result = await query(
     `SELECT id FROM jobs
      WHERE is_active = true
+       AND source <> $4
        AND lower(regexp_replace(title, '[^a-zA-Z0-9]+', ' ', 'g')) = $1
        AND lower(regexp_replace(company_name, '[^a-zA-Z0-9]+', ' ', 'g')) = $2
+       AND lower(regexp_replace(COALESCE(location, ''), '[^a-zA-Z0-9]+', ' ', 'g')) = $5
+       AND $5 <> ''
        AND posted_at BETWEEN $3::timestamp - INTERVAL '3 days' AND $3::timestamp + INTERVAL '3 days'
      LIMIT 1`,
-    [normalizeForDedup(title), normalizeForDedup(companyName), postedAt]
+    [normalizeForDedup(title), normalizeForDedup(companyName), postedAt, source, normalizeForDedup(location || '').trim()]
   );
   return result.rows[0]?.id || null;
 };
@@ -209,7 +228,9 @@ const storeJob = async (jobData) => {
     return { id: byUrl.rows[0].id, isNew: false, isDuplicateMerge: false };
   }
 
-  const duplicateId = await findCrossSourceDuplicate(jobData.title, jobData.company_name, jobData.posted_at);
+  const duplicateId = await findCrossSourceDuplicate(
+    jobData.title, jobData.company_name, jobData.posted_at, jobData.source, jobData.location
+  );
   if (duplicateId) {
     await query(
       'UPDATE jobs SET fetched_at = CURRENT_TIMESTAMP, is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
@@ -335,9 +356,10 @@ const runSource = async ({ key, fetchJobs, streams }, results, attempt = 1) => {
      * ingestion record say the same thing they always did.
      */
     let stats;
+    let partialFailures = null;
     if (streams) {
       stats = { fetched: 0, new: 0, updated: 0, merged: 0 };
-      await fetchJobs(async (batch) => {
+      const fetchOut = await fetchJobs(async (batch) => {
         const s = await storeJobsFromSource(batch, key, results);
         stats.fetched += s.fetched;
         stats.new += s.new;
@@ -348,6 +370,13 @@ const runSource = async ({ key, fetchJobs, streams }, results, attempt = 1) => {
           stats.notAJob[k] = (stats.notAJob[k] || 0) + v;
         }
       });
+      // Q4 — a failing board slug becomes part of this run's record instead
+      // of a console line the platform's log retention eats. The run still
+      // counts as a success: the other boards' postings did arrive.
+      if (fetchOut?.failedSlugs?.length) {
+        partialFailures = `partial: ${fetchOut.failedSlugs.length} board(s) failed - `
+          + fetchOut.failedSlugs.map((f) => `${f.slug}: ${f.error}`).join('; ').slice(0, 900);
+      }
     } else {
       const rawJobs = await fetchJobs();
       stats = await storeJobsFromSource(rawJobs, key, results);
@@ -363,6 +392,7 @@ const runSource = async ({ key, fetchJobs, streams }, results, attempt = 1) => {
       jobsUpdated: stats.updated + stats.merged,
       success: true,
       retried: attempt > 1,
+      errorMessage: partialFailures,
     });
     console.log(`${key}: ${stats.fetched} fetched, ${stats.new} new, ${stats.merged} merged as duplicates, ${stats.updated} refreshed`);
 
@@ -538,4 +568,7 @@ const pruneStaleJobs = async (results) => {
 module.exports = {
   aggregateJobs,
   SOURCES,
+  // Exported for the Q4 dedupe tests, which drive the real store path with a
+  // mocked db rather than regexing this file for the predicate.
+  storeJob,
 };
