@@ -323,6 +323,24 @@ const JOINER_MATCH = `description ~* '(${JOINER_CORE})'`;
 const joinerSnippetSql = (prefix = '') => `CASE WHEN ${prefix}description ~* '(${JOINER_CORE})'
   THEN substring(${prefix}description from '(?i)[^.]{0,60}(${JOINER_CORE})[^.]{0,60}') END`;
 
+/*
+ * Feature 10 facet counts, cached five minutes. Both queries scan every
+ * active row (the joiner one runs a regex over every description); the
+ * numbers only move when ingest writes, every six hours, so recomputing them
+ * per page visit is pure cost. Same tradeoff as the feed COUNT cache above,
+ * with a longer window because a facet count drifting during an ingest cycle
+ * misleads nobody - the filter itself always runs live.
+ */
+const INDIA_FACET_TTL_MS = Number(process.env.INDIA_FACET_TTL_MS) || 300000;
+const indiaFacetCache = new Map();
+async function cachedIndiaFacet(key, sql) {
+  const hit = indiaFacetCache.get(key);
+  if (hit && Date.now() - hit.at < INDIA_FACET_TTL_MS) return hit.value;
+  const value = await query(sql);
+  indiaFacetCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 // Pull contact addresses that the employer actually published in the posting
 // text. These are real, verifiable, and already public in the job ad.
 //
@@ -594,10 +612,12 @@ router.get('/facets', async (req, res) => {
              FROM jobs WHERE is_active = true GROUP BY 1 ORDER BY count DESC`),
       // Feature 10 - same conversion chain as the filter, so the two cannot
       // disagree about which band a job is in.
-      query(`SELECT
+      cachedIndiaFacet('salaryInr', `SELECT
                ${SALARY_INR_BANDS.map((b) => `COUNT(*) FILTER (WHERE ${inrBandCondition(b.value)})::int AS "${b.value}"`).join(',\n               ')}
              FROM jobs WHERE is_active = true`),
-      query(`SELECT COUNT(*) FILTER (WHERE ${JOINER_MATCH})::int AS immediate
+      // The joiner count regex-scans every description; cached because the
+      // number only moves when ingest writes, every six hours.
+      cachedIndiaFacet('joiner', `SELECT COUNT(*) FILTER (WHERE ${JOINER_MATCH})::int AS immediate
              FROM jobs WHERE is_active = true`),
     ]);
 
@@ -1560,7 +1580,6 @@ router.get('/', attachUserIfPresent, async (req, res) => {
         cte: `
       WITH ranked AS (
         SELECT ${JOB_COLUMNS.split(',').map((c) => `jobs.${c.trim()}`).join(', ')},
-               ${joinerSnippetSql('jobs.')} AS joiner_snippet,
                ${v.tierCaseExpr} AS match_tier,
                jm.overall_score, jm.skills_match_score, jm.experience_match_score,
                jm.location_match_score, jm.salary_match_score
@@ -1846,15 +1865,32 @@ router.get('/', attachUserIfPresent, async (req, res) => {
       noExactMatches = relatedJobs.length > 0;
     }
 
+    /*
+     * Feature 10 - the joiner snippet is fetched for the PAGE rows only, by
+     * id. The first version computed the CASE inside the ranked CTE, which
+     * ran two description regexes over every active row on every feed
+     * request: the load test collapsed from clean-at-500 to failures at 50,
+     * wall 2.6s -> 28.6s. Twenty indexed lookups replace eighteen thousand
+     * regex evaluations.
+     */
+    const pageIds = [...jobs, ...relatedJobs].map((j) => j.id);
+    const snippetById = new Map();
+    if (pageIds.length) {
+      const snip = await query(
+        `SELECT id, ${joinerSnippetSql()} AS joiner_snippet FROM jobs WHERE id = ANY($1)`,
+        [pageIds]
+      );
+      for (const r of snip.rows) snippetById.set(r.id, r.joiner_snippet);
+    }
+
     const decorate = (list) => list.map((j) => {
-      // Feature 10 - the employer's own immediate-joiner sentence, or null.
-      // Renamed so the SQL alias never leaks, and trimmed because the
-      // substring window can start mid-whitespace.
+      // The employer's own immediate-joiner sentence, or null - never a guess.
       const { joiner_snippet, ...rest } = j;
+      const snippet = snippetById.get(j.id) || null;
       return {
         ...sanitizeJob(rest),
         experienceLevel: classifyExperience(j.title),
-        joinerNote: joiner_snippet ? fixMojibake(String(joiner_snippet).trim()) : null,
+        joinerNote: snippet ? fixMojibake(String(snippet).trim()) : null,
       };
     });
 

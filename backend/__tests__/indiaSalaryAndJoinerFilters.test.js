@@ -80,15 +80,16 @@ describe('GET /api/jobs?joiner=immediate', () => {
     expect(feedSql).toMatch(/description/);
   });
 
-  it('returns the posting\'s own sentence as joinerNote on matching rows', async () => {
+  it('returns the posting\'s own sentence as joinerNote, fetched per page by id', async () => {
     query.mockImplementation((sql) => {
-      if (/is_active = true/.test(sql) && /joiner_snippet/.test(sql)) {
+      if (/is_active = true/.test(sql) && /SELECT/i.test(sql) && !/COUNT/i.test(sql)) {
         return Promise.resolve({
-          rows: [{
-            id: 1, title: 'Product Designer', company_name: 'X', source: 'greenhouse',
-            joiner_snippet: 'We are looking for an immediate joiner who can start within 15 days',
-            match_tier: 1,
-          }],
+          rows: [{ id: 1, title: 'Product Designer', company_name: 'X', source: 'greenhouse', match_tier: 1 }],
+        });
+      }
+      if (/ANY\(\$1\)/.test(sql) && /joiner_snippet/.test(sql)) {
+        return Promise.resolve({
+          rows: [{ id: 1, joiner_snippet: 'We are looking for an immediate joiner who can start within 15 days' }],
         });
       }
       return defaultRows(sql);
@@ -100,13 +101,29 @@ describe('GET /api/jobs?joiner=immediate', () => {
     expect(res.body.jobs[0].joinerNote).toMatch(/immediate joiner/i);
     // The raw column name does not leak into the payload.
     expect(res.body.jobs[0].joiner_snippet).toBeUndefined();
+
+    /*
+     * The regression pin. The first version computed the snippet CASE inside
+     * the ranked CTE, running two description regexes over every active row
+     * on every feed request - the load test collapsed from clean-at-500 to
+     * failing at 50 concurrent. The full-scan query must never carry it.
+     */
+    const cteSql = query.mock.calls.map((c) => c[0]).find((s) => /WITH ranked/.test(s));
+    expect(cteSql).toBeTruthy();
+    expect(cteSql).not.toMatch(/joiner_snippet/);
+    // And the snippet query is id-bounded, not a scan.
+    const snipSql = query.mock.calls.map((c) => c[0]).find((s) => /joiner_snippet/.test(s));
+    expect(snipSql).toMatch(/ANY\(\$1\)/);
   });
 
   it('rows without the ask carry joinerNote null, never a guess', async () => {
     query.mockImplementation((sql) => {
-      if (/is_active = true/.test(sql)) {
+      if (/ANY\(\$1\)/.test(sql) && /joiner_snippet/.test(sql)) {
+        return Promise.resolve({ rows: [{ id: 2, joiner_snippet: null }] });
+      }
+      if (/is_active = true/.test(sql) && /SELECT/i.test(sql) && !/COUNT/i.test(sql)) {
         return Promise.resolve({
-          rows: [{ id: 2, title: 'X', company_name: 'Y', source: 's', joiner_snippet: null, match_tier: 1 }],
+          rows: [{ id: 2, title: 'X', company_name: 'Y', source: 's', match_tier: 1 }],
         });
       }
       return defaultRows(sql);
