@@ -1610,3 +1610,28 @@ changes for new same-content entries; the company+title reuse lookup and the
 ON CONFLICT clause both backstop that, so the cost is at most one extra
 inactive row per re-added entry. Rule: no control characters in source,
 ever — if a separator matters, make it visible.
+
+## D62 — session boot 2026-08-08 (extension-testing run): two premises checked
+
+**Premise 1 — "the extension cannot be loaded in a browser here."** Under
+test, not accepted. Google Chrome (stable channel) driven by Playwright does
+NOT honour `--load-extension`: no MV3 service worker registers and the
+announce content script never stamps the DOM (both observed). Playwright's
+own bundled Chromium is the supported path for extension loading; its
+download stalled on this network and E1 continues against it. Verdict
+deferred to E1 with the actual error, per the brief — not assumed either way.
+
+**Premise 2 — the Greenhouse adapter's "two markup generations live
+simultaneously, both common" (comment in greenhouse.js, and SUBMISSION_PROOF's
+selector list `#application_form`, `job_application[...]`).** DISAGREES with
+live reality 2026-08-08: `boards.greenhouse.io/<slug>/jobs/<id>` (legacy
+Rails) now 301-redirects to `job-boards.greenhouse.io/<slug>/jobs/<id>` (modern
+React), and the legacy embed likewise. The modern board's server HTML carries
+`id="application-form"` (hyphen) and `id="first_name"` — NOT `#application_form`
+(underscore) or `job_application[...]`. So the adapter's legacy-generation
+selectors are the ones most at risk of being dead, which is exactly what E2
+measures against real DOM.
+
+Everything else in the five docs matches the code: branch is `production`
+(0/0 vs origin), suites green (backend 724, frontend 328), production healthy,
+rule-10 bar and Q-series records consistent.
