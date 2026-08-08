@@ -55,6 +55,10 @@ export default function Inbox() {
   const [messages, setMessages] = useState(null);
   const [counts, setCounts] = useState({});
   const [proxyEmail, setProxyEmail] = useState(null);
+  // null = not loaded yet. Distinct from false, which is a server-confirmed
+  // "mail sent to the proxy address reaches nobody" (the /inbound webhook is
+  // unconfigured). The bar must not render a delivery promise on null either.
+  const [inboundConfigured, setInboundConfigured] = useState(null);
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -72,6 +76,9 @@ export default function Inbox() {
     setMessages(d.messages || []);
     setCounts(d.counts || {});
     setProxyEmail(d.proxyEmail || null);
+    // Older API payloads carry no flag; treat absence as unknown rather than
+    // as dead, so a stale backend does not render a false outage.
+    setInboundConfigured(typeof d.inboundConfigured === 'boolean' ? d.inboundConfigured : null);
   }, []);
 
   useEffect(() => {
@@ -125,7 +132,21 @@ export default function Inbox() {
         </div>
       </div>
 
-      {proxyEmail && (
+      {inboundConfigured === false ? (
+        /*
+         * Server-confirmed: the inbound webhook is unconfigured, so mail sent
+         * to the proxy address reaches nobody. Rendering the address with a
+         * delivery promise here put a dead address on job applications -
+         * caught on production 2026-08-08. Say so instead.
+         */
+        <div className={page.proxyBar}>
+          <p className={page.proxyHint}>
+            Recruiter-mail forwarding is not connected yet on this deployment.
+            Use your real email address on applications for now — this page
+            will hold your sorted recruiter mail once forwarding is live.
+          </p>
+        </div>
+      ) : proxyEmail && (
         <div className={page.proxyBar}>
           <div>
             <span className={page.proxyLabel}>Your application address</span>
@@ -134,10 +155,15 @@ export default function Inbox() {
           <div className={page.proxyActions}>
             <button className={page.ghostBtn} onClick={copyProxy}>{copied ? 'Copied' : 'Copy'}</button>
           </div>
-          <p className={page.proxyHint}>
-            Use this when an application asks for your email, or forward recruiter
-            mail here. It reaches your real inbox either way.
-          </p>
+          {/* The delivery promise renders only when the server confirmed
+              delivery works; on an unknown (older payload) the address shows
+              without a claim the page cannot back. */}
+          {inboundConfigured === true && (
+            <p className={page.proxyHint}>
+              Use this when an application asks for your email, or forward recruiter
+              mail here. It reaches your real inbox either way.
+            </p>
+          )}
         </div>
       )}
 

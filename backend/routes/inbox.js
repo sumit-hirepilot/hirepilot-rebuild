@@ -125,6 +125,14 @@ router.get('/', verifyToken, async (req, res) => {
       messages: r.rows,
       counts: Object.fromEntries(counts.rows.map((c) => [c.category, c.n])),
       proxyEmail: await ensureProxyEmail(req.user.id),
+      /*
+       * Without INBOUND_MAIL_SECRET the /inbound webhook answers 503 and mail
+       * sent to the proxy address reaches nobody. The UI's "it reaches your
+       * real inbox" claim is only true when this is - so the flag travels
+       * with the address it qualifies. Verified missing on production
+       * 2026-08-08: the address rendered as live while delivery was dead.
+       */
+      inboundConfigured: Boolean(process.env.INBOUND_MAIL_SECRET),
     });
   } catch (err) {
     console.error('GET /inbox failed:', err.message);
