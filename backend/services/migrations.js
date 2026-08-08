@@ -980,6 +980,79 @@ const STATEMENTS = [
    * statement this runner swallows on failure is not a statement that ran.
    */
   `ALTER TABLE jobs ALTER COLUMN job_url DROP NOT NULL`,
+
+  /*
+   * Q2 (2026-08-08) — the verification account holds a real person's data.
+   *
+   * autonomy-verify-2026-08-08@hirepilot.local was seeded from the
+   * operator's REAL profile: real name on users, real phone/email/employers
+   * in the resume text, real employment history, the real name signed under
+   * a generated cover letter. These statements replace the CONTENT with
+   * clearly synthetic equivalents while keeping every row and id intact -
+   * PROJECT.md's evidence trail names those ids.
+   *
+   * Shape rules honoured: audit row FIRST (a correction that does not record
+   * what it changed cannot be told from one that never ran); every statement
+   * keys on the email, never an id (ids differ per environment); every
+   * content mutation carries its own already-synthetic guard so re-runs are
+   * no-ops; nothing drops or alters a column. On a fresh database the
+   * account does not exist and every statement is a clean no-op.
+   */
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT FALSE`,
+
+  `INSERT INTO data_corrections (correction, table_name, row_count, detail)
+     SELECT 'q2-internal-account-scrub', 'users+resumes+user_experience+cover_letters', COUNT(*),
+            jsonb_build_object(
+              'email', 'autonomy-verify-2026-08-08@hirepilot.local',
+              'reason', 'verification account was seeded from a real profile; content replaced with synthetic equivalents, rows and ids kept'
+            )
+       FROM users
+      WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local'
+        AND COALESCE(is_internal, FALSE) = FALSE
+     HAVING COUNT(*) > 0`,
+
+  `UPDATE users
+      SET full_name = 'Internal Verification Account', is_internal = TRUE
+    WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local'`,
+
+  `UPDATE resumes
+      SET original_file_text = 'SYNTHETIC VERIFICATION RESUME' || chr(10) ||
+            'This account exercises production surfaces end to end. Nothing in this document describes a real person.' || chr(10) || chr(10) ||
+            'SKILLS' || chr(10) ||
+            'Design Systems, Figma, Prototyping, User Research, UX Design, UX Research, Usability Testing, Wireframing, Accessibility, Stakeholder Management, Leadership' || chr(10) || chr(10) ||
+            'EXPERIENCE' || chr(10) ||
+            'Verification Employer A - Verification Designer - Jan 2020-Present - Synthetic City' || chr(10) ||
+            'Exercises parsing, scoring, tailoring and application paths with clearly synthetic content.' || chr(10) || chr(10) ||
+            'Verification Employer B - Verification Designer - Jan 2016-Dec 2019 - Synthetic City' || chr(10) ||
+            'Synthetic history kept so the profile stays scoreable for verification runs.',
+          label = 'Internal verification resume',
+          doc = NULL, doc_source = NULL, file_data = NULL, original_filename = NULL
+    WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
+      AND original_file_text NOT LIKE '%SYNTHETIC VERIFICATION RESUME%'`,
+
+  `UPDATE user_experience
+      SET company_name = 'Verification Employer ' || id,
+          job_title = 'Verification Designer ' || id,
+          start_date = DATE '2020-01-01', end_date = NULL, currently_working = FALSE
+    WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
+      AND company_name NOT LIKE 'Verification Employer%'`,
+
+  `UPDATE cover_letters
+      SET content = 'Synthetic verification cover letter. The generated original carried the real profile it was built from and was scrubbed 2026-08-08; this row remains as evidence that generation and persistence worked (PROJECT.md section 6).'
+    WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
+      AND content NOT LIKE '%Synthetic verification cover letter%'`,
+
+  `UPDATE screening_answers
+      SET answer = 'Synthetic verification answer (scrubbed 2026-08-08).'
+    WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
+      AND COALESCE(answer, '') NOT LIKE '%Synthetic verification answer%'`,
+
+  `UPDATE tailored_resumes
+      SET tailored_summary = 'Synthetic verification content (scrubbed 2026-08-08).',
+          original_snapshot = NULL, diff_json = NULL,
+          final_text = 'Synthetic verification content (scrubbed 2026-08-08).'
+    WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
+      AND COALESCE(final_text, '') NOT LIKE '%Synthetic verification content%'`,
 ];
 
 /*

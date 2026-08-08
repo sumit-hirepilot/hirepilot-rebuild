@@ -148,6 +148,8 @@ const FULL = {
     // 2026-08-08 — job_url went nullable so a manual tracker entry with no
     // posting URL can be stored without inventing one.
     { table_name: 'jobs', column_name: 'job_url', column_default: null, is_nullable: 'YES' },
+    // Q2 — the internal-account flag the scrub and the auto-apply sweep key on.
+    { table_name: 'users', column_name: 'is_internal', column_default: 'false', is_nullable: 'YES' },
   ],
 };
 

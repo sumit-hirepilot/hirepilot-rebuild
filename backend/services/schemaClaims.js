@@ -82,6 +82,17 @@ const CLAIMS = [
     kind: 'column_nullable', name: 'jobs.job_url',
     why: 'a manual tracker entry with no posting URL could not be stored without inventing one',
   },
+  {
+    /*
+     * Q2 — presence proof for the internal-account flag. The scrub keys the
+     * auto-apply exclusion and the identity replacement on this column; a
+     * fresh database where the ALTER silently failed would sweep internal
+     * accounts like real ones. column_nullable doubles as an existence
+     * check: a column the catalogue does not know reads absent.
+     */
+    kind: 'column_nullable', name: 'users.is_internal',
+    why: 'without the flag, internal verification accounts read as real users to every sweep and aggregate',
+  },
 ];
 
 async function readBack(query) {

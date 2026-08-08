@@ -180,7 +180,8 @@ const runAutoApplyForAllUsers = async () => {
   const usersResult = await query(
     `SELECT u.id FROM users u
      JOIN user_preferences up ON up.user_id = u.id
-     WHERE up.auto_apply_enabled = true`,
+     WHERE up.auto_apply_enabled = true
+       AND COALESCE(u.is_internal, FALSE) = FALSE`,
     []
   );
 
