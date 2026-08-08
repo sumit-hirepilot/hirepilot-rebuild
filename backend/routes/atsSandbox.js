@@ -58,13 +58,14 @@ router.post('/seed', verifyToken, async (req, res) => {
     const r = await query(
       `INSERT INTO jobs
          (source, external_id, title, company_name, job_url, apply_url,
-          description, requirements, location, work_arrangement, job_type,
-          is_active, added_by_user_id)
+          description, requirements, location, country, work_arrangement,
+          job_type, is_active, added_by_user_id)
        VALUES ('ats_sandbox', $1, 'Senior Product Designer',
-               'HirePilot Test Target', $2, $2, $3, $4, 'Remote', 'remote',
-               'full-time', false, $5)
+               'HirePilot Test Target', $2, $2, $3, $4, 'United States',
+               'United States', 'remote', 'full-time', false, $5)
        ON CONFLICT (source, external_id) DO UPDATE
          SET job_url = EXCLUDED.job_url, apply_url = EXCLUDED.apply_url,
+             location = EXCLUDED.location, country = EXCLUDED.country,
              is_active = false
        RETURNING id`,
       [
