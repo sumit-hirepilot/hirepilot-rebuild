@@ -581,3 +581,36 @@ crosses it. The bar as instrumented is arrival-shape sensitive at exactly
 pool already sized for two), or raising the acquire bound (rejected — it
 makes the number look met without adding capacity). Recorded in BLOCKED.md;
 the failing runs stand as they happened.
+
+## 2026-08-08 — feature 10 shipped a per-request full-scan regex; caught by this budget, fixed, bar MET
+
+The first feature-10 deploy computed the immediate-joiner snippet CASE inside
+the ranked CTE - two description regexes over every active row, on EVERY feed
+request. The budget run caught it within minutes of deploy:
+
+| concurrent | ok | failed | wall |
+|---|---|---|---|
+| 50 | 140 | **10 × 500** | 28.6 s (was 2.6–8 s) |
+| 200 | 440 | **160** | 27.3 s |
+| 500 | 1,040 | **460** | 29.9 s |
+| 1,000 | 2,040 | **960** | 32.5 s |
+
+Fix: the snippet is fetched for the PAGE rows only (`WHERE id = ANY($1)`),
+and the two feature-10 facet counts are cached five minutes (they move only
+when ingest writes). A test now pins the ranked CTE to never carry the
+snippet expression.
+
+After the fix, same machine, same instrument:
+
+| concurrent | requests | ok | failed | wall | RSS |
+|---|---|---|---|---|---|
+| 50 | 150 | 150 | **0** | 2.9 s | 167 → 196 MB |
+| 200 | 600 | 600 | **0** | 5.9 s | 196 → 264 MB |
+| 500 | 1,500 | 1,500 | **0** | 13.0 s | 189 → 261 MB |
+| **1,000** | **3,000** | **3,000** | **0** | 24.4 s | 188 → 296 MB |
+
+The 1,000 bar is MET on this run - which also revises this morning's
+71-failure reading: at identical capacity the tail either clears or crosses
+the 10 s acquire bound run by run, so the bar is arrival-shape sensitive at
+exactly 1,000, and 71/3,000 vs 0/3,000 is that sensitivity, not a code
+difference. The step-2 entry stands as recorded.

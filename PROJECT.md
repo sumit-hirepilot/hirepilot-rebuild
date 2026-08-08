@@ -389,3 +389,15 @@ see LOAD.md + BLOCKED.md.** 500 concurrent clean.
 Follow-up filed, not fixed here: the dashboard labels `total_applications`
 (which includes drafts) as applications sent; and `GET /api/applications`'s
 `total` counts every row while the page renders a subset.
+
+### Incident 2026-08-08 — feature 10's first deploy degraded the feed under load
+
+The joiner-snippet CASE ran inside the full-scan feed CTE: two description
+regexes × ~18k rows × every request. Single requests looked fine (~0.4 s);
+under 50 concurrent the API returned 500s and walls went 2.6 s → 28.6 s. Live
+roughly 30 minutes, caught by the rule-10 load run, fixed by moving the
+snippet to an id-bounded per-page query and caching the two new facet counts.
+Regression pinned by test (the ranked CTE must never carry the snippet).
+Lesson recorded: a per-row expression added to a full-scan CTE is a cost on
+EVERY request, and single-request probes cannot see it - only the
+concurrency budget could, which is the reason it runs on every deploy.
