@@ -936,3 +936,14 @@
   color: var(--muted, #5b6b84);
   margin: 0;
 }
+
+/* L6 - an error the user must see, styled as an error not a success. */
+.messageError {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background-color: rgba(220, 38, 38, 0.1);
+  border-left: 3px solid var(--error);
+  font-size: 0.875rem;
+  color: var(--text);
+}

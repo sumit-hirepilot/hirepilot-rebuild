@@ -383,6 +383,15 @@ export default function Jobs() {
   const [sources, setSources] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState('');
+  // L6 - a message the user must SEE. The Apply Now error rendered green,
+  // above the fold of cards, so a stranger who clicked Apply saw nothing.
+  const [messageKind, setMessageKind] = useState('info');
+  const messageRef = useRef(null);
+  const flashMessage = useCallback((text, kind = 'info') => {
+    setMessage(text);
+    setMessageKind(kind);
+    if (text) requestAnimationFrame(() => messageRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  }, []);
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   // How many are being prepared right now, 0 when idle. A count rather than a
@@ -510,7 +519,7 @@ export default function Jobs() {
         setEmptyReason(null);
         setRelatedJobs([]);
         setExcludedUnknownDateCount(null);
-        setMessage('Failed to load jobs. Please try your search again.');
+        flashMessage('Failed to load jobs. Please try your search again.', 'error');
       }
 
       if (appsRes.ok) {
@@ -797,7 +806,7 @@ export default function Jobs() {
   const handleQueue = async (jobIds) => {
     const ids = Array.isArray(jobIds) ? jobIds : [jobIds];
     if (queueing) return;              // a second click would prepare them twice
-    setMessage('');
+    flashMessage('', 'info');
     /*
      * Preparing is SLOW and was silent. The backend tailors a resume, writes a
      * cover letter and resolves the screening answers for every job, five at a
@@ -813,7 +822,7 @@ export default function Jobs() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage(data.error || 'Could not prepare the application');
+        flashMessage(data.error || 'Could not prepare the application', 'error');
         return;
       }
       setAppliedIds((prev) => {
@@ -849,11 +858,12 @@ export default function Jobs() {
         failedText = ` ${failed.length} could not be prepared: ${shown}${more}.`;
       }
 
-      setMessage(
-        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve under Ready to send.${skipped}${failedText}`
+      flashMessage(
+        `Prepared ${data.queued} application${data.queued === 1 ? '' : 's'} - review and approve under Ready to send.${skipped}${failedText}`,
+        failed.length ? 'error' : 'success'
       );
     } catch (err) {
-      setMessage('Could not prepare the application. Please try again.');
+      flashMessage('Could not prepare the application. Please try again.', 'error');
     } finally {
       setQueueing(0);
     }
@@ -861,7 +871,7 @@ export default function Jobs() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    setMessage('');
+    flashMessage('', 'info');
     try {
       const res = await fetch(`${base}/api/jobs/refresh`, {
         method: 'POST',
@@ -869,14 +879,14 @@ export default function Jobs() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage(`Fetched ${data.total} jobs (${data.new} new, ${data.updated} updated).`);
+        flashMessage(`Fetched ${data.total} jobs (${data.new} new, ${data.updated} updated).`, 'success');
         loadJobs(token, { page: 1 });
         setPage(1);
       } else {
-        setMessage(data.error || 'Failed to refresh jobs');
+        flashMessage(data.error || 'Failed to refresh jobs', 'error');
       }
     } catch (err) {
-      setMessage('Failed to refresh jobs');
+      flashMessage('Failed to refresh jobs', 'error');
     } finally {
       setRefreshing(false);
     }
@@ -1410,7 +1420,9 @@ export default function Jobs() {
           })}
         </div>
 
-        {message && <div className={page.message}>{message}</div>}
+        {message && (
+          <div ref={messageRef} className={messageKind === 'error' ? page.messageError : page.message}>{message}</div>
+        )}
 
         {selectedIds.size > 0 && (
           <div className={page.bulkBar}>

@@ -29,8 +29,11 @@ describe('the batch result is reported in full', () => {
   });
 
   it('puts the failures in the message the user sees', () => {
-    // Not merely destructured and dropped - it has to reach setMessage.
-    const messageCall = handler.slice(handler.indexOf('setMessage('), handler.length);
+    // Not merely destructured and dropped - it has to reach the banner the
+    // user sees. The message setter is flashMessage now (L6, so an error is
+    // styled and scrolled into view); the anchor follows it.
+    const setter = handler.includes('flashMessage(') ? 'flashMessage(' : 'setMessage(';
+    const messageCall = handler.slice(handler.indexOf(setter), handler.length);
     expect(messageCall).toMatch(/failedText/);
   });
 
