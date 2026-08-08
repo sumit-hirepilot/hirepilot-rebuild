@@ -29,8 +29,59 @@ const express = require('express');
 const multer = require('multer');
 const crypto = require('crypto');
 const { query } = require('../db');
+const { verifyToken } = require('../middleware/auth');
+const { PUBLIC_APP_URL } = require('../services/publicUrl');
 
 const router = express.Router();
+
+/*
+ * E1 — seed a queueable application that targets the controlled sandbox, so
+ * an automated harness can drive the REAL queue → fill → submit → evidence
+ * path end to end without an employer.
+ *
+ * Fenced by the SAME flag that fences the whole sandbox: with
+ * ATS_SANDBOX_ENABLED unset this 404s like an unknown route, so it cannot
+ * exist in a real deployment. The job it creates is is_active = false (never
+ * enters the shared feed), scoped to the caller (added_by_user_id), and its
+ * URL is the sandbox page carrying the caller id so two internal accounts
+ * cannot collide on the job_url UNIQUE constraint. detectAts resolves that
+ * URL to 'ats_sandbox' - a HirePilot URL never reports itself as an
+ * employer's ATS.
+ */
+router.post('/seed', verifyToken, async (req, res) => {
+  if (process.env.ATS_SANDBOX_ENABLED !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  try {
+    const url = `${PUBLIC_APP_URL}/ats-sandbox/greenhouse?u=${req.user.id}`;
+    const extId = `sandbox-seed-${req.user.id}`;
+    const r = await query(
+      `INSERT INTO jobs
+         (source, external_id, title, company_name, job_url, apply_url,
+          description, requirements, location, work_arrangement, job_type,
+          is_active, added_by_user_id)
+       VALUES ('ats_sandbox', $1, 'Senior Product Designer',
+               'HirePilot Test Target', $2, $2, $3, $4, 'Remote', 'remote',
+               'full-time', false, $5)
+       ON CONFLICT (source, external_id) DO UPDATE
+         SET job_url = EXCLUDED.job_url, apply_url = EXCLUDED.apply_url,
+             is_active = false
+       RETURNING id`,
+      [
+        extId, url,
+        'Controlled test posting. Senior Product Designer focused on design systems, '
+          + 'Figma, prototyping, user research and accessibility. Used only to exercise '
+          + 'the application pipeline against a sandbox target - not a real employer.',
+        'Design systems, Figma, prototyping, user research, accessibility.',
+        req.user.id,
+      ]
+    );
+    res.json({ jobId: r.rows[0].id, jobUrl: url });
+  } catch (err) {
+    console.error('ats-sandbox seed failed:', err.message);
+    res.status(500).json({ error: 'Could not seed the sandbox job' });
+  }
+});
 
 // Same ceiling as the resume upload it will be fed from.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
