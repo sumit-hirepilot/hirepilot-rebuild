@@ -827,3 +827,42 @@ Both are real now, red-proven (6 backend + 2 frontend tests):
 - `GET /api/auth/export`: every user-owned table as one JSON attachment,
   never the password hash, every query caller-scoped. Settings gained the
   matching "Download my data" button.
+
+## 25. L6 (2026-08-08, third run) — the stranger run, and the launch-critical find
+
+Fresh account (Stranger Test) walked in a real browser: signup → onboarding
+(role, region, three skills — the skill chips MERGED into one when typed too
+fast, recorded below) → dashboard (500 matches, real scores 50–60%, honest
+"not on your plan · See plans") → Jobs → Apply Now.
+
+**Launch-critical defect, found only by clicking as a stranger:** Apply Now
+with a profile but NO resume returned a correct 400 ("Upload a resume before
+queueing"), but the page rendered that error in the SUCCESS banner (green)
+at the TOP of the page — off-screen from the card clicked. The stranger's
+experience was "I clicked Apply and nothing happened." Fixed: errors render
+in a red error banner and scroll into view; success/partial-failure keep
+their own kinds. Red-proven, shipped, bundle confirmed live.
+
+After uploading a resume the same account queued an application end to end:
+POST /api/apply/queue → 1 queued → it appears on Ready to send in the
+"NEEDS YOU" column ("Product Design Manager, Vertical Experiences · Betterup
+· needs an answer from you") — the honest state for a thin profile missing a
+screening answer. Account then deleted end to end (login → 401), which also
+cleaned the test row.
+
+**What a stranger can do end to end today, observed:** sign up, onboard,
+see real scored matches, browse/filter 20k jobs, open a job, upload or paste
+a resume, queue an application, reach the review-before-send state, export
+their data, delete their account. Zero console errors on every page walked.
+
+**BLOCKED-NEEDS-HUMAN (only a human can judge):**
+- The final submit to a real employer needs the Chrome extension loaded in a
+  real browser against a real ATS — never exercised here, and A5's live-board
+  question is still open.
+- Onboarding skill chips merged ("FigmaDesign SystemsUser Research" as one)
+  when three were typed in quick succession; reproduced, then entered cleanly
+  one at a time. A fast typist could hit it — worth a human's eye on the chip
+  input's Enter handling. Filed, not fixed (not reproduced under the test
+  harness, and the profile page's own chip input is unaffected).
+- Visual polish, tap-target comfort, and readability of data-dense screens on
+  a real phone.

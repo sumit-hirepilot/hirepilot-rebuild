@@ -645,3 +645,10 @@ directions before trusting it (known-good → exit 0; failures under the bar
 → exit 1; failures only above the bar → exit 0 with the informational
 label), because a verdict instrument gets a known-good and a known-bad
 reading first.
+
+## 2026-08-08 (third run, launch-readiness) — final budget run, bar MET
+
+50/200/500 all clean, and this run 1,000 also returned 0/3,000 (the
+arrival-shape sensitivity cuts both ways). idle 171 MB, peak 213 MB.
+Instrument exit 0. Enforced bar (500 clean) met on every deploy of the
+launch-readiness pass.

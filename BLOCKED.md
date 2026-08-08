@@ -414,3 +414,16 @@ the secret compares in constant time). What only you can do:
    - SendGrid: Settings → Inbound Parse → add host + URL as above.
 5. **Send one real mail** to any user's proxy address (shown on /inbox) and
    confirm it appears there. Nothing else needs touching.
+
+## NEEDS-HUMAN 2026-08-08 (launch readiness) — three items a human eye must close
+
+1. **Live employer submit.** The extension-driven final submit to a real ATS
+   was never exercised (no extension in a headless browser; A5's live-board
+   ToS question open). Everything up TO the submit is verified end to end.
+2. **Onboarding chip merge.** Typing three skills fast merged them into one
+   chip on /onboarding; entering one at a time was clean. Not reproduced in
+   the jest harness. Look at the Enter-key handler on the onboarding skill
+   input (the /profile chip input does not share the bug).
+3. **Mobile polish.** 375px geometry is clean on all 13 pages (no overflow,
+   nav reachable); tap-target size, spacing comfort and dense-screen
+   readability on a real device are a designer's call.
