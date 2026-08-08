@@ -300,3 +300,69 @@ Concretely, either:
 
 Do this before feature 10. Everything else in the queue is additive; this is
 the only item that is currently a single point of failure.
+
+---
+
+## 6. STEP-1 VERIFICATION 2026-08-08 (autonomous session) — the seven unverified surfaces
+
+Method: authenticated API calls against the new production
+(`backend-production-e6a8`) as a real seeded user
+(`autonomy-verify-2026-08-08@hirepilot.local`, user 3: real resume text,
+11 skills, 6 roles, 500 scored matches). Every verdict names the observation.
+
+### Verified working, with the observation
+
+| Surface | Evidence |
+|---|---|
+| **Networking** | `/suggest` → 3 LinkedIn searches, `areIdentifiedPeople:false`; contact created (id 1) and listed; `/outreach` → 3 drafts + lookup counter 1/15; draft saved (id 1), listed, marked sent with timestamp. Full loop exercised. |
+| **Agents** | preview `{"estimate":258}`; agent created (`auto_apply:false`); run → `jobsScanned:284, newMatches:284`; matches ranked 0.91 down with scores attached; list shows `match_count:284, applied_count:0`. |
+| **Cover Letters** | Generated against job 17518 (Staff Web Designer @ Harvey): honest mail-merge from real profile skills, persisted (id 7), listed. No invented employers/dates. |
+| **Inbox — read paths** | GET → messages [], counts {}, proxy address generated; `/otp/latest` → `{"otp":null}`. Correct empty states. |
+| **Tracker — read paths** | Board renders 5 empty columns; export.csv correct quoted header; sweep-ghosted `{moved:0}`; stage-move on missing row → 404. |
+| **Analytics — mechanics** | 14-day series filled, totals all real zeros for an account with zero applications. Shape correct. |
+| **ATS Checker — mechanics** | Real JD (4,001 chars) vs real resume → score 15, matched/missing lists, 3-item structured guide. Responds correctly. |
+
+### BROKEN, with symptom and files
+
+1. **Tracker manual add + CSV import — 500 on production.**
+   `POST /api/tracker/manual` → `{"error":"Could not add that application"}`;
+   Railway log: `null value in column "external_id" of relation "jobs"
+   violates not-null constraint`. `jobs.external_id` is NOT NULL in
+   schema.sql; the old database predated the constraint so this worked there —
+   the D50 family. Both INSERT INTO jobs sites in `backend/routes/tracker.js`
+   supply no `external_id`. Same fix must also set `is_active=false`
+   (mirroring `userLinkedJob.js`): today's inserts would drop personal tracker
+   entries into the shared feed as active jobs.
+2. **Progress board card moves — guaranteed constraint 500.**
+   `frontend/pages/applications.js:213` calls
+   `PUT /api/applications/:id/status`, which writes raw `status`
+   (`phone_screen`, `technical_interview`, …). Both CHECK constraints are
+   present on the live DB (read back from db-health):
+   `applications_applied_at_requires_submitted` means ANY status other than
+   `submitted` on a row with `applied_at` set is rejected — every manual and
+   every auto-pilot row. And a draft with no `applied_at` CAN move to
+   `phone_screen`, after which `backend/routes/analytics.js` counts it as a
+   "response" for an application never sent. Status is an evidence claim;
+   conversation progress is `tracker_stage` (tracker.js's own header says so).
+   The route, the kanban GET, `/stats` and analytics all still read the old
+   status vocabulary.
+3. **Inbox inbound mail is unconfigured, and the API hides that.**
+   `POST /api/inbox/inbound` → 503 (`INBOUND_MAIL_SECRET` unset). Yet
+   GET /api/inbox mints and returns a proxy address
+   (`hp-…@hirepilot-mail.com`) with no signal it is dead — mail sent there
+   vanishes. The API must report `inboundConfigured:false` so the UI can say
+   so. Setting up the mail domain/provider/secret is operator-only.
+4. **ATS checker counts stopwords as keywords.** 253 "meaningful terms" from
+   one JD included `why, how, gets, done, what, who, we'd, http`; the guide
+   then advises adding them. STOPWORDS/BOILERPLATE sets are far too small,
+   deflating every score and polluting the advice.
+
+### BLOCKED-NEEDS-HUMAN
+
+- **Inbox end-to-end delivery**: needs a real inbound-mail domain, a
+  provider posting to `/api/inbox/inbound`, and `INBOUND_MAIL_SECRET` +
+  `INBOUND_MAIL_DOMAIN` on the backend service. Code-side honesty fix is in
+  scope; the mail infrastructure is not.
+- **Render-side judgement of all seven pages** (layout, hydration, visual
+  states) — server-side contracts verified above; the browser render was not
+  judged in this pass.
