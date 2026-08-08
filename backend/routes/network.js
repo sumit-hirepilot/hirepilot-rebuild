@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { buildReferralPath } = require('../services/referralPath');
 
 const router = express.Router();
 
@@ -53,6 +54,36 @@ router.post('/suggest', async (req, res) => {
   } catch (err) {
     console.error('Build contact searches error:', err);
     res.status(500).json({ error: 'Failed to build contact searches' });
+  }
+});
+
+/*
+ * Feature 14 — the referral path for one job: the caller's own contacts at
+ * that company, the addresses the posting itself publishes, and LinkedIn
+ * searches. Assembly in services/referralPath; nothing here invents anybody.
+ */
+router.get('/referral-path/:jobId', async (req, res) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ error: 'jobId must be a number' });
+    }
+
+    const j = await query(
+      'SELECT id, title, company_name, description FROM jobs WHERE id = $1',
+      [jobId]
+    );
+    if (!j.rows.length) return res.status(404).json({ error: 'Job not found' });
+
+    const contacts = await query(
+      'SELECT * FROM referrals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200',
+      [req.user.id]
+    );
+
+    res.json(buildReferralPath({ job: j.rows[0], contacts: contacts.rows }));
+  } catch (err) {
+    console.error('GET /network/referral-path failed:', err.message);
+    res.status(500).json({ error: 'Could not build the referral path' });
   }
 });
 

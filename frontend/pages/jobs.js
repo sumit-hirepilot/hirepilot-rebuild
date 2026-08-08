@@ -1516,6 +1516,9 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
   const [detail, setDetail] = useState(null);
   const [ats, setAts] = useState(null);
   const [recruiterLoading, setRecruiterLoading] = useState(true);
+  // Feature 14 - the referral path. null = loading; the payload's own empty
+  // baskets say what is absent.
+  const [referral, setReferral] = useState(null);
   const [recruiterAdded, setRecruiterAdded] = useState(false);
 
   useEffect(() => {
@@ -1525,6 +1528,7 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
     // the meta grid until the new fetch resolves.
     setDetail(null);
     setAts(null);
+    setReferral(null);
     setRecruiterAdded(false);
     setRecruiterLoading(true);
 
@@ -1562,7 +1566,21 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
       }
     }
 
+    async function loadReferral() {
+      try {
+        const res = await fetch(`${base}/api/network/referral-path/${job.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setReferral(data);
+      } catch (err) {
+        // The drawer stays useful without it; the section keeps its loading line.
+      }
+    }
+
     loadAts();
+    loadReferral();
     if (job.company_name) loadRecruiter();
     return () => { cancelled = true; };
   }, [job.id, job.company_name, base, token]);
@@ -1842,6 +1860,45 @@ function JobDetailDrawer({ job, match, atsScore, saved, onToggleSave, applied, o
             original posting instead — HirePilot won&apos;t invent an email, since a
             guessed address either bounces or reaches an unrelated person.
           </p>
+        )}
+
+        {/* Feature 14 - a referral path of honest ingredients: the user's
+            own contacts here, and searches into LinkedIn's real index. Never
+            an invented person. */}
+        <h3 className={styles.drawerSectionTitle}>Find a referral</h3>
+        {referral === null ? (
+          <p className={styles.drawerText}>Looking for referral paths&hellip;</p>
+        ) : (
+          <>
+            {referral.yourContacts?.length ? (
+              referral.yourContacts.map((c) => (
+                <p key={c.id} className={styles.drawerText} style={{ marginBottom: '0.25rem' }}>
+                  <strong>{[c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unnamed contact'}</strong>
+                  {c.relationship_type ? ` · ${c.relationship_type}` : ''} — already in your contacts
+                </p>
+              ))
+            ) : (
+              <p className={styles.drawerText}>
+                No contacts of yours at {referral.job?.company_name || 'this company'} yet.
+              </p>
+            )}
+            {referral.searches?.length > 0 && (
+              <p className={styles.drawerText}>
+                {referral.searches.map((sr) => (
+                  <a key={sr.key} href={sr.url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                    {sr.label} &rarr;
+                  </a>
+                ))}
+              </p>
+            )}
+            {referral.searchesUnavailableReason && (
+              <p className={styles.drawerText}>{referral.searchesUnavailableReason}</p>
+            )}
+            <p className={page.contactNote}>
+              Searches open LinkedIn&apos;s own index. HirePilot never names a person
+              it has not verified exists.
+            </p>
+          </>
         )}
 
         <h3 className={styles.drawerSectionTitle}>Description</h3>

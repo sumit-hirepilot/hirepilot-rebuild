@@ -341,23 +341,9 @@ async function cachedIndiaFacet(key, sql) {
 // believing they contacted a hiring manager when they did not - or reaches a
 // real person who has nothing to do with the role. Only addresses genuinely
 // present in the source text are returned.
-const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-// Addresses that are published but are not application contacts.
-const EMAIL_NOISE = /(noreply|no-reply|donotreply|privacy|legal|abuse|security|unsubscribe|support@(wordpress|wixpress))/i;
-
-function extractContactEmails(description) {
-  if (!description) return [];
-  const found = String(description).match(EMAIL_RE) || [];
-  const seen = new Set();
-  return found
-    .map((e) => e.replace(/[.,;:)\]]+$/, '').toLowerCase())
-    .filter((e) => {
-      if (EMAIL_NOISE.test(e) || seen.has(e)) return false;
-      seen.add(e);
-      return true;
-    })
-    .slice(0, 3);
-}
+// extractContactEmails moved to services/referralPath (feature 14 needs it
+// from a service, and a service must not require a route file). One definition.
+const { extractContactEmails } = require('../services/referralPath');
 
 // ATS keyword-coverage scores for a page of jobs, against the signed-in
 // user's resume. Batched deliberately: the jobs list renders 20 rows, and one
