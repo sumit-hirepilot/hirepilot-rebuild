@@ -967,6 +967,19 @@ const STATEMENTS = [
   `DROP INDEX IF EXISTS idx_jobs_source`,
   `DROP INDEX IF EXISTS idx_job_matches_user_job`,
   `DROP INDEX IF EXISTS idx_job_matches_user_score`,
+
+  /*
+   * 2026-08-08 — a manual tracker entry has no posting URL to store. The base
+   * schema's NOT NULL described aggregated jobs, where a URL always exists;
+   * against POST /tracker/manual and /import it forced a choice between
+   * fabricating a URL (absence must stay absent) and the 500 production
+   * actually served: `null value in column "job_url"`. Aggregated sources are
+   * unaffected - every adapter supplies a real URL. Idempotent: DROP NOT NULL
+   * on an already-nullable column is a no-op. Read back through the
+   * jobs.job_url column_nullable claim in schemaClaims.js, because a
+   * statement this runner swallows on failure is not a statement that ran.
+   */
+  `ALTER TABLE jobs ALTER COLUMN job_url DROP NOT NULL`,
 ];
 
 /*

@@ -70,6 +70,18 @@ const CLAIMS = [
     kind: 'no_column_default', name: 'applications.applied_at',
     why: 'a default would stamp applied_at on rows nothing ever submitted',
   },
+  {
+    /*
+     * A manual tracker entry is an application made off-platform, and "I
+     * applied by email" has no posting URL. The base schema's NOT NULL
+     * described aggregated jobs, where a URL always exists; against manual
+     * entries it forced a choice between fabricating a URL and the 500
+     * production actually served (reproduced 2026-08-08). The migration
+     * relaxes it; this claim is how anyone knows the ALTER actually ran.
+     */
+    kind: 'column_nullable', name: 'jobs.job_url',
+    why: 'a manual tracker entry with no posting URL could not be stored without inventing one',
+  },
 ];
 
 async function readBack(query) {
@@ -78,7 +90,7 @@ async function readBack(query) {
     query(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'`),
     query(`SELECT conname, conrelid::regclass::text AS tbl FROM pg_constraint`),
     query(`SELECT tgname, tgrelid::regclass::text AS tbl FROM pg_trigger WHERE NOT tgisinternal`),
-    query(`SELECT table_name, column_name, column_default
+    query(`SELECT table_name, column_name, column_default, is_nullable
              FROM information_schema.columns WHERE table_schema = 'public'`),
   ]);
 
@@ -87,6 +99,7 @@ async function readBack(query) {
   const consMap = new Map(constraints.rows.map((r) => [r.conname, r.tbl]));
   const trigMap = new Map(triggers.rows.map((r) => [r.tgname, r.tbl]));
   const defMap = new Map(defaults.rows.map((r) => [`${r.table_name}.${r.column_name}`, r.column_default]));
+  const nullableMap = new Map(defaults.rows.map((r) => [`${r.table_name}.${r.column_name}`, r.is_nullable]));
 
   return CLAIMS.map((c) => {
     let present = false;
@@ -114,6 +127,11 @@ async function readBack(query) {
       const known = defMap.has(c.name);
       detail = defMap.get(c.name) || null;
       present = known && detail === null;
+    } else if (c.kind === 'column_nullable') {
+      // Same trap as no_column_default: a column the catalogue does not know
+      // must read absent, not vacuously nullable.
+      detail = nullableMap.get(c.name) || null;
+      present = nullableMap.get(c.name) === 'YES';
     }
 
     return { kind: c.kind, name: c.name, present, why: c.why, detail };

@@ -143,7 +143,12 @@ const FULL = {
     { conname: 'tailored_resumes_source_ck', tbl: 'tailored_resumes' },
   ],
   triggers: [{ tgname: 'trg_submission_receipts_immutable', tbl: 'submission_receipts' }],
-  columns: [{ table_name: 'applications', column_name: 'applied_at', column_default: null }],
+  columns: [
+    { table_name: 'applications', column_name: 'applied_at', column_default: null, is_nullable: 'YES' },
+    // 2026-08-08 — job_url went nullable so a manual tracker entry with no
+    // posting URL can be stored without inventing one.
+    { table_name: 'jobs', column_name: 'job_url', column_default: null, is_nullable: 'YES' },
+  ],
 };
 
 const fakeDb = (world) => (sql) => {

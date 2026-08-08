@@ -93,6 +93,19 @@ describe('POST /api/tracker/manual writes a row the live schema accepts', () => 
     expect(insert[0].replace(/\s+/g, ' ')).toMatch(/is_active\)[\s\S]*FALSE\)/i);
   });
 
+  it('stores an entry with no URL as null, never as an invented URL', async () => {
+    // jobs.job_url went nullable for exactly this row ("I applied by email"
+    // has no posting URL). The alternative was fabricating one.
+    await request(app()).post('/api/tracker/manual')
+      .send({ company: 'Adyen', title: 'Product Designer' });
+    const insert = jobsInsert();
+    const params = insert[1];
+    // $4 carries the URL; with none supplied it must be null, and no other
+    // param may smuggle in something URL-shaped.
+    expect(params).toContain(null);
+    expect(params.some((p) => typeof p === 'string' && /^https?:\/\//.test(p))).toBe(false);
+  });
+
   it('does not fabricate a publication date for a job nobody published', async () => {
     await request(app()).post('/api/tracker/manual')
       .send({ company: 'Adyen', title: 'Product Designer' });
