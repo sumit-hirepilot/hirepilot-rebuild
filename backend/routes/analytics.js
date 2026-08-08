@@ -30,10 +30,22 @@ router.get('/', async (req, res) => {
         [userId]
       ),
       query(
+        /*
+         * A response is a conversation that moved: tracker_stage interviewing
+         * or offer on a row that actually reached the employer. The old
+         * version counted statuses (technical_interview, onsite, hired) the
+         * live constraints stop anything from writing, so a user with three
+         * interviews on the tracker read "0 responses" - a fabricated zero
+         * wearing a real query. hired is gone for the same reason: no write
+         * path records being hired, and a permanent 0 under that label reads
+         * as a fact about the user when it is a fact about the schema.
+         */
         `SELECT
            COUNT(*) as total_applications,
-           COUNT(CASE WHEN status IN ('technical_interview','onsite','offer','hired') THEN 1 END) as responses,
-           COUNT(CASE WHEN status = 'hired' THEN 1 END) as hired,
+           COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
+                       AND tracker_stage IN ('interviewing','offer') THEN 1 END) as responses,
+           COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
+                       AND tracker_stage = 'offer' THEN 1 END) as offers,
            COUNT(CASE WHEN submitted_by = 'auto_pilot' THEN 1 END) as auto_applied
          FROM applications WHERE user_id = $1`,
         [userId]
@@ -62,7 +74,7 @@ router.get('/', async (req, res) => {
       totals: {
         totalApplications: total,
         responses,
-        hired: parseInt(totalsResult.rows[0].hired, 10) || 0,
+        offers: parseInt(totalsResult.rows[0].offers, 10) || 0,
         autoApplied: parseInt(totalsResult.rows[0].auto_applied, 10) || 0,
         responseRate,
       },

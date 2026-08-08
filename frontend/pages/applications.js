@@ -22,13 +22,18 @@ import { formatDate, formatDateShort } from '../lib/format';
  * "Applied" became "Waiting for the company": the user knows they applied,
  * what they want to know is whether anyone has looked.
  */
+/*
+ * Stage columns, matching what the server can actually record. The old
+ * columns (phone_screen, technical_interview, onsite, hired) were a status
+ * vocabulary the live constraints refuse to store - they rendered forever
+ * empty while every submitted row fell through the buckets and appeared
+ * nowhere on this page.
+ */
 const COLUMNS = [
   { key: 'applied', label: statusWord('applied') },
-  { key: 'phone_screen', label: statusWord('phone_screen') },
-  { key: 'technical_interview', label: statusWord('technical_interview') },
-  { key: 'onsite', label: statusWord('onsite') },
+  { key: 'interviewing', label: statusWord('interviewing') },
   { key: 'offer', label: statusWord('offer') },
-  { key: 'hired', label: statusWord('hired') },
+  { key: 'ghosted', label: statusWord('ghosted') },
   { key: 'failed', label: statusWord('failed') },
   { key: 'rejected', label: statusWord('rejected') },
 ];
@@ -208,16 +213,23 @@ export default function Applications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleStatusChange = async (applicationId, newStatus) => {
+  /*
+   * Moving a card moves the CONVERSATION (tracker_stage), through the same
+   * endpoint the Tracker uses - one writer, one vocabulary. The old call, PUT
+   * /:id/status with words like phone_screen, was refused by the database for
+   * every manual and auto-pilot row (applied_at pins status to 'submitted'),
+   * so the card snapped back with a 500 behind it.
+   */
+  const handleStatusChange = async (applicationId, newStage) => {
     try {
-      const res = await fetch(`${base}/api/applications/${applicationId}/status`, {
-        method: 'PUT',
+      const res = await fetch(`${base}/api/tracker/${applicationId}/stage`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ stage: newStage }),
       });
       if (res.ok) loadApplications(token);
     } catch (err) {
-      console.error('Failed to update status', err);
+      console.error('Failed to update stage', err);
     }
   };
 
@@ -242,6 +254,12 @@ export default function Applications() {
    * that is something that happened, not a stage they choose.
    */
   const allStatuses = COLUMNS.filter((c) => c.key !== 'failed');
+  /*
+   * The stage a card is actually at, for the select's value. A rejected
+   * status is a rejection wherever the stage got to; a board row with no
+   * stage yet is sent-and-waiting.
+   */
+  const cardStage = (app) => (app.status === 'rejected' ? 'rejected' : (app.tracker_stage || 'applied'));
   const columnsData = { ...(kanban || {}), rejected, failed };
   const allApps = kanban
     ? [...Object.values(kanban).flat(), ...rejected, ...failed].sort((a, b) => new Date(b.applied_at) - new Date(a.applied_at))
@@ -439,7 +457,7 @@ export default function Applications() {
                       ) : (
                         <select
                           className={page.statusSelectInline}
-                          value={app.status}
+                          value={cardStage(app)}
                           onChange={(e) => handleStatusChange(app.id, e.target.value)}
                         >
                           {allStatuses.map((c) => (
@@ -504,7 +522,7 @@ export default function Applications() {
                           ) : (
                             <select
                               className={page.statusSelect}
-                              value={app.status}
+                              value={cardStage(app)}
                               onChange={(e) => handleStatusChange(app.id, e.target.value)}
                             >
                               {allStatuses.map((c) => (

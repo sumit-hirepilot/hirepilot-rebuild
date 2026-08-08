@@ -20,6 +20,14 @@ export const STATUS_WORDS = {
   submitting: { label: 'Sending now', hint: 'Filling the form on the employer’s site.' },
   submitted: { label: 'Waiting for the company', hint: 'Sent. Employers rarely reply straight away.' },
   applied: { label: 'Waiting for the company', hint: 'Sent, and the employer confirmed it.' },
+  /*
+   * Conversation stages (tracker_stage). The board and the tracker move
+   * these; the old status pipeline (phone_screen, technical_interview,
+   * onsite, hired) below is kept only for reading rows from a
+   * pre-constraint database.
+   */
+  interviewing: { label: 'They replied — interviewing', hint: 'Any call, screen or round in progress.' },
+  ghosted: { label: 'Gone quiet', hint: 'No reply for weeks. It happens; it is not about you.' },
   phone_screen: { label: 'They replied — first call', hint: null },
   technical_interview: { label: 'They replied — interview', hint: null },
   onsite: { label: 'They replied — final round', hint: null },

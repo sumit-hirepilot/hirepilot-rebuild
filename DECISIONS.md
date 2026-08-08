@@ -1492,3 +1492,42 @@ BLOCKED.md and the master prompt, then check them against the code. Findings:
   seeded it with the operator's real resume text, 11 skills, 6 roles —
   a real user exercising the real path. Credentials in the session scratchpad
   only, never in the repo.
+
+## D58 — the Progress board speaks stage, because status refuses to lie for it
+
+Step-1 verification found PUT /api/applications/:id/status writing raw
+`status` from the old pipeline vocabulary (phone_screen, technical_interview,
+onsite, hired). Both CHECK constraints are present on the live database (read
+back from db-health), and they make that route impossible to use honestly:
+any row with `applied_at` is pinned to status='submitted', so moving a manual
+or auto-pilot card was a guaranteed 500 — the D38 class, parameterised
+(`status = $1`) so check-write-paths' literal regex could not see it. And a
+draft with no applied_at COULD move to 'phone_screen', after which analytics
+counted a "response" for an application never sent.
+
+The resolution follows the model tracker.js has stated in its header all
+along: status answers "did this reach the employer, and can we prove it";
+tracker_stage answers "where has the conversation got to". So:
+
+- The kanban GET buckets board rows (submitted or manual) by tracker_stage
+  into {applied, interviewing, offer, ghosted}. Before this, statuses
+  'approved'/'submitting'/'submitted' fell through every bucket — the
+  product's most important rows appeared NOWHERE on the Progress page, while
+  six columns nothing could write rendered forever empty.
+- PUT /:id/status now translates the legacy words onto stage writes
+  (phone_screen/technical_interview/onsite → interviewing, hired → offer),
+  guarded by the same on-board predicate as the tracker, 409ing with the
+  reason for drafts. It never touches `status` again. Kept rather than
+  deleted so an old client keeps working.
+- The frontend board moves cards through PATCH /api/tracker/:id/stage — one
+  writer, one vocabulary — and its columns are the stages.
+- /api/applications/stats and /api/analytics derive interviews/offers/
+  responses from tracker_stage. `hired` is gone from both payloads: no write
+  path records being hired, and a permanent 0 under that label is a fact
+  about the schema presented as a fact about the user. The analytics tile now
+  shows Offers.
+
+Granularity loss accepted deliberately: phone_screen vs onsite collapses to
+'interviewing'. The finer distinctions were storable only in a column the
+constraints refuse; keeping them would have meant a third vocabulary and a
+schema change for a distinction the tracker has never offered.

@@ -11,7 +11,8 @@ const router = express.Router();
 router.get('/', verifyToken, async (req, res) => {
   try {
     const result = await query(
-      `SELECT a.id, a.job_id, a.status, a.applied_at, a.last_status_update,
+      `SELECT a.id, a.job_id, a.status, a.tracker_stage, a.is_manual,
+              a.applied_at, a.last_status_update,
               a.failure_reason, a.submitted_by,
               j.title, j.company_name, j.location, j.job_url
        FROM applications a
@@ -26,22 +27,41 @@ router.get('/', verifyToken, async (req, res) => {
       app.company_name = fixMojibake(app.company_name);
     });
 
-    // Organize by status for Kanban
+    /*
+     * The board's columns are conversation stages read from tracker_stage,
+     * not statuses. The old columns (phone_screen, technical_interview,
+     * onsite, hired) were a status vocabulary no write path can legally
+     * produce - applications_applied_at_requires_submitted pins every row
+     * with applied_at to status='submitted' - so those columns were empty
+     * forever and every submitted row fell through the buckets and appeared
+     * NOWHERE on this page. The most important rows in the product were the
+     * invisible ones.
+     */
     const needsYou = [];
     const kanban = {
       applied: [],
-      phone_screen: [],
-      technical_interview: [],
-      onsite: [],
+      interviewing: [],
       offer: [],
-      hired: [],
+      ghosted: [],
     };
     const rejected = [];
     const failed = [];
     const pendingReview = [];
 
+    // Legacy pipeline statuses from a pre-constraint database, read into the
+    // stage they meant. Nothing can write them today.
+    const LEGACY_STATUS_STAGE = {
+      applied: 'applied',
+      phone_screen: 'interviewing',
+      technical_interview: 'interviewing',
+      onsite: 'interviewing',
+      offer: 'offer',
+      hired: 'offer',
+    };
+
     for (const app of result.rows) {
-      if (app.status === 'rejected') {
+      const onBoard = app.status === 'submitted' || app.is_manual === true;
+      if (app.status === 'rejected' || (onBoard && app.tracker_stage === 'rejected')) {
         rejected.push(app);
       } else if (app.status === 'failed') {
         failed.push(app);
@@ -55,9 +75,14 @@ router.get('/', verifyToken, async (req, res) => {
         needsYou.push(app);
       } else if (app.status === 'pending_review') {
         pendingReview.push(app);
-      } else if (kanban[app.status]) {
-        kanban[app.status].push(app);
+      } else if (onBoard) {
+        // No stage yet means sent and waiting - the applied column.
+        const stage = kanban[app.tracker_stage] ? app.tracker_stage : 'applied';
+        kanban[stage].push(app);
+      } else if (LEGACY_STATUS_STAGE[app.status]) {
+        kanban[LEGACY_STATUS_STAGE[app.status]].push(app);
       }
+      // approved / submitting drafts are the queue's to show, not the board's.
     }
 
     res.json({
@@ -69,11 +94,9 @@ router.get('/', verifyToken, async (req, res) => {
       pendingReview,
       byStatus: {
         applied: kanban.applied.length,
-        phone_screen: kanban.phone_screen.length,
-        technical_interview: kanban.technical_interview.length,
-        onsite: kanban.onsite.length,
+        interviewing: kanban.interviewing.length,
         offer: kanban.offer.length,
-        hired: kanban.hired.length,
+        ghosted: kanban.ghosted.length,
         rejected: rejected.length,
         failed: failed.length,
         pending_review: pendingReview.length,
@@ -449,19 +472,45 @@ router.post('/run-auto-pilot', verifyToken, async (req, res) => {
   }
 });
 
-// Update application status
+/*
+ * Move an application along the conversation - a tracker_stage write.
+ *
+ * This route used to write `status` directly from a pipeline vocabulary
+ * (phone_screen, technical_interview, onsite, hired). Two constraints on the
+ * live database refuse exactly that:
+ *   - applications_applied_at_requires_submitted pins every row carrying
+ *     applied_at to status='submitted', so moving any manual or auto-pilot
+ *     row was a guaranteed 500 (the D38 class, parameterised so
+ *     check-write-paths could not see the literal);
+ *   - and a DRAFT with no applied_at could move to 'phone_screen', after
+ *     which analytics counted a response for an application never sent.
+ *
+ * status answers "did this reach the employer"; tracker_stage answers "where
+ * has the conversation got to". This route now only ever answers the second
+ * question. The legacy words are still accepted and translated so an old
+ * client keeps working.
+ */
+const STAGE_FOR = {
+  applied: 'applied',
+  phone_screen: 'interviewing',
+  technical_interview: 'interviewing',
+  onsite: 'interviewing',
+  interviewing: 'interviewing',
+  ghosted: 'ghosted',
+  offer: 'offer',
+  hired: 'offer',
+  rejected: 'rejected',
+};
+
 router.put('/:id/status', verifyToken, async (req, res) => {
   try {
-    const { status } = req.body;
-    const validStatuses = ['applied', 'phone_screen', 'technical_interview', 'onsite', 'offer', 'rejected', 'hired'];
-
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+    const stage = STAGE_FOR[String(req.body.status || '').toLowerCase()];
+    if (!stage) {
+      return res.status(400).json({ error: `status must be one of ${Object.keys(STAGE_FOR).join(', ')}` });
     }
 
-    // Get current application
     const currentResult = await query(
-      'SELECT status FROM applications WHERE id = $1 AND user_id = $2',
+      'SELECT status, tracker_stage, is_manual FROM applications WHERE id = $1 AND user_id = $2',
       [req.params.id, req.user.id]
     );
 
@@ -469,28 +518,38 @@ router.put('/:id/status', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    const previousStatus = currentResult.rows[0].status;
+    const current = currentResult.rows[0];
+    const onBoard = current.status === 'submitted' || current.is_manual === true;
+    if (!onBoard) {
+      /*
+       * A conversation stage on a row that never reached an employer would be
+       * a claim about a conversation that cannot exist. Drafts move through
+       * the submission pipeline (approve / retry / run), not through here.
+       */
+      return res.status(409).json({
+        error: "This application hasn't been sent yet, so there is no employer conversation to move. Its state is managed by the submission pipeline - approve it from the queue to send it.",
+      });
+    }
 
-    // Update application
+    const previousStage = current.tracker_stage || 'applied';
     const result = await query(
-      `UPDATE applications SET status = $1, last_status_update = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND user_id = $3
-       RETURNING *`,
-      [status, req.params.id, req.user.id]
+      `UPDATE applications
+          SET tracker_stage = $1, stage_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND user_id = $3
+        RETURNING id, status, tracker_stage, stage_changed_at`,
+      [stage, req.params.id, req.user.id]
     );
 
-    // Log status change
     await query(
       `INSERT INTO application_history (application_id, previous_status, new_status, changed_at)
        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-      [req.params.id, previousStatus, status]
+      [req.params.id, previousStage, stage]
     );
 
-    // Log activity
     await query(
       `INSERT INTO activity_log (user_id, event_type, metadata)
        VALUES ($1, 'status_updated', $2)`,
-      [req.user.id, JSON.stringify({ application_id: req.params.id, from: previousStatus, to: status })]
+      [req.user.id, JSON.stringify({ application_id: req.params.id, from: previousStage, to: stage })]
     );
 
     res.json(result.rows[0]);
@@ -504,13 +563,21 @@ router.put('/:id/status', verifyToken, async (req, res) => {
 router.get('/stats', verifyToken, async (req, res) => {
   try {
     const result = await query(
+      /*
+       * Interviews and offers live in tracker_stage. The old version counted
+       * statuses (phone_screen, technical_interview, onsite, offer, hired)
+       * that the live constraints stop anything from writing, so every count
+       * was a permanent zero - rendered on the dashboard as a fact about the
+       * user when it was a fact about the schema.
+       */
       `SELECT
         COUNT(*) as total_applications,
-        COUNT(CASE WHEN status = 'applied' THEN 1 END) as applied,
-        COUNT(CASE WHEN status = 'phone_screen' THEN 1 END) as phone_screen,
-        COUNT(CASE WHEN status IN ('technical_interview','onsite') THEN 1 END) as interviews,
-        COUNT(CASE WHEN status = 'offer' THEN 1 END) as offers,
-        COUNT(CASE WHEN status = 'hired' THEN 1 END) as hired,
+        COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
+                    AND (tracker_stage IS NULL OR tracker_stage = 'applied') THEN 1 END) as applied,
+        COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
+                    AND tracker_stage = 'interviewing' THEN 1 END) as interviews,
+        COUNT(CASE WHEN (status = 'submitted' OR is_manual = TRUE)
+                    AND tracker_stage = 'offer' THEN 1 END) as offers,
         COUNT(DISTINCT DATE(applied_at)) as days_applying
        FROM applications
        WHERE user_id = $1`,

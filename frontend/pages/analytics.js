@@ -87,9 +87,12 @@ export default function Analytics() {
                 <p className={styles.statLabel}>Response Rate</p>
                 <p className={styles.statValue}>{totals.responseRate}<span className={styles.statValueUnit}>%</span></p>
               </div>
+              {/* Was "Hired" reading totals.hired - a status no write path
+                  records, so the tile was a permanent 0 presented as a fact
+                  about the user. Offers are what the tracker records. */}
               <div className={styles.statCard}>
-                <p className={styles.statLabel}>Hired</p>
-                <p className={styles.statValue}>{totals.hired}</p>
+                <p className={styles.statLabel}>Offers</p>
+                <p className={styles.statValue}>{totals.offers}</p>
               </div>
               <div className={styles.statCard}>
                 <p className={styles.statLabel}>Sent by Auto-Pilot</p>
