@@ -93,3 +93,45 @@ describe('the scheduler drives the re-score to completion', () => {
     expect(capped.complete).toBe(false);
   });
 });
+
+
+describe('stale fabricated scores are stripped for unscoreable profiles', () => {
+  it('the feed nulls stored scores when the profile cannot honestly have any', async () => {
+    jest.resetModules();
+    jest.doMock('../db', () => ({ query: jest.fn() }));
+    jest.doMock('../services/matchingEngine', () => ({
+      scoreJobsForUser: jest.fn(async () => new Map()),
+      calculateJobMatch: jest.fn(),
+      calculateMatchesForUser: jest.fn(),
+      profileScoreable: jest.fn(async () => false),
+    }));
+    jest.doMock('../middleware/auth', () => ({
+      verifyToken: (req, _res, next) => { req.user = { id: 4 }; next(); },
+      attachUserIfPresent: (req, _res, next) => { req.user = { id: 4 }; next(); },
+    }));
+    /* eslint-disable global-require */
+    const { query: q2 } = require('../db');
+    const express = require('express');
+    const request = require('supertest');
+    const jobsRouter = require('../routes/jobs');
+    /* eslint-enable global-require */
+    q2.mockImplementation((sql) => {
+      if (/SELECT COUNT\(\*\)/.test(sql)) return Promise.resolve({ rows: [{ count: '1' }] });
+      if (/SELECT \* FROM ranked/.test(sql) || /FROM ranked/.test(sql)) {
+        // A row carrying a stale fabricated 0.30 from before the guard.
+        return Promise.resolve({ rows: [{ id: 1, title: 'X', company_name: 'Y', source: 's', match_tier: 1, overall_score: '0.30', skills_match_score: '0', location_match_score: '1' }] });
+      }
+      if (/ANY\(\$1\)/.test(sql) && /joiner_snippet/.test(sql)) return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [] });
+    });
+    const a = express();
+    a.use(express.json());
+    a.use('/api/jobs', jobsRouter);
+
+    const res = await request(a).get('/api/jobs?limit=5').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body.ranking.profileScoreable).toBe(false);
+    expect(res.body.jobs[0].overall_score).toBeNull();
+    expect(res.body.jobs[0].skills_match_score).toBeNull();
+  });
+});

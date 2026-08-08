@@ -1053,6 +1053,29 @@ const STATEMENTS = [
           final_text = 'Synthetic verification content (scrubbed 2026-08-08).'
     WHERE user_id IN (SELECT id FROM users WHERE email = 'autonomy-verify-2026-08-08@hirepilot.local')
       AND COALESCE(final_text, '') NOT LIKE '%Synthetic verification content%'`,
+
+  /*
+   * L2 (2026-08-08) — delete match rows minted for unscoreable profiles.
+   *
+   * Before the on-demand scorer gained the A2 guard, a zero-skill,
+   * zero-experience account browsing the feed got defaults-only "30%" rows
+   * PERSISTED into job_matches, and the join replayed them forever. These
+   * are scores computed from no information about the person - fabricated
+   * data by this project's own definition - and by that definition a user
+   * with no skills and no dated experience can have no honest match rows at
+   * all. Audit first; idempotent (the second run matches zero users).
+   */
+  `INSERT INTO data_corrections (correction, table_name, row_count, detail)
+     SELECT 'l2-unscoreable-profile-scores', 'job_matches', COUNT(*),
+            jsonb_build_object('reason', 'match rows existed for profiles with no skills and no dated experience; scores computed from no information')
+       FROM job_matches jm
+      WHERE NOT EXISTS (SELECT 1 FROM user_skills us WHERE us.user_id = jm.user_id)
+        AND NOT EXISTS (SELECT 1 FROM user_experience ue WHERE ue.user_id = jm.user_id AND ue.start_date IS NOT NULL)
+     HAVING COUNT(*) > 0`,
+
+  `DELETE FROM job_matches jm
+      WHERE NOT EXISTS (SELECT 1 FROM user_skills us WHERE us.user_id = jm.user_id)
+        AND NOT EXISTS (SELECT 1 FROM user_experience ue WHERE ue.user_id = jm.user_id AND ue.start_date IS NOT NULL)`,
 ];
 
 /*

@@ -1864,6 +1864,23 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * wall 2.6s -> 28.6s. Twenty indexed lookups replace eighteen thousand
      * regex evaluations.
      */
+    /*
+     * L2 — a profile that cannot honestly be scored shows NO scores, stored
+     * or not. The guard stopped new fabricated rows; rows minted BEFORE it
+     * (defaults-only 0.30s) still sat in job_matches and replayed through
+     * the join. Stripped at the boundary; the corrective migration deletes
+     * the stored rows themselves.
+     */
+    if (scoreable === false) {
+      const stripScores = (j) => ({
+        ...j,
+        overall_score: null, skills_match_score: null, experience_match_score: null,
+        location_match_score: null, salary_match_score: null, match_details: null,
+      });
+      jobs = jobs.map(stripScores);
+      relatedJobs = relatedJobs.map(stripScores);
+    }
+
     const pageIds = [...jobs, ...relatedJobs].map((j) => j.id);
     const snippetById = new Map();
     if (pageIds.length) {
