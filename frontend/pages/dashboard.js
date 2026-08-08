@@ -171,8 +171,15 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
+            {/* L2 - the CTA must follow the reason. "Turn on in Settings"
+                next to "not on your plan" told a Free user to go toggle a
+                thing the plan refuses (D31). */}
             {!autoApplyEnabled && (
-              <Link href="/settings" className={styles.autopilotEnableLink}>Turn on in Settings &rarr;</Link>
+              !autoApplyIncluded ? (
+                <Link href="/settings?tab=Plans" className={styles.autopilotEnableLink}>See plans &rarr;</Link>
+              ) : (
+                <Link href="/settings" className={styles.autopilotEnableLink}>Turn on in Settings &rarr;</Link>
+              )
             )}
           </div>
           <div className={styles.progressWrap}>

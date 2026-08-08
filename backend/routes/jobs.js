@@ -23,7 +23,7 @@ const { readBack: readSchemaClaims, readStorage } = require('../services/schemaC
  * so nothing becomes unreachable, and the response says which regime applied.
  */
 const DIVERSITY_WINDOW = 200;
-const { scoreJobsForUser } = require('../services/matchingEngine');
+const { scoreJobsForUser, profileScoreable } = require('../services/matchingEngine');
 const { extractSkills } = require('../services/resumeParser');
 const { checkAts, buildAtsGuide } = require('../services/atsChecker');
 
@@ -1274,10 +1274,22 @@ router.get('/', attachUserIfPresent, async (req, res) => {
      * abandoning the personalised set. `ranked=0` is the explicit escape hatch
      * into browsing everything indexed, unscored.
      */
+    /*
+     * L2 — an unscoreable profile cannot be ranked, and must not be shown
+     * numbers. Before this, a brand-new zero-skill account got the ranked
+     * feed with every row minted a defaults-only "30%" under a banner
+     * claiming a 40% floor. With scoring now refusing blank profiles, ranked
+     * mode would instead withhold EVERY row - an empty feed as a first
+     * impression. So the feed falls back to the honest unranked browse and
+     * SAYS WHY in ranking.profileScoreable, which the page renders as "add
+     * your skills to rank these".
+     */
+    const scoreable = userId ? await profileScoreable(userId) : null;
     const rankByScore = Boolean(userId)
+      && scoreable !== false
       && req.query.ranked !== '0'
       && Number.isFinite(minScore);
-    let ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false };
+    let ranking = { mode: 'all', sort: 'recent', minScore: null, sourceDiversified: false, profileScoreable: scoreable };
 
     /*
      * A7.17 — the per-source cap is a property of the UNFILTERED feed.
@@ -1743,6 +1755,7 @@ router.get('/', attachUserIfPresent, async (req, res) => {
     const unscored = jobs.filter((j) => j.overall_score === null || j.overall_score === undefined).length;
     ranking = {
       mode: rankByScore ? 'ranked' : 'all',
+      profileScoreable: scoreable,
       sort,
       minScore: rankByScore && minScore > 0 ? minScore : null,
       /*

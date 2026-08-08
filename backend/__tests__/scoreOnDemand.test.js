@@ -20,6 +20,9 @@ jest.mock('../services/matchingEngine', () => ({
   scoreJobsForUser: jest.fn(),
   calculateJobMatch: jest.fn(),
   calculateMatchesForUser: jest.fn(),
+  // L2 - these fixtures model a SCOREABLE user; the unscoreable path has its
+  // own suite (coldStartScoring).
+  profileScoreable: jest.fn(async () => true),
 }));
 
 const { query } = require('../db');

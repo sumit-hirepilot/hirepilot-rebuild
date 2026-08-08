@@ -214,7 +214,7 @@ export default function Agents() {
             <p className={styles.dateLabel}>{agents.length} standing searches</p>
             <h1 className={styles.greeting}>Saved searches</h1>
           </div>
-          <button className={page.newButton} onClick={() => setShowForm(true)}>+ Create agent</button>
+          <button className={page.newButton} onClick={() => setShowForm(true)}>+ New saved search</button>
         </div>
 
         {message && <div className={page.message}>{message}</div>}
@@ -224,7 +224,7 @@ export default function Agents() {
         ) : agents.length === 0 ? (
           <div className={styles.card}>
             <p className={styles.emptyState}>
-              No search agents yet. Create one to have HirePilot keep scanning for jobs matching your keywords.
+              No saved searches yet. Create one and HirePilot keeps scanning for jobs matching your keywords.
             </p>
           </div>
         ) : (
@@ -330,7 +330,7 @@ export default function Agents() {
 
               <div className={page.estimateBox}>This agent will find ~{estimate} jobs per week.</div>
 
-              <button type="submit" className={page.createButton}>Create agent</button>
+              <button type="submit" className={page.createButton}>Save search</button>
             </form>
           </div>
         </div>

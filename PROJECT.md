@@ -723,3 +723,31 @@ Verified in BOTH states by real observation: production (secret absent) →
 with only `INBOUND_MAIL_SECRET` set → `{"inboundMail":true}` — lights up
 with env alone, no code change. 5 backend + 2 frontend tests, red-proven
 (the settings claims previously rendered unconditionally).
+
+## 21. L2 (2026-08-08, third run) — the cold start, walked and repaired
+
+Walked every page as a brand-new production account (user 4,
+coldstart-2026-08-08@hirepilot.local, profile skipped deliberately).
+Excellent already: dashboard setup banner, applications/queue/auto-apply/
+tracker/analytics/resume/profile empty states — each says what it is and
+what to do next; zero console errors on any page.
+
+Found and fixed, each proven red first:
+1. **The feed minted a defaults-only "30%" on every row for a blank
+   profile**, under a banner claiming a 40% floor. The A2 guard existed on
+   the batch scorer but not the on-demand feed path. Now: an unscoreable
+   profile (no skills, no dated experience) is never scored, the feed falls
+   back to the honest unranked browse (ranked mode would have withheld every
+   row — an empty feed as a first impression), and
+   `ranking.profileScoreable:false` renders as "not scored against your
+   profile yet — add your skills to rank them".
+2. **The D49a re-score had no driver** — "the caller repeats until complete"
+   was written and no caller ever built (the D32 class one layer up), so
+   1,044 old-formula rows sat un-rescored while the banner promised "shortly"
+   indefinitely. The scheduler now drives it to completion each cycle,
+   bounded per pass and capped in passes.
+3. **Dashboard contradiction**: "Auto-Pilot is not on your plan" beside
+   "Turn on in Settings →". The CTA now follows the reason (plan-excluded →
+   "See plans →").
+4. Agents page spoke two vocabularies ("Saved searches" beside "+ Create
+   agent" / "No search agents yet") — unified to the D28 word.

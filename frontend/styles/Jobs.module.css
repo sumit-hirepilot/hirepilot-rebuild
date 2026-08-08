@@ -922,3 +922,17 @@
 @media (max-width: 767px), (pointer: coarse) {
   .checkboxHit { min-width: 44px; min-height: 44px; margin: -11px 0; }
 }
+
+/* L2 - the unscored-profile state line */
+.rankState {
+  font-size: 0.82rem;
+  color: var(--muted, #5b6b84);
+  margin: 0;
+}
+
+/* L2 - the unscored-profile state line */
+.rankState {
+  font-size: 0.82rem;
+  color: var(--muted, #5b6b84);
+  margin: 0;
+}

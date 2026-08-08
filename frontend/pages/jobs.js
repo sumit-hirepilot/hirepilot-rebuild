@@ -1253,7 +1253,16 @@ export default function Jobs() {
               {rankMode === 'ranked' ? 'Browse all jobs' : 'Back to my matches'}
             </button>
           </div>
-          {rankMode === 'ranked' ? (
+          {ranking?.profileScoreable === false ? (
+            /* L2 - a blank profile is unranked by the server. Say why there
+               are no percentages, and what to do - never a floor claim the
+               rows visibly contradict. */
+            <p className={page.rankState}>
+              These jobs are not scored against your profile yet — add your
+              skills on the <Link href="/profile">Profile</Link> page (or upload
+              a resume) to rank them.
+            </p>
+          ) : rankMode === 'ranked' ? (
             <label className={page.floorControl}>
               <span>
                 {ranking?.sort === 'recent'

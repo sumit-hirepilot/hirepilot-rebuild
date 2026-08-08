@@ -369,6 +369,35 @@ const calculateMatchesForUser = async (userId) => {
  * Returns a Map of jobId -> score. A job that cannot be scored is simply
  * absent, so the caller can withhold it rather than render it unscored.
  */
+/*
+ * L2 — a blank profile is unscoreable, and an unscoreable profile gets NO
+ * numbers. A zero-skill, zero-experience context still earns ~0.30 from the
+ * location/salary default weights, and the feed rendered that as "30%
+ * match" on every row for a brand-new account - a judgement computed from
+ * no information about the person. calculateMatchesForUser had the A2
+ * guard; this on-demand path (the feed, from-url) did not.
+ */
+const contextScoreable = (context) => (context.userSkills.length > 0 || context.userYears > 0);
+
+/**
+ * Can this user's profile honestly be scored at all? For the feed to state.
+ * One query, and absent evidence of the answer defaults OPEN (scoreable):
+ * the real query always returns a row, so the default only exists for test
+ * fixtures that predate it - and a false "unscoreable" would silently strip
+ * ranking from a real user, which is the worse direction.
+ */
+const profileScoreable = async (userId) => {
+  const r = await query(
+    `SELECT (
+       EXISTS (SELECT 1 FROM user_skills WHERE user_id = $1)
+       OR EXISTS (SELECT 1 FROM user_experience WHERE user_id = $1 AND start_date IS NOT NULL)
+     ) AS scoreable`,
+    [userId]
+  );
+  const v = r.rows[0]?.scoreable;
+  return v === undefined ? true : Boolean(v);
+};
+
 const scoreJobsForUser = async (userId, jobIds) => {
   const ids = [...new Set((jobIds || []).map(Number).filter(Number.isInteger))];
   if (!userId || !ids.length) return new Map();
@@ -381,6 +410,8 @@ const scoreJobsForUser = async (userId, jobIds) => {
       [ids]
     ),
   ]);
+
+  if (!contextScoreable(context)) return new Map();
 
   const scored = [];
   const out = new Map();
@@ -403,5 +434,6 @@ module.exports = {
   calculateJobMatch,
   calculateMatchesForUser,
   scoreJobsForUser,
+  profileScoreable,
   ON_DEMAND_STORE_LIMIT,
 };
