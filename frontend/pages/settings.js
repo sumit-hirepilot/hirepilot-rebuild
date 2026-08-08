@@ -62,6 +62,9 @@ export default function Settings() {
     coverLetterMode: 'always', reviewBeforeSubmit: false,
   });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  // L1 - what this deployment can actually do. null = not known yet; copy
+  // about a capability renders only from a loaded answer, never a guess.
+  const [capabilities, setCapabilities] = useState(null);
   // Application Profile: the answers employer forms ask on every application.
   // Kept separate from the display profile above because these values are
   // submitted to employers, so nothing here is ever guessed or defaulted.
@@ -117,6 +120,13 @@ export default function Settings() {
       }
     } catch { /* section shows a retry state */ }
   }, [base]);
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/capabilities`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => { if (c) setCapabilities(c); })
+      .catch(() => { /* unknown stays unknown */ });
+  }, []);
 
   useEffect(() => {
     const authToken = localStorage.getItem('token');
@@ -569,10 +579,20 @@ export default function Settings() {
                 onBlur={(e) => savePref({ timezone: e.target.value })}
               />
             </div>
-            <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
-              Recruiter mail is handled on the <Link href="/inbox">Inbox</Link> page,
-              which has your forwarding address.
-            </p>
+            {/* L1 - this asserted a working forwarding address on deployments
+                where mail is not connected. The claim follows the capability. */}
+            {capabilities?.inboundMail ? (
+              <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
+                Recruiter mail is handled on the <Link href="/inbox">Inbox</Link> page,
+                which has your forwarding address.
+              </p>
+            ) : (
+              <p className={page.masterSubtitle} style={{ marginTop: 14 }}>
+                Recruiter-mail forwarding is not connected yet on this deployment.
+                The <Link href="/inbox">Inbox</Link> page will hold your sorted
+                recruiter mail once it is.
+              </p>
+            )}
           </div>
         ) : tab === 'Profile' ? (
           <div className={styles.card}>
@@ -905,11 +925,19 @@ export default function Settings() {
                 </button>
               </div>
             ))}
-            <p className={page.masterSubtitle} style={{ marginTop: 12 }}>
-              Recruiter mail works today through your HirePilot address on the{' '}
-              <Link href="/inbox">Inbox</Link> page. Connecting your own mailbox needs
-              third-party sign-in, which is not built yet.
-            </p>
+            {capabilities?.inboundMail ? (
+              <p className={page.masterSubtitle} style={{ marginTop: 12 }}>
+                Recruiter mail works today through your HirePilot address on the{' '}
+                <Link href="/inbox">Inbox</Link> page. Connecting your own mailbox needs
+                third-party sign-in, which is not built yet.
+              </p>
+            ) : (
+              <p className={page.masterSubtitle} style={{ marginTop: 12 }}>
+                Recruiter-mail forwarding is not connected yet on this deployment,
+                and connecting your own mailbox needs third-party sign-in, which is
+                not built yet.
+              </p>
+            )}
           </div>
         ) : (
           <>

@@ -698,3 +698,28 @@ the backend service).
 
 Also found and fixed (D61): literal NUL bytes my own earlier edits had
 hidden inside two source files, turning them binary to every text tool.
+
+---
+
+## 20. L1 (2026-08-08, third run) — unwired features cannot present as working
+
+Swept every credential-shaped surface. Already honest: the inbox page
+(payload-driven "not connected" state), the Integrations tab (disabled
+"Coming soon" rows), the pricing checkout stub (labelled), the ats-sandbox
+page (unlisted, self-labelling, backend-gated). Found lying: TWO settings
+sentences — "Recruiter mail works today…" and "…which has your forwarding
+address" — asserted a working mail wire unconditionally, one tab away from
+the inbox page saying the opposite.
+
+Now there is ONE definition (`services/capabilities.js`, env-driven,
+booleans only) served at `GET /api/capabilities` without auth; the inbox
+payload's `inboundConfigured` and both settings sentences read it. Payments
+deliberately stays OUT of the capability list: its integration does not
+exist, so an env flag would light up a button with nothing behind it — the
+labelled /pricing stub is the honest shape for unbuilt (decision logged).
+
+Verified in BOTH states by real observation: production (secret absent) →
+`{"inboundMail":false}` and the honest copy; a local boot of the same code
+with only `INBOUND_MAIL_SECRET` set → `{"inboundMail":true}` — lights up
+with env alone, no code change. 5 backend + 2 frontend tests, red-proven
+(the settings claims previously rendered unconditionally).

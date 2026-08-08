@@ -121,6 +121,15 @@ app.use('/api/tracker', trackerRoutes);
 // Tiers, allowances, and the credit counter (PRD 6).
 app.use('/api/plans', plansRoutes);
 
+/*
+ * L1 — what this deployment can actually do, env-driven, booleans only.
+ * Served without auth so login-adjacent surfaces can read it too; the
+ * definition lives in services/capabilities (one truth, many readers).
+ */
+app.get('/api/capabilities', (req, res) => {
+  res.json(require('./services/capabilities').capabilities());
+});
+
 // The controlled submission target that stands in for an employer's ATS
 // while A5 is unresolved. See routes/atsSandbox.js for what it does and
 // does not prove.

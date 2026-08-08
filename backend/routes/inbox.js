@@ -20,6 +20,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const { boundText, boundInt } = require('../services/requestBounds');
 const { verifyToken } = require('../middleware/auth');
+const { capabilities } = require('../services/capabilities');
 
 const router = express.Router();
 
@@ -195,10 +196,10 @@ router.get('/', verifyToken, async (req, res) => {
        * Without INBOUND_MAIL_SECRET the /inbound webhook answers 503 and mail
        * sent to the proxy address reaches nobody. The UI's "it reaches your
        * real inbox" claim is only true when this is - so the flag travels
-       * with the address it qualifies. Verified missing on production
-       * 2026-08-08: the address rendered as live while delivery was dead.
+       * with the address it qualifies, read from the ONE capability
+       * definition every other surface reads (L1).
        */
-      inboundConfigured: Boolean(process.env.INBOUND_MAIL_SECRET),
+      inboundConfigured: capabilities().inboundMail,
     });
   } catch (err) {
     console.error('GET /inbox failed:', err.message);
