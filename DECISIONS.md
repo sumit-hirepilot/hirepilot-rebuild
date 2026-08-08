@@ -1417,3 +1417,43 @@ fact about that source, rather than inferred later from a memory graph.
 with a specific reason when it is exceeded — one source refusing is a recorded
 ingestion failure the product already tolerates, and it is a far better
 outcome than a container killed mid-cycle.
+
+## D56 — CORS names one origin, and the app is importable so the test can prove it
+
+`app.use(cors())` answered `Access-Control-Allow-Origin: *` on every route,
+authenticated ones included. Replaced with an allowlist read from
+`FRONTEND_URL` — a variable that had been sitting in `.env.example` since the
+first commit and was read by no source file anywhere.
+
+Stated at its real size rather than inflated: auth here is a Bearer token from
+local storage, not a cookie, so browsers never attached credentials to a
+cross-site request on their own and no drive-by page could borrow a signed-in
+session. The wildcard was not a live CSRF hole. It is still not shippable — it
+is the difference between "an attacker obtained a token" being contained and
+being general, and it costs one env var to close.
+
+Three things the fix turns on:
+
+**It fails closed.** Unset `FRONTEND_URL` in production allows no browser
+origin, rather than falling back to permissive. A missing deploy variable
+should take the frontend down loudly, not silently restore the bug.
+
+**Matching is exact, on the parsed origin.** `startsWith(FRONTEND_URL)` also
+accepts `https://<app>.attacker.com`, which the attacker owns. Mutating the
+comparison to `startsWith` was tried against the new test: two cases go red,
+which is the reason those two cases are written.
+
+**A refused origin gets no header, not a 403.** The browser enforces this by
+withholding the response from the calling page. Refusing server-side would
+break every caller that sends no Origin — the container health probe, curl,
+and the extension's MV3 service worker, which bypasses CORS via
+`host_permissions` and needs nothing from this list.
+
+`index.js` now starts its server only under `require.main === module` and
+exports the app. That is what lets the test send real requests through the real
+route table and the real middleware order. Mounting a copy of the middleware on
+a hand-built express app would have proved the allowlist correct while saying
+nothing about whether the served API uses it — the unwired-guard failure D-series
+keeps paying for, and the CORS mount is exactly the kind of single global line
+that is easy to leave behind. The test was run against the old wildcard first
+and failed 17 of 18, every failure reading `Received: "*"`.

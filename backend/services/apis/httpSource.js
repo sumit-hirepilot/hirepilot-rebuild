@@ -55,18 +55,30 @@ class SourceResponseTooLarge extends Error {
   }
 }
 
-/** Bytes actually received, for logging. Content-Length is often absent. */
+/*
+ * Bytes received, for the warning only - and it NEVER re-serialises the body.
+ *
+ * The first version fell back to `Buffer.byteLength(JSON.stringify(data))`
+ * when Content-Length was absent. That allocates a second full copy of every
+ * response purely to measure it, and it cost 112MB of boot peak the moment it
+ * shipped (220MB -> 332MB) - a guard against memory growth that caused memory
+ * growth.
+ *
+ * Caught by the same habit D54 exists for: the guard went in, the ingest counts
+ * were checked, and the peak was checked too rather than assumed unchanged.
+ *
+ * So: Content-Length when the server sends one, the cheap length when the body
+ * is already a string or Buffer, and otherwise `null` - unknown, and the
+ * warning is skipped. The BOUND does not depend on this at all; axios enforces
+ * maxContentLength while the body streams.
+ */
 function sizeOf(response) {
   const declared = Number(response?.headers?.['content-length']);
   if (Number.isFinite(declared) && declared > 0) return declared;
   const data = response?.data;
   if (typeof data === 'string') return Buffer.byteLength(data);
   if (Buffer.isBuffer(data)) return data.length;
-  try {
-    return Buffer.byteLength(JSON.stringify(data));
-  } catch {
-    return 0;
-  }
+  return null;
 }
 
 /**
@@ -88,7 +100,7 @@ async function sourceRequest(source, config = {}) {
     });
 
     const bytes = sizeOf(response);
-    if (bytes >= WARN_BYTES) {
+    if (bytes != null && bytes >= WARN_BYTES) {
       console.warn(
         `[source] ${source} returned ${Math.round(bytes / 1024 / 1024)}MB in one response `
         + `(warn at ${Math.round(WARN_BYTES / 1024 / 1024)}MB, refuse at ${Math.round(maxBytes / 1024 / 1024)}MB). `

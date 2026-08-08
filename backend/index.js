@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const { corsMiddleware } = require('./middleware/cors');
 const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
 const jobsRoutes = require('./routes/jobs');
@@ -29,7 +29,7 @@ const { installCrashLogging, startWatchdog } = require('./services/watchdog');
 
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(corsMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -198,4 +198,20 @@ function startServer() {
     });
 }
 
-startServer();
+/*
+ * Start only when run as the entry point, so the app itself can be required by
+ * a test without binding a port, installing crash handlers or starting the
+ * watchdog's timers. `npm start` and the container's `node index.js` both still
+ * take this branch.
+ *
+ * The CORS allowlist is the reason this matters: mounting the middleware on a
+ * hand-built express app in a test proves the middleware works, not that THIS
+ * app uses it — the exact gap D-series keeps finding, where a guard is correct
+ * and simply not wired to anything. Exporting the real app lets the test send a
+ * real request to a real route through the real middleware stack.
+ */
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;

@@ -124,3 +124,31 @@ describe('D55 — an oversized source response is refused at ingest', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('the size guard does not itself cost memory', () => {
+  it('never re-serialises a parsed body to measure it', () => {
+    /*
+     * The first version fell back to Buffer.byteLength(JSON.stringify(data))
+     * when Content-Length was absent - a second full copy of every response,
+     * purely to measure it. It cost 112MB of boot peak the day it shipped
+     * (220MB -> 332MB): a guard against memory growth that caused memory
+     * growth.
+     */
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'services', 'apis', 'httpSource.js'), 'utf8'
+    ).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+    expect(src).not.toMatch(/JSON\.stringify/);
+  });
+
+  it('reports unknown as unknown rather than guessing zero', () => {
+    // 0 would read as "a tiny response" and suppress the warning silently.
+    const { sourceRequest } = require('../services/apis/httpSource');
+    expect(typeof sourceRequest).toBe('function');
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'services', 'apis', 'httpSource.js'), 'utf8'
+    );
+    expect(src).toMatch(/return null;/);
+    expect(src).toMatch(/bytes != null && bytes >= WARN_BYTES/);
+  });
+});
