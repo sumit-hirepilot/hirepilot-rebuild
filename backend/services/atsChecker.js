@@ -13,12 +13,74 @@
  * against the user's saved resume without duplicating the logic.
  */
 
+/*
+ * Expanded 2026-08-08. The original ~50-word list covered a language that
+ * needs a few hundred filtered: a real Greenhouse JD produced 253 "meaningful
+ * terms" including why, how, gets, done, what, who and we'd, the denominator
+ * deflated every score, and the guide advised adding the word "why" to a
+ * resume. Function words, wh-words, auxiliaries, common verbs of motion and
+ * quantity words all say nothing about fit.
+ */
 const STOPWORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'of', 'for',
-  'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'this', 'that',
-  'these', 'those', 'we', 'you', 'your', 'our', 'it', 'as', 'by', 'from',
-  'will', 'would', 'should', 'can', 'could', 'have', 'has', 'had', 'do',
-  'does', 'did', 'not', 'no', 'so', 'if', 'than', 'then', 'about', 'into',
+  // articles, conjunctions, prepositions
+  'a', 'an', 'the', 'and', 'or', 'but', 'nor', 'in', 'on', 'at', 'to', 'of',
+  'for', 'with', 'without', 'within', 'as', 'by', 'from', 'about', 'into',
+  'onto', 'over', 'under', 'above', 'below', 'between', 'among', 'through',
+  'throughout', 'during', 'before', 'after', 'up', 'down', 'out', 'off',
+  'against', 'toward', 'towards', 'across', 'around', 'along', 'behind',
+  'beyond', 'near', 'since', 'until', 'unless', 'because', 'while', 'though',
+  'although', 'whether', 'despite', 'upon',
+  // be/have/do and modals
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am', 'have', 'has',
+  'had', 'having', 'do', 'does', 'did', 'done', 'doing', 'will', 'would',
+  'should', 'shall', 'can', 'could', 'may', 'might', 'must',
+  // pronouns and determiners
+  'we', 'you', 'your', 'yours', 'our', 'ours', 'it', 'its', 'this', 'that',
+  'these', 'those', 'they', 'them', 'their', 'theirs', 'he', 'she', 'his',
+  'her', 'hers', 'him', 'us', 'me', 'my', 'mine', 'i', 'who', 'whom',
+  'whose', 'which', 'what', 'whatever', 'whoever', 'itself', 'himself',
+  'herself', 'themselves', 'yourself', 'yourselves', 'ourselves', 'someone',
+  'anyone', 'everyone', 'nobody', 'something', 'anything', 'everything',
+  'nothing', 'each', 'every', 'either', 'neither', 'both', 'few', 'several',
+  'some', 'any', 'all', 'most', 'more', 'much', 'many', 'less', 'least',
+  'own', 'same', 'such', 'another', 'others',
+  // wh-adverbs, negation, degree, time and place adverbs
+  'why', 'how', 'where', 'when', 'whenever', 'wherever', 'not', 'no', 'so',
+  'if', 'than', 'then', 'too', 'very', 'just', 'also', 'only', 'even',
+  'still', 'yet', 'already', 'again', 'further', 'once', 'twice', 'here',
+  'there', 'now', 'soon', 'later', 'often', 'sometimes', 'usually', 'always',
+  'never', 'ever', 'rather', 'quite', 'almost', 'enough', 'perhaps', 'else',
+  'instead', 'meanwhile', 'moreover', 'however', 'therefore', 'otherwise',
+  'anywhere', 'everywhere', 'together', 'apart', 'away', 'back', 'forward',
+  // common verbs that carry no domain signal in a posting
+  'get', 'gets', 'got', 'getting', 'make', 'makes', 'making', 'made', 'take',
+  'takes', 'taking', 'took', 'taken', 'come', 'comes', 'coming', 'came',
+  'go', 'goes', 'going', 'went', 'gone', 'move', 'moves', 'moving', 'moved',
+  'put', 'puts', 'putting', 'keep', 'keeps', 'keeping', 'kept', 'let',
+  'lets', 'see', 'sees', 'seeing', 'seen', 'saw', 'say', 'says', 'said',
+  'know', 'knows', 'knowing', 'knew', 'known', 'think', 'thinks', 'thinking',
+  'thought', 'find', 'finds', 'finding', 'found', 'give', 'gives', 'giving',
+  'gave', 'given', 'become', 'becomes', 'becoming', 'became', 'begin',
+  'begins', 'beginning', 'began', 'begun', 'start', 'starts', 'starting',
+  'started', 'end', 'ends', 'ending', 'ended', 'want', 'wants', 'wanting',
+  'wanted', 'need', 'needs', 'needing', 'needed', 'like', 'likes', 'liked',
+  'look', 'looks', 'seem', 'seems', 'seemed', 'feel', 'feels', 'felt',
+  'try', 'tries', 'trying', 'tried', 'use', 'uses', 'using', 'used',
+  'call', 'calls', 'called', 'ask', 'asks', 'asked', 'tell', 'tells', 'told',
+  'push', 'pushes', 'pushing', 'pushed', 'bring', 'brings', 'bringing',
+  'brought', 'believe', 'believes', 'believed', 'love', 'loves', 'loved',
+  'mean', 'means', 'meant', 'happen', 'happens', 'happened', 'show', 'shows',
+  'showing', 'shown', 'showed', 'visit', 'visits', 'visiting', 'built',
+  // number and time words
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'first', 'second', 'third', 'last', 'next', 'day', 'days', 'week',
+  'weeks', 'month', 'months', 'today', 'tomorrow', 'yesterday', 'time',
+  'times', 'moment', 'moments', 'hour', 'hours', 'date', 'dates',
+  // generic nouns that survive everything above
+  'thing', 'things', 'way', 'ways', 'lot', 'lots', 'bit', 'bits', 'kind',
+  'kinds', 'sort', 'sorts', 'part', 'parts', 'place', 'places', 'point',
+  'points', 'chance', 'chances', 'case', 'cases', 'side', 'sides', 'fact',
+  'facts', 'area', 'areas', 'number', 'numbers', 'amount', 'amounts',
 ]);
 
 // Words that are common in job ads but say nothing about fit, so counting them
@@ -29,17 +91,40 @@ const BOILERPLATE = new Set([
   'candidates', 'apply', 'application', 'applicants', 'opportunity', 'employer',
   'benefits', 'salary', 'compensation', 'equal', 'opportunities', 'diversity',
   'inclusive', 'inclusion', 'disability', 'veteran', 'gender', 'race', 'age',
-  'please', 'join', 'looking', 'hiring', 'help', 'us', 'more', 'also', 'may',
-  'must', 'well', 'other', 'all', 'any', 'new', 'per', 'via', 'etc',
+  'please', 'join', 'joins', 'joining', 'looking', 'hiring', 'help', 'us',
+  'more', 'also', 'may', 'must', 'well', 'other', 'all', 'any', 'new', 'per',
+  'via', 'etc',
   'years', 'year', 'experience', 'skills', 'ability', 'strong', 'good', 'great',
   'excellent', 'plus', 'nice', 'bonus', 'preferred', 'required', 'requirements',
   'responsibilities', 'qualifications',
+  // recruiting-prose filler that says nothing a resume could usefully echo
+  'best', 'better', 'top', 'world', 'class', 'mission', 'value', 'values',
+  'culture', 'environment', 'environments', 'passionate', 'passion',
+  'exciting', 'excited', 'amazing', 'incredible', 'unique', 'rare', 'true',
+  'real', 'deep', 'deeply', 'fast', 'high', 'low', 'big', 'small', 'right',
+  'people', 'person', 'everyone', 'career', 'careers', 'future', 'grow',
+  'growth', 'growing', 'success', 'successful', 'succeed', 'impact',
+  'impactful', 'important', 'committed', 'commitment', 'ambitious',
+  'satisfied', 'unmatched', 'personal', 'ideal', 'perfect', 'proud',
+  'overview', 'description', 'about', 'chance', 'opportunity', 'alongside',
+  'ownership', 'drive', 'driven', 'share', 'shares', 'shared', 'example',
+  'examples',
+  // URL debris - tokenising a link yields its scheme and TLD as "words"
+  'http', 'https', 'www', 'com', 'org', 'net', 'html',
 ]);
 
 function tokenize(text) {
-  return (text || '')
+  return ((text || '')
     .toLowerCase()
-    .match(/[a-z0-9']{2,}/g) || [];
+    .match(/[a-z0-9']{2,}/g) || [])
+    /*
+     * Contractions and possessives resolve to their base word: "we'd" is
+     * "we" (a stopword), "harvey's" is "harvey" (the same claim as the bare
+     * name in a resume). Without this, "job's" counted as a missing keyword
+     * distinct from "job".
+     */
+    .map((t) => t.replace(/'(s|d|ll|re|ve|m)$/, '').replace(/^'+|'+$/g, ''))
+    .filter((t) => t.length >= 2);
 }
 
 function uniqueKeywords(text) {
