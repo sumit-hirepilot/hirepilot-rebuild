@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 const { XMLParser } = require('fast-xml-parser');
 const crypto = require('crypto');
 const { PUBLIC_APP_URL } = require('../publicUrl');
@@ -39,7 +39,7 @@ const fetchJobs = async () => {
     // feed that is up for everyone else is not down - it is refusing the
     // default axios user-agent from a datacentre range. Identifying the client
     // and allowing longer than 10s stops the retries from failing too.
-    const response = await axios.get(BASE_URL, {
+    const response = await httpSource.get('jobindex', BASE_URL, {
       timeout: 20000,
       headers: {
         Accept: 'application/rss+xml, application/xml, text/xml',

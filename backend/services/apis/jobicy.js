@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 const BASE_URL = 'https://jobicy.com/api/v2/remote-jobs';
 
@@ -13,7 +13,7 @@ const stripHtml = (html) =>
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(BASE_URL, {
+    const response = await httpSource.get('jobicy', BASE_URL, {
       params: { count: 100 },
       timeout: 10000,
       headers: { Accept: 'application/json' },

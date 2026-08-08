@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 const BASE_URL = 'https://landing.jobs/api/v1/offers';
 
@@ -21,7 +21,7 @@ const companyFromUrl = (url) => {
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(BASE_URL, {
+    const response = await httpSource.get('landingjobs', BASE_URL, {
       timeout: 10000,
       headers: { Accept: 'application/json' },
     });

@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 // Greenhouse, Lever, and Ashby each publish a genuine public, unauthenticated
 // JSON API per company specifically so the company's own career page (and
@@ -98,7 +98,7 @@ const stripHtml = (html) =>
     .trim();
 
 const fetchGreenhouseCompany = async (slug) => {
-  const res = await axios.get(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`, {
+  const res = await httpSource.get('greenhouse', `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`, {
     params: { content: true },
     timeout: 10000,
   });
@@ -128,7 +128,7 @@ const fetchGreenhouseCompany = async (slug) => {
 };
 
 const fetchLeverCompany = async (slug) => {
-  const res = await axios.get(`https://api.lever.co/v0/postings/${slug}`, {
+  const res = await httpSource.get('lever', `https://api.lever.co/v0/postings/${slug}`, {
     params: { mode: 'json' },
     timeout: 10000,
   });
@@ -149,7 +149,7 @@ const fetchLeverCompany = async (slug) => {
 };
 
 const fetchAshbyCompany = async (slug) => {
-  const res = await axios.get(`https://api.ashbyhq.com/posting-api/job-board/${slug}`, {
+  const res = await httpSource.get('ashby', `https://api.ashbyhq.com/posting-api/job-board/${slug}`, {
     timeout: 10000,
   });
   return (res.data?.jobs || []).map((j) => ({

@@ -11,8 +11,15 @@
  * candidate if the ceiling tightened. Their catalogue grew; it did.
  */
 
-jest.mock('axios');
-const axios = require('axios');
+/*
+ * httpSource, not axios: D47 says mock what the code TALKS TO, and this client
+ * now goes through the shared bounded fetcher (D55) rather than axios directly.
+ * Mocking axios here would leave the real httpSource in the path and these
+ * tests would exercise a boundary the client no longer has.
+ */
+jest.mock('../services/apis/httpSource');
+const httpSource = require('../services/apis/httpSource');
+const axios = { post: null };
 const { fetchJobs, MAX_UNIQUE, PAGE_UNIQUE } = require('../services/apis/nofluffjobs');
 
 const posting = (id) => ({
@@ -27,7 +34,7 @@ const posting = (id) => ({
  * so a page holds several rows per distinct job.
  */
 function servePages(total, per = 100, { variantsPerJob = 1 } = {}) {
-  axios.post.mockImplementation(async (url) => {
+  httpSource.post.mockImplementation(async (_source, url) => {
     const page = Number(/[?&]page=(\d+)/.exec(url)[1]);
     const start = (page - 1) * per;
     const remaining = Math.max(0, total - start);
@@ -40,14 +47,14 @@ function servePages(total, per = 100, { variantsPerJob = 1 } = {}) {
   });
 }
 
-beforeEach(() => { axios.post.mockReset(); });
+beforeEach(() => { httpSource.post.mockReset(); });
 
 describe('it pages instead of pulling the catalogue', () => {
   it('never asks for everything at once, and advances the page', async () => {
     servePages(500);
     await fetchJobs();
-    expect(axios.post.mock.calls.length).toBeGreaterThan(1);
-    const pages = axios.post.mock.calls.map(([url]) => Number(/[?&]page=(\d+)/.exec(url)[1]));
+    expect(httpSource.post.mock.calls.length).toBeGreaterThan(1);
+    const pages = httpSource.post.mock.calls.map(([, url]) => Number(/[?&]page=(\d+)/.exec(url)[1]));
     expect(pages[0]).toBe(1);
     expect(new Set(pages).size).toBe(pages.length);   // never asks twice for one page
   });
@@ -76,18 +83,18 @@ describe('it pages instead of pulling the catalogue', () => {
 
   it('stops when a page adds nothing new, so a wrong parameter cannot loop', async () => {
     // Every page identical - what offset= actually did.
-    axios.post.mockImplementation(async () => ({
+    httpSource.post.mockImplementation(async () => ({
       data: { totalCount: 21986, postings: [posting(1), posting(2)] },
     }));
     const rows = await fetchJobs();
     expect(rows).toHaveLength(2);
-    expect(axios.post.mock.calls.length).toBe(2);
+    expect(httpSource.post.mock.calls.length).toBe(2);
   });
 
   it('uses the search endpoint, not the whole-catalogue one', async () => {
     servePages(100);
     await fetchJobs();
-    for (const [url] of axios.post.mock.calls) {
+    for (const [, url] of httpSource.post.mock.calls) {
       expect(url).toMatch(/\/api\/search\/posting/);
       expect(url).not.toMatch(/\/api\/posting(\?|$)/);
     }
@@ -97,7 +104,7 @@ describe('it pages instead of pulling the catalogue', () => {
     servePages(150);
     const rows = await fetchJobs();
     expect(rows.length).toBeGreaterThan(0);
-    expect(axios.post.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(httpSource.post.mock.calls.length).toBeLessThanOrEqual(3);
   });
 });
 

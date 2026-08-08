@@ -1,11 +1,11 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 const { fixMojibake } = require('./textSanitizer');
 
 const BASE_URL = 'https://remoteok.com/api';
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(BASE_URL, {
+    const response = await httpSource.get('remoteok', BASE_URL, {
       timeout: 10000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; HirePilotBot/1.0; +https://hirepilot.app)',

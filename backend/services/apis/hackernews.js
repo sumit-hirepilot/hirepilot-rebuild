@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 const HN_API = 'https://hacker-news.firebaseio.com/v0';
 const MAX_COMMENTS = 150; // bound latency - HN has no batch-fetch, one request per comment
@@ -21,7 +21,7 @@ const stripHtml = (html) =>
     .trim();
 
 const getItem = async (id) => {
-  const res = await axios.get(`${HN_API}/item/${id}.json`, { timeout: 8000 });
+  const res = await httpSource.get('hackernews', `${HN_API}/item/${id}.json`, { timeout: 8000 });
   return res.data;
 };
 
@@ -83,7 +83,7 @@ const fetchInBatches = async (ids, batchSize, fn) => {
 
 const fetchJobs = async () => {
   try {
-    const user = await axios.get(`${HN_API}/user/whoishiring.json`, { timeout: 8000 });
+    const user = await httpSource.get('hackernews', `${HN_API}/user/whoishiring.json`, { timeout: 8000 });
     const latestSubmissionId = (user.data?.submitted || [])[0];
     if (!latestSubmissionId) return [];
 

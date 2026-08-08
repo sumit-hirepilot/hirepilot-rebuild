@@ -1377,3 +1377,43 @@ which is not a bound but an absence of users. Paged by id.
 `nofluffjobs` is now the largest single step (112 → 246 MB) and is a single API
 call with no pagination, so it cannot be streamed the same way. Inside budget,
 recorded as the next candidate if the ceiling tightens.
+
+## D54 — when optimising a resource, assert the work still happens
+
+The nofluffjobs memory fix cut the boot peak to **158 MB**, the best figure
+ever recorded on this service, down from 694 MB. Every budget metric improved.
+Idle fell. Heap fell. External memory fell by 147 MB.
+
+It had also cut that source from **3,054 jobs to 20**, because it paged on a
+parameter the API ignores and re-read the same page forty times.
+
+**A resource target is satisfiable by doing nothing.** Less work is less
+memory, less CPU, fewer bytes — so every optimisation has a degenerate solution
+that scores perfectly, and the metric being optimised cannot detect it. Only
+the output count disagreed, on one log line, and it was luck that I read it.
+
+So: an optimisation is not done when the resource number is met. It is done
+when the resource number is met **and** the work is shown to still happen —
+counted, not assumed. For ingestion that is jobs per source; for a query, rows
+returned; for a cache, hit AND miss both still resolving.
+
+This is a specific case of the general shape this codebase keeps meeting: the
+instrument that would show the failure is not the instrument you are watching.
+
+## D55 — external dependencies change without your code changing
+
+nofluffjobs' catalogue endpoint was 246 MB of process peak when D53 measured
+it and inside budget. Nobody touched that client. Their index grew, the
+response reached **160.8 MB**, and the same code took the process to 694 MB.
+
+The budget regressed between two deploys of unrelated work, and the only
+reason it was caught is that a load test happened to run afterwards. Waiting
+for a load test to reveal an ingest problem is waiting in the wrong place: by
+then the process has already been near the ceiling for hours.
+
+So the size of a source's response is checked **at ingest**, where it is a
+fact about that source, rather than inferred later from a memory graph.
+`services/apis/httpSource.js` bounds every source fetch and fails the source
+with a specific reason when it is exceeded — one source refusing is a recorded
+ingestion failure the product already tolerates, and it is a far better
+outcome than a container killed mid-cycle.

@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 const { fixMojibake } = require('./textSanitizer');
 
 const BASE_URL = 'https://himalayas.app/jobs/api';
@@ -8,7 +8,7 @@ const PAGES_TO_FETCH = 10; // ~200 most recent postings per aggregation cycle
 const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
 const fetchPage = async (offset) => {
-  const response = await axios.get(BASE_URL, {
+  const response = await httpSource.get('himalayas', BASE_URL, {
     params: { limit: PAGE_SIZE, offset },
     timeout: 10000,
     headers: { Accept: 'application/json' },

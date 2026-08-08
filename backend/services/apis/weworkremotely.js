@@ -1,10 +1,10 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 const BASE_URL = 'https://weworkremotely.com/api/v3';
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(`${BASE_URL}/remote_jobs`, {
+    const response = await httpSource.get('weworkremotely', `${BASE_URL}/remote_jobs`, {
       timeout: 10000,
     });
 

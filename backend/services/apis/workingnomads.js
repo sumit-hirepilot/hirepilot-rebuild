@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 const crypto = require('crypto');
 
 const BASE_URL = 'https://www.workingnomads.com/api/exposed_jobs/';
@@ -16,7 +16,7 @@ const idFromUrl = (url) => crypto.createHash('md5').update(url).digest('hex').sl
 
 const fetchJobs = async () => {
   try {
-    const response = await axios.get(BASE_URL, {
+    const response = await httpSource.get('workingnomads', BASE_URL, {
       timeout: 10000,
       headers: { Accept: 'application/json' },
     });

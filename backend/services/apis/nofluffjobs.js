@@ -1,4 +1,4 @@
-const axios = require('axios');
+const httpSource = require('./httpSource');
 
 /*
  * PAGED, because the whole-catalogue endpoint is 160MB in one response.
@@ -124,7 +124,7 @@ const fetchJobs = async (onBatch) => {
 
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
-      const response = await axios.post(
+      const response = await httpSource.post('nofluffjobs', 
         `${SEARCH_URL}?limit=${PAGE_UNIQUE}&page=${page}&salaryCurrency=PLN&salaryPeriod=month&region=pl`,
         { rawSearch: '' },
         {

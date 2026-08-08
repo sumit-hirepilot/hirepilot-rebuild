@@ -19,6 +19,12 @@
  * and the search-agent scan (this environment has zero active agents).
  */
 
+/*
+ * Stubbed at httpSource, not axios: D47 - mock what the code TALKS TO. These
+ * clients go through the shared bounded fetcher (D55) now, so stubbing axios
+ * would leave the real httpSource in the path and test a boundary the client
+ * no longer has.
+ */
 const ats = require('../services/apis/ats');
 
 /* Enough companies to span several windows. */
@@ -30,7 +36,7 @@ describe('the streaming form never accumulates', () => {
     let maxResident = 0;
 
     // Rebuilt through the public entry point, so this tests the shipped path.
-    const fake = jest.spyOn(require('axios'), 'get').mockImplementation(async () => ({
+    const fake = jest.spyOn(require('../services/apis/httpSource'), 'get').mockImplementation(async () => ({
       data: { jobs: Array.from({ length: 50 }, (_, i) => ({ id: i, title: `Job ${i}`, content: 'x'.repeat(200), location: { name: 'Remote' }, updated_at: null, absolute_url: 'https://example.test' })) },
     }));
 
@@ -61,7 +67,7 @@ describe('the streaming form never accumulates', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    const fake = jest.spyOn(require('axios'), 'get').mockImplementation(async () => ({
+    const fake = jest.spyOn(require('../services/apis/httpSource'), 'get').mockImplementation(async () => ({
       data: { jobs: [{ id: 1, title: 'J', content: 'x', location: { name: 'Remote' }, absolute_url: 'https://example.test' }] },
     }));
 
@@ -81,7 +87,7 @@ describe('the streaming form never accumulates', () => {
   it('still returns an array when no consumer is given', async () => {
     // The non-streaming form is what the smaller sources and the tests use;
     // widening this must not have broken it.
-    const fake = jest.spyOn(require('axios'), 'get').mockImplementation(async () => ({
+    const fake = jest.spyOn(require('../services/apis/httpSource'), 'get').mockImplementation(async () => ({
       data: { jobs: [{ id: 1, title: 'J', content: 'x', location: { name: 'Remote' }, absolute_url: 'https://example.test' }] },
     }));
     try {

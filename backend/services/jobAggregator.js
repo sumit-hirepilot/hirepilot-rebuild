@@ -1,5 +1,6 @@
 const { query } = require('../db');
 const { mem } = require('./memlog');
+const { checkSourceYield } = require('./ingestYield');
 const { isParsed, notAJobReason } = require('./parsedField');
 const remoteOKClient = require('./apis/remoteok');
 const motiveClient = require('./apis/remotive');
@@ -364,6 +365,19 @@ const runSource = async ({ key, fetchJobs, streams }, results, attempt = 1) => {
       retried: attempt > 1,
     });
     console.log(`${key}: ${stats.fetched} fetched, ${stats.new} new, ${stats.merged} merged as duplicates, ${stats.updated} refreshed`);
+
+    /*
+     * D54. Checked AFTER the run is recorded, so this run's own number is in
+     * the history for next time and the baseline is the runs before it.
+     *
+     * Counting the output is the only thing that would have caught the
+     * nofluffjobs paging defect: every memory number improved while the source
+     * fell from 3,054 jobs to 20.
+     */
+    const yieldCheck = await checkSourceYield(query, key, stats.fetched);
+    if (yieldCheck.collapsed) results.collapsed = (results.collapsed || []).concat([{
+      source: key, fetched: stats.fetched, baseline: yieldCheck.baseline, dropPct: yieldCheck.dropPct,
+    }]);
   } catch (err) {
     console.error(`${key} error (attempt ${attempt}):`, err.message);
     if (attempt === 1) {
