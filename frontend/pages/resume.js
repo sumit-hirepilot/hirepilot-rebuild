@@ -906,6 +906,66 @@ function ScreeningAnswers({ jobs, token, base }) {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
+  /*
+   * Feature 9 — paste a block instead of typing them one at a time.
+   *
+   * `preview` holds what the parser understood, INCLUDING what it refused, and
+   * nothing is written until the user has seen it. A parser that saved
+   * straight from a paste would be asking someone to trust output they have
+   * not seen, on answers that later go out under their name.
+   */
+  const [paste, setPaste] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [pasteError, setPasteError] = useState(null);
+  const [parsing, setParsing] = useState(false);
+  const [savingPaste, setSavingPaste] = useState(false);
+
+  const handleParsePaste = async () => {
+    if (parsing || !paste.trim()) return;
+    setParsing(true);
+    setPasteError(null);
+    setPreview(null);
+    try {
+      const res = await fetch(`${base}/api/resume/screening-answers/parse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: paste }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setPreview(data);
+      else setPasteError(data.detail || data.error || `Could not read that paste (${res.status}).`);
+    } catch (err) {
+      setPasteError('Could not read that paste. Please try again.');
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleSavePaste = async () => {
+    if (savingPaste || !preview?.pairs?.length) return;
+    setSavingPaste(true);
+    setPasteError(null);
+    try {
+      const res = await fetch(`${base}/api/resume/screening-answers/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ pairs: preview.pairs }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPaste('');
+        setPreview(null);
+        loadHistory();
+      } else {
+        setPasteError(data.detail || data.error || `Could not save those answers (${res.status}).`);
+      }
+    } catch (err) {
+      setPasteError('Could not save those answers. Please try again.');
+    } finally {
+      setSavingPaste(false);
+    }
+  };
+
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
@@ -942,6 +1002,93 @@ function ScreeningAnswers({ jobs, token, base }) {
 
   return (
     <>
+      {/* Feature 9: the answers people already have, written down somewhere
+          else. Preview first - nothing is stored until it has been seen. */}
+      <div className={styles.card}>
+        <label className={page.sectionLabel}>Paste answers you already have</label>
+        <p className={page.helpText}>
+          Paste a block from a doc or a form you have filled in before. &quot;Q: … / A: …&quot;,
+          a question with the answer on the next line, or &quot;Question? Answer&quot; all work.
+          Nothing is saved until you have seen what was understood.
+        </p>
+        <textarea
+          className={page.textarea}
+          rows={6}
+          value={paste}
+          onChange={(e) => setPaste(e.target.value)}
+          placeholder={'Q: What is your notice period?\nA: 60 days'}
+        />
+        <div className={page.resumeActions}>
+          <button
+            className={page.secondaryButton}
+            onClick={handleParsePaste}
+            disabled={parsing || !paste.trim()}
+            aria-busy={parsing}
+          >
+            {parsing ? 'Reading…' : 'Read the paste'}
+          </button>
+        </div>
+
+        {pasteError && <p className={page.versionRefused} role="status">{pasteError}</p>}
+
+        {preview && (
+          <div className={page.pastePreview}>
+            <p className={page.compareLabel}>
+              {preview.pairs.length} answer{preview.pairs.length === 1 ? '' : 's'} understood
+            </p>
+            <ul className={page.holdList}>
+              {preview.pairs.map((p, i) => (
+                <li key={`${p.question}-${i}`}>
+                  <strong>{p.question}</strong>
+                  <span className={page.holdWhy}> — {p.answer}</span>
+                </li>
+              ))}
+            </ul>
+
+            {/* The refusals, named. A silent drop is indistinguishable from a
+                parser that failed, and the user pastes again wondering why. */}
+            {preview.refused?.length > 0 && (
+              <>
+                <p className={page.compareLabel} style={{ marginTop: '0.75rem' }}>
+                  Not saved — {preview.refused.length} left for you to answer yourself
+                </p>
+                <ul className={page.holdList}>
+                  {preview.refused.map((r, i) => (
+                    <li key={`${r.question}-${i}`}>
+                      <strong>{r.question}</strong>
+                      <span className={page.holdWhy}> — {r.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {preview.clamped && (
+              <p className={page.holdNote}>That paste was longer than we read; the end was not included.</p>
+            )}
+            {preview.truncatedPairs > 0 && (
+              <p className={page.holdNote}>
+                {preview.truncatedPairs} more pair{preview.truncatedPairs === 1 ? '' : 's'} were
+                found than we save at once, and were not included.
+              </p>
+            )}
+
+            <div className={page.resumeActions}>
+              <button
+                className={page.saveButton}
+                onClick={handleSavePaste}
+                disabled={savingPaste || !preview.pairs.length}
+                aria-busy={savingPaste}
+              >
+                {savingPaste
+                  ? 'Saving…'
+                  : `Save ${preview.pairs.length} answer${preview.pairs.length === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className={styles.card}>
         <label className={page.sectionLabel}>Ask a screening question</label>
         <p className={page.helpText}>Get a draft answer based on your profile - always shown here for you to review and edit before submitting.</p>

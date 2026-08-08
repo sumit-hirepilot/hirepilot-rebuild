@@ -65,6 +65,32 @@ function allowedOrigins(env = process.env) {
     .filter(Boolean);
 }
 
+/*
+ * An EMPTY allowlist in production is announced, loudly, once at startup.
+ *
+ * This shipped with FRONTEND_URL unset, and the failure was invisible from
+ * every angle that was being watched: the service was healthy, the suite was
+ * green, memory was fine, and `curl` was perfect because curl sends no Origin
+ * header. Only a browser saw it, and what it saw was every API call from the
+ * app refused - because "no allow header for anybody" is byte-for-byte
+ * identical to "correctly configured and nobody asked".
+ *
+ * A guard whose misconfiguration looks exactly like its correct operation is
+ * the same shape as the receipt that reported its own failure into a field
+ * nobody read. So it says so.
+ */
+function warnIfNoAllowlist(env = process.env, log = console.error) {
+  if (env.NODE_ENV !== 'production') return false;
+  if (allowedOrigins(env).length) return false;
+  log(
+    '[cors] FRONTEND_URL is not set, so the allowlist is EMPTY and every '
+    + 'browser request from the app will be refused. This looks identical to a '
+    + 'working configuration from curl and from the health check: only a browser '
+    + 'can see it. Set FRONTEND_URL to the app origin.'
+  );
+  return true;
+}
+
 function isAllowedOrigin(origin, env = process.env) {
   if (!origin) return false;
   if (allowedOrigins(env).includes(origin)) return true;
@@ -97,4 +123,5 @@ module.exports = {
   isAllowedOrigin,
   allowedOrigins,
   normaliseOrigin,
+  warnIfNoAllowlist,
 };

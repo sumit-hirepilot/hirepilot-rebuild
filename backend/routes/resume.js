@@ -13,6 +13,7 @@ const docModel = require('../services/resumeDocument');
 const { renderHtml, templateList, FONTS, DEFAULT_STYLE } = require('../services/resumeTemplate');
 const { buildCorpus, verifyAdditions, findRemovedLines } = require('../services/resumeGuard');
 const { companyKeyFor } = require('../services/companyKey');
+const { parseScreeningPaste, MAX_PASTE, MAX_PAIRS } = require('../services/screeningPaste');
 const { boundPaging } = require('../services/requestBounds');
 const { parsePastedJobText, MIN_JOB_TEXT } = require('../services/pastedJobText');
 
@@ -1418,6 +1419,83 @@ router.delete('/company-versions/:id', async (req, res) => {
   } catch (err) {
     console.error('Delete company version error:', err);
     res.status(500).json({ error: 'Could not delete that version' });
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Feature 9 — paste a block of answers instead of typing them one by one
+ *
+ * Two endpoints on purpose: PARSE shows what was understood, SAVE writes what
+ * the user confirmed. A single endpoint that parsed and wrote would be asking
+ * someone to trust a parser they have not seen the output of, on their own
+ * answers, which then go out under their name.
+ * ------------------------------------------------------------------ */
+
+router.post('/screening-answers/parse', async (req, res) => {
+  try {
+    const parsed = parseScreeningPaste(req.body.text);
+
+    if (!parsed.pairs.length && !parsed.refused.length) {
+      return res.status(422).json({
+        error: 'Nothing recognisable in that paste',
+        reason: 'no_pairs',
+        detail: 'Expected question and answer pairs - "Q: … / A: …", a question on one '
+          + 'line with the answer on the next, or "Question? Answer" on one line.',
+        ...parsed,
+      });
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    console.error('Parse screening paste error:', err);
+    res.status(500).json({ error: 'Could not read that paste' });
+  }
+});
+
+router.post('/screening-answers/bulk', async (req, res) => {
+  try {
+    const incoming = Array.isArray(req.body.pairs) ? req.body.pairs.slice(0, MAX_PAIRS) : [];
+    if (!incoming.length) {
+      return res.status(400).json({
+        error: 'Nothing to save',
+        reason: 'no_pairs',
+        detail: 'Send the question and answer pairs you confirmed from the preview.',
+      });
+    }
+
+    /*
+     * Re-checked SERVER-SIDE, not trusted from the client.
+     *
+     * The preview already separated the demographic questions, but the client
+     * is free to post whatever it likes. The rule is that this product never
+     * holds an answer to a demographic question, and a rule enforced only in
+     * the preview is a rule enforced nowhere.
+     */
+    const recheck = parseScreeningPaste(
+      incoming.map((p) => `Q: ${String(p.question || '')}\nA: ${String(p.answer || '')}`).join('\n\n')
+    );
+
+    const saved = [];
+    for (const pair of recheck.pairs) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await query(
+        `INSERT INTO screening_answers (user_id, job_id, question, answer)
+         VALUES ($1, NULL, $2, $3) RETURNING id`,
+        [req.user.id, pair.question, pair.answer]
+      );
+      saved.push({ id: r.rows[0].id, question: pair.question });
+    }
+
+    res.status(201).json({
+      saved: saved.length,
+      answers: saved,
+      // Named, with the reason, so a client that posted them learns why they
+      // did not land rather than seeing a count that quietly disagrees.
+      refused: recheck.refused,
+    });
+  } catch (err) {
+    console.error('Bulk screening answers error:', err);
+    res.status(500).json({ error: 'Could not save those answers' });
   }
 });
 

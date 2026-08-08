@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { corsMiddleware } = require('./middleware/cors');
+const { corsMiddleware, warnIfNoAllowlist } = require('./middleware/cors');
 const { pool } = require('./db');
 const authRoutes = require('./routes/auth');
 const jobsRoutes = require('./routes/jobs');
@@ -186,6 +186,9 @@ function startServer() {
    */
   startWatchdog(() => pool.query('SELECT 1'), { sink: crashSink });
 
+  // Said at boot, because an empty allowlist is invisible to every check
+  // that does not use a browser.
+  warnIfNoAllowlist();
   memLog('boot:before migrations');
   runMigrations()
     .then(() => {

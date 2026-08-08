@@ -527,3 +527,12 @@
   line-height: 1.5;
   max-width: 46ch;
 }
+
+/* Feature 9 — the parsed preview of a pasted answer block. */
+.pastePreview {
+  margin-top: 0.875rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: var(--surface-2, rgba(148, 163, 184, 0.06));
+}

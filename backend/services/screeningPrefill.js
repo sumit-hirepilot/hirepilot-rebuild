@@ -426,6 +426,10 @@ function correctedReason(question) {
 
 module.exports = {
   prefillAnswers, summarize, normalizeKey, labelFor, LABELS,
+  // Exported so feature 9's paste parser refuses the same questions this
+  // engine refuses to answer. Two patterns for one rule drift, and the one
+  // that drifts is the one that stops matching.
+  DEMOGRAPHIC,
   optionMismatchReason, correctedReason, OPTION_MISMATCH_LEGACY,
   countryForLocation, isAuthorizedIn,
 };

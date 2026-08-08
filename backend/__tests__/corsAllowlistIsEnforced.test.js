@@ -169,9 +169,11 @@ describe('a lookalike origin does not pass as the real one', () => {
  * ------------------------------------------------------------------ */
 describe('FRONTEND_URL drives the list', () => {
   it('accepts more than one origin, because two deploys are live', async () => {
-    // The old Railway service and the migration target both point at this API
-    // during the cutover, so the list has to hold both at once.
-    const OTHER = 'https://hirepilot-production-e70d.up.railway.app';
+    // A second origin, because more than one frontend can be live at once.
+    // Deliberately a neutral example rather than a real retired deployment:
+    // check-stale-origins.js sweeps for those, and a fixture is not a reason
+    // to keep one alive in the tree.
+    const OTHER = 'https://second-app.example.test';
     process.env.FRONTEND_URL = `${APP_ORIGIN},${OTHER}`;
 
     for (const origin of [APP_ORIGIN, OTHER]) {
@@ -222,5 +224,51 @@ describe('localhost is a development allowance only', () => {
     process.env.NODE_ENV = 'production';
     const res = await request(app).get('/').set('Origin', 'http://localhost:3000');
     expect(allowHeader(res)).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * An empty allowlist announces itself.
+ *
+ * This shipped with FRONTEND_URL unset and the failure was invisible from
+ * every angle being watched: healthy service, green suite, fine memory, and a
+ * perfect `curl` - because curl sends no Origin header. Only a browser saw it,
+ * and what it saw was every API call from the app refused.
+ *
+ * "No allow header for anybody" is byte-for-byte identical to "correctly
+ * configured and nobody asked". A guard whose misconfiguration looks exactly
+ * like its correct operation is the receipt defect again, one layer out.
+ * ------------------------------------------------------------------ */
+describe('an empty allowlist is not silent', () => {
+  const { warnIfNoAllowlist } = require('../middleware/cors');
+
+  it('says so in production when FRONTEND_URL is unset', () => {
+    let said = '';
+    expect(warnIfNoAllowlist({ NODE_ENV: 'production' }, (m) => { said = m; })).toBe(true);
+    expect(said).toMatch(/FRONTEND_URL/);
+    // Names the reason it is invisible, or the next person checks with curl
+    // and concludes it is fine.
+    expect(said).toMatch(/only a browser/i);
+  });
+
+  it('stays quiet once an origin is configured', () => {
+    expect(warnIfNoAllowlist({ NODE_ENV: 'production', FRONTEND_URL: 'https://app.test' }, () => {})).toBe(false);
+  });
+
+  it('stays quiet in development, where loopback is allowed anyway', () => {
+    expect(warnIfNoAllowlist({ NODE_ENV: 'development' }, () => {})).toBe(false);
+  });
+
+  it('treats an unparseable FRONTEND_URL as empty, and says so', () => {
+    // "localhost:3000" with no scheme normalises to nothing; silently
+    // accepting it would leave the same invisible failure.
+    let said = '';
+    expect(warnIfNoAllowlist({ NODE_ENV: 'production', FRONTEND_URL: 'localhost:3000' }, (m) => { said = m; })).toBe(true);
+    expect(said).toMatch(/EMPTY/);
+  });
+
+  it('is called at boot', () => {
+    const idx = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    expect(idx).toMatch(/warnIfNoAllowlist\(\)/);
   });
 });
